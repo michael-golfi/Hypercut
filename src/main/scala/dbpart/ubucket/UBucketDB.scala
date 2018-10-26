@@ -56,10 +56,13 @@ class UBucketDB(location: String, options: String, separator: String = "\n") {
     into
   }
   
-  def addBulk(data: Map[String, String]) {
-    val keys = data.keys
+  def addBulk(data: Iterable[(String, String)]) {
+    val insert = data.groupBy(_._1).
+      mapValues(vs => vs.map(_._2).mkString(separator))
+    
+    val keys = insert.keys
     val existing = db.get_bulk(keys.toList.asJava, false)
-    val merged = merge(existing.asScala, data)
+    val merged = merge(existing.asScala, insert)
     db.set_bulk(merged.asJava, false)
   }
   
@@ -95,7 +98,7 @@ object UBucketDB {
   
   def addFromStream(db: UBucketDB, flatq: Iterator[(String, String)]) {
     for (group <- flatq.grouped(10000)) {
-      db.addBulk(Map() ++ group)      
+      db.addBulk(group)      
     }
   }
 }
