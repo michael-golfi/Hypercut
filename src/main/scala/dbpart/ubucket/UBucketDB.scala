@@ -1,6 +1,7 @@
 package dbpart.ubucket
 import scala.collection.JavaConverters._
 import kyotocabinet._
+import dbpart.FlatQ
 
 /**
  * Database of unique buckets for k-mers.
@@ -76,7 +77,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
     
     val keys = insert.keys
-    val existing = db.get_bulk(keys.toList.asJava, false)
+    val existing = db.get_bulk(seqAsJavaList(keys.toSeq), false)
     val merged = merge(existing.asScala, insert)
     db.set_bulk(merged.asJava, false)
   }
@@ -103,36 +104,36 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
 }
 
 object UBucketDB {
+
+  val c1g = 1l * 1204 * 1204 * 1024
+  val c2g = 2 * c1g
+  val c20g = 20l * c1g
+
+  //5M buckets (approx 10% of size, assuming 50 million entries)
+  //default alignment (8 bytes)
+  val options = s"#msiz=$c2g#bnum=5000000"
   
   def main(args: Array[String]) {
-
-    val c1g = 1l * 1204 * 1204 * 1024
-    val c2g = 2 * c1g
-    val c20g = 20l * c1g
-
-    //500k buckets (approx 10% of size, assuming 5 million entries)
-    //default alignment (8 bytes)
-    val options = s"#msiz=$c2g#bnum=500000"
-  
-    
+   
     args(0) match {
       case "add" =>
         val file = args(1)
         val db = new UBucketDB(file, options)
-        addFromStream(db, flatqStream(Console.in.lines().iterator().asScala))
+        addFromStream(db, FlatQ.stream(Console.in.lines().iterator().asScala))
       case _ => throw new Exception("Unxpected command")
     }    
   }
   
-  def flatqStream(from: Iterator[String]) =    
-    from.flatMap(s => {      
-      val spl = s.split("\t", 3)
-      Some((spl(1), s))      
-    })    
   
+  val k = 31
+  def kmers(read: String) = read.sliding(k)
+  //2^20 = 1M possible keys
+  def key(kmer: String) = kmer.substring(0, 10)
+    
   def addFromStream(db: UBucketDB, flatq: Iterator[(String, String)]) {
-    for (group <- flatq.grouped(10000)) {
-      db.addBulk(group)      
+    for (group <- flatq.grouped(10000);
+        kvs = group.map(x => (key(x._1), x._1))) {
+      db.addBulk(kvs)      
     }
   }
 }

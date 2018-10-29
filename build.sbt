@@ -7,4 +7,3 @@ scalaVersion := "2.12.3"
 
 libraryDependencies += "com.fallabs" % "kyotocabinet-java" % "latest.integration"
 
-
