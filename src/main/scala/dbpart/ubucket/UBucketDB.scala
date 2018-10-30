@@ -31,10 +31,14 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
    * The default bucket implementation simply adds to a list.
    * Overriding methods can be more sophisticated, e.g. perform sorting or deduplication
    */
-  def setInsertSingle(oldSet: String, value: String): String = 
-    s"$oldSet$separator$value"  
+  def setInsertSingle(oldSet: String, value: String): Option[String] = 
+    Some(s"$oldSet$separator$value")  
   
-  def setInsertBulk(oldSet: String, values: Iterable[String]): String = {
+  /**
+   * Insert a number of values into the set, returning the updated set if an update is necessary.
+   * Returns None if no update is needed.
+   */
+  def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
     val newVals = values.mkString(separator)
     setInsertSingle(oldSet, newVals)
   }
@@ -50,7 +54,10 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
         if (value.size > 2000) {
           println(s"Key $key size ${value.size}")
         }
-        db.set(key, setInsertSingle(value, record))
+        setInsertSingle(value, record) match {
+          case Some(nv) => db.set(key, nv)
+          case None =>
+        }
       case None => 
         db.set(key, record)
     }
@@ -62,15 +69,22 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   import scala.collection.mutable.{Map => MMap}
   
   def merge(into: MMap[String, String], from: CMap[String, Iterable[String]]) = {
+    var dirty = Set[String]()
     for ((k, vs) <- from) {
       into.get(k) match {
         case Some(existingSet) =>
-          into += k -> setInsertBulk(existingSet, vs)
+          setInsertBulk(existingSet, vs) match {
+            case Some(ins) => 
+              into += k -> ins
+              dirty += k
+            case None =>
+          }          
         case None =>
           into += k -> newSet(vs)
+          dirty += k
       }
     }
-    into
+    into.filter(kv => dirty.contains(kv._1))
   }
   
   def addBulk(data: Iterable[(String, String)]) {
@@ -89,13 +103,17 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
  */
 class UBucketDB(location: String, options: String, separator: String = "\n") extends BucketDB(location, options, separator) {
 
-  override def setInsertSingle(oldSet: String, value: String): String = 
+  override def setInsertSingle(oldSet: String, value: String): Option[String] = 
     setInsertBulk(oldSet, Seq(value))  
   
-  override def setInsertBulk(oldSet: String, values: Iterable[String]): String = {
+  override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
     val old = Set() ++ oldSet.split(separator, -1)
     val newSet = old ++ values
-    newSet.mkString(separator)    
+    if (newSet.size == old.size) {
+      None
+    } else {
+      Some(newSet.mkString(separator))          
+    }
   }
   
   override def newSet(values: Iterable[String]) =    
@@ -109,9 +127,11 @@ object UBucketDB {
   val c4g = 4 * c1g
   val c20g = 20l * c1g
 
-  //5M buckets (approx 10% of size, assuming 50 million entries)
-  //default alignment (8 bytes)
-  val options = s"#msiz=$c4g#bnum=5000000"
+  //20M buckets 
+  //512b byte alignment
+  //4G mmap
+  //zlib compression
+  val options = s"#msiz=$c4g#bnum=20000000#apow=9#zcomp=zlib"
   
   def main(args: Array[String]) {
    
