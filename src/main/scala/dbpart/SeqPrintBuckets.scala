@@ -7,8 +7,9 @@ class SeqPrintBuckets(space: MarkerSpace, k: Int, numMarkers: Int, dbfile: Strin
   val db = new UBucketDB(dbfile, UBucketDB.options)
   
   def handle(reads: Iterator[(String, String)]) {
-    for (rs <- reads.flatMap(r => handle(r._1)).grouped(10000)) {
-      db.addBulk(rs)
+    for (rs <- reads.grouped(100000);
+        chunk = rs.toSeq.par.flatMap(r => handle(r._1))) {
+      db.addBulk(chunk.seq)
     }
   }
   

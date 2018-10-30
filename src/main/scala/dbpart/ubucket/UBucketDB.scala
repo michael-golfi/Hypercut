@@ -106,12 +106,12 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
 object UBucketDB {
 
   val c1g = 1l * 1204 * 1204 * 1024
-  val c2g = 2 * c1g
+  val c4g = 4 * c1g
   val c20g = 20l * c1g
 
   //5M buckets (approx 10% of size, assuming 50 million entries)
   //default alignment (8 bytes)
-  val options = s"#msiz=$c2g#bnum=5000000"
+  val options = s"#msiz=$c4g#bnum=5000000"
   
   def main(args: Array[String]) {
    

@@ -6,8 +6,10 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
     def topRanked(ms: Seq[Marker], n: Int) =
     (ms.sortBy(m => (space.priorityOf(m.tag), m.pos))
         take n)
-        
+   
+   @volatile
    var readCount = 0
+   @volatile
    var kmerCount = 0
    
    val n = numMarkers
