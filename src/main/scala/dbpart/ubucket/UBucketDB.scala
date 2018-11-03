@@ -2,6 +2,7 @@ package dbpart.ubucket
 import scala.collection.JavaConverters._
 import kyotocabinet._
 import dbpart.FlatQ
+import friedrich.util.Distribution
 
 /**
  * Database of unique buckets for k-mers.
@@ -46,7 +47,8 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   def newSet(values: Iterable[String]) =
     values.mkString(separator)
   
-  
+  def unpackSet(set: String): Iterable[String] = set.split(separator, -1)    
+    
   def addSingle(key: String, record: String) {    
     val v = Option(db.get(key))
     v match {
@@ -96,6 +98,26 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     db.set_bulk(merged.asJava, false)
   }
   
+  def bucketSizeStats() = {
+    val r = new Distribution
+    val cur = db.cursor()
+    try {
+      cur.jump()
+      var continue = cur.step()
+      while (continue) {
+        val v = cur.get_str(true)
+        if (v != null) {        
+          r.observe(unpackSet(v(1)).size)
+        } else {
+          continue = false
+        }
+      }
+    } finally {
+      cur.disable()
+    }
+    r
+  }
+  
 }
 
 /**
@@ -107,7 +129,7 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
     setInsertBulk(oldSet, Seq(value))  
   
   override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
-    val old = Set() ++ oldSet.split(separator, -1)
+    val old = Set() ++ unpackSet(oldSet)
     val newSet = old ++ values
     if (newSet.size == old.size) {
       None
@@ -140,6 +162,10 @@ object UBucketDB {
         val file = args(1)
         val db = new UBucketDB(file, options)
         addFromStream(db, FlatQ.stream(Console.in.lines().iterator().asScala))
+      case "stats" =>
+        val file = args(1)
+        val db = new UBucketDB(file, options)
+        db.bucketSizeStats().print()
       case _ => throw new Exception("Unxpected command")
     }    
   }
