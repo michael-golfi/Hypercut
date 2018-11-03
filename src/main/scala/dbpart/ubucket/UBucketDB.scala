@@ -98,26 +98,39 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     db.set_bulk(merged.asJava, false)
   }
   
-  def bucketSizeStats() = {
-    val r = new Distribution
-    val cur = db.cursor()
-    try {
+  def buckets: Iterator[(String, Iterable[String])] = {
+
+    new Iterator[(String, Iterable[String])] {
+      val cur = db.cursor()
       cur.jump()
       var continue = cur.step()
-      while (continue) {
-        val v = cur.get_str(true)
-        if (v != null) {        
-          r.observe(unpackSet(v(1)).size)
+      var nextVal: Array[String] = cur.get_str(true)
+
+      override def next() = {
+        val r = (nextVal(0), unpackSet(nextVal(1)))
+        nextVal = cur.get_str(true)
+        r
+      }
+
+      override def hasNext() = {
+        if (nextVal != null) {
+          true
         } else {
-          continue = false
+          cur.disable()
+          false
         }
       }
-    } finally {
-      cur.disable()
+    }
+  }
+
+  def bucketSizeStats() = {
+    val r = new Distribution
+    for ((b, vs) <- buckets) {
+      r.observe(vs.size)
     }
     r
   }
-  
+
 }
 
 /**
@@ -166,6 +179,10 @@ object UBucketDB {
         val file = args(1)
         val db = new UBucketDB(file, options)
         db.bucketSizeStats().print()
+      case "graph" =>
+        val file = args(1)
+        val db = new UBucketDB(file, options)
+        
       case _ => throw new Exception("Unxpected command")
     }    
   }
