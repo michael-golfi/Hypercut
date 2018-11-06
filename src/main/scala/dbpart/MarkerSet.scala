@@ -2,6 +2,15 @@ package dbpart
 
 import scala.collection.Seq
 
+object Marker {
+  val PackedMarker = "([ACTGUN]+)(\\d+)"r
+  
+  def unpack(space: MarkerSpace, key: String) = {
+     key match {
+       case PackedMarker(tag, pos) => space.get(tag, pos.toInt)
+     }
+  }
+}
 
 case class Marker(tag: String, pos: Int, 
   lowestRank: Boolean = false, sortValue: Int = 0) {
@@ -40,6 +49,8 @@ case class Marker(tag: String, pos: Int,
 }
 
 object MarkerSet {
+  def unpack(space: MarkerSpace, key: String) = 
+    MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
   
   /**
    * Mainly for testing
@@ -112,9 +123,8 @@ object MarkerSet {
   def shiftLeft(ms: Seq[Marker], n: Int): Seq[Marker] = 
     ms.map(m => m.copy(pos = m.pos - n))
   
-  
 }
-  
+
 /*
  * Markers, with relative positions, sorted by absolute position
  */

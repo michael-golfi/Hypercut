@@ -102,7 +102,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
 
     new Iterator[(String, Iterable[String])] {
       val cur = db.cursor()
-      cur.jump()
+      cur.jump()      
       var continue = cur.step()
       var nextVal: Array[String] = cur.get_str(true)
 
@@ -124,7 +124,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   }
 
   def bucketSizeStats() = {
-    val r = new Distribution
+    val r = new Distribution    
     for ((b, vs) <- buckets) {
       r.observe(vs.size)
     }
