@@ -1,5 +1,14 @@
 package friedrich.util
 
+object Distribution {   
+  def printStats(label: String, vs: Iterable[Int]) {
+    println(s"Distribution for $label")
+    val d = new Distribution
+    d.observe(vs)
+    d.print()
+  }
+}
+
 /**
  * Track some properties of a distribution of integers.
  */
@@ -22,7 +31,14 @@ class Distribution {
     sum += v
   }
 
+  def observe(vs: Iterable[Int]) {
+    for (v <- vs) {
+      observe(v)
+    }
+  }
+  
   def print() {
     println(s"Min $min Max $max Avg $avg Count $count Sum $sum")
   }
+ 
 }
