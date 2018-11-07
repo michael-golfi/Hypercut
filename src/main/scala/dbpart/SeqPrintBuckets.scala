@@ -14,6 +14,9 @@ class SeqPrintBuckets(space: MarkerSpace, k: Int, numMarkers: Int, dbfile: Strin
     }
   }
   
+  //TODO: also handle the reverse complement of each read
+  //TODO: mate pairs
+  
   def handle(read: String) = {
     val kmers = read.sliding(k)
     val mss = extractor.markerSetsInRead(read)
@@ -65,7 +68,7 @@ object SeqPrintBuckets {
         }
         println(graph.numEdges + " edges")
         
-        GraphViz.write[MarkerSet](graph, "out.dot", ms => ms.packedString)
+        GraphViz.writeUndirected[MarkerSet](graph, "out.dot", ms => ms.packedString)
     }
 
   }
