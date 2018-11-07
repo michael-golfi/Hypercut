@@ -70,30 +70,29 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   import scala.collection.{Map => CMap}
   import scala.collection.mutable.{Map => MMap}
   
-  def merge(into: MMap[String, String], from: CMap[String, Iterable[String]]) = {
-    var dirty = Set[String]()
+  def merge(oldVals: MMap[String, String], from: CMap[String, Iterable[String]]) = {
+    var r = MMap[String, String]()    
     for ((k, vs) <- from) {
-      into.get(k) match {
+      oldVals.get(k) match {
         case Some(existingSet) =>
           setInsertBulk(existingSet, vs) match {
             case Some(ins) => 
-              into += k -> ins
-              dirty += k
+              r += k -> ins              
             case None =>
           }          
         case None =>
-          into += k -> newSet(vs)
-          dirty += k
+          r += k -> newSet(vs)          
       }
-    }
-    into.filter(kv => dirty.contains(kv._1))
+    }    
+    r
   }
   
-  def addBulk(data: Iterable[(String, String)]) {
+  def addBulk(data: Iterable[(String, String)]) {    
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
     
     val keys = insert.keys
     val existing = db.get_bulk(seqAsJavaList(keys.toSeq), false)
+//    val existing = MMap[String, String]()
     val merged = merge(existing.asScala, insert)
     db.set_bulk(merged.asJava, false)
   }
@@ -141,10 +140,12 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
   override def setInsertSingle(oldSet: String, value: String): Option[String] = 
     setInsertBulk(oldSet, Seq(value))  
   
+  import scala.collection.mutable.{Set => MSet}
   override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
-    val old = Set() ++ unpackSet(oldSet)
+    val old = MSet() ++ unpackSet(oldSet)
+    val oldSize = old.size
     val newSet = old ++ values
-    if (newSet.size == old.size) {
+    if (newSet.size == oldSize) {
       None
     } else {
       Some(newSet.mkString(separator))          
@@ -160,13 +161,14 @@ object UBucketDB {
 
   val c1g = 1l * 1204 * 1204 * 1024
   val c4g = 4 * c1g
+  val c8g = 8 * c1g
   val c20g = 20l * c1g
 
-  //20M buckets 
-  //512b byte alignment
-  //4G mmap
-  //zlib compression
-  val options = s"#msiz=$c4g#bnum=20000000#apow=9#zcomp=zlib"
+  //40M buckets 
+  //256b byte alignment
+  //8G mmap
+  //#comp=zlib
+  val options = s"#msiz=$c8g#bnum=40000000#apow=8"
   
   def main(args: Array[String]) {
    
