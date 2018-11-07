@@ -89,12 +89,14 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   
   def addBulk(data: Iterable[(String, String)]) {    
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
+//    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
     
-    val keys = insert.keys
-    val existing = db.get_bulk(seqAsJavaList(keys.toSeq), false)
-//    val existing = MMap[String, String]()
-    val merged = merge(existing.asScala, insert)
-    db.set_bulk(merged.asJava, false)
+    for (insertGr <- insert.grouped(10000)) {
+      val existing = db.get_bulk(seqAsJavaList(insertGr.keys.toSeq), false)
+      //    val existing = MMap[String, String]()
+      val merged = merge(existing.asScala, insertGr)
+      db.set_bulk(merged.asJava, false)
+    }
   }
   
   def buckets: Iterator[(String, Iterable[String])] = {
@@ -159,10 +161,10 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
 
 object UBucketDB {
 
-  val c1g = 1l * 1204 * 1204 * 1024
+  val c1g = 1L * 1204 * 1204 * 1024
   val c4g = 4 * c1g
   val c8g = 8 * c1g
-  val c20g = 20l * c1g
+  val c20g = 20L * c1g
 
   //40M buckets 
   //256b byte alignment
