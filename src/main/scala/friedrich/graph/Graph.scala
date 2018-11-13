@@ -24,6 +24,11 @@ trait Graph[N] {
 
   def edgesFrom(from: N): Iterable[N]
   def edgesTo(to: N): Iterable[N]
+  
+  def degree(from: N) = fromDegree(from)
+  def fromDegree(from: N) = edgesFrom(from).size
+  def toDegree(to: N) = edgesTo(to).size
+  
   /**
    * Both to- and from-nodes of the given node
    */

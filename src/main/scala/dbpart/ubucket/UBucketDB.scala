@@ -3,6 +3,7 @@ import scala.collection.JavaConverters._
 import kyotocabinet._
 import dbpart.FlatQ
 import friedrich.util.Distribution
+import friedrich.util.Histogram
 
 /**
  * Database of unique buckets for k-mers.
@@ -131,6 +132,12 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     }
     r
   }
+  
+  def bucketSizeHistogram() = {
+    val ss = buckets.map(_._2.size)
+    val h = new Histogram(ss.toSeq)
+    h
+  }
 
 }
 
@@ -150,7 +157,7 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
     if (newSet.size == oldSize) {
       None
     } else {
-      Some(newSet.mkString(separator))          
+      Some(newSet.mkString(separator))
     }
   }
   
@@ -183,6 +190,7 @@ object UBucketDB {
         val file = args(1)
         val db = new UBucketDB(file, options)
         db.bucketSizeStats().print()
+        db.bucketSizeHistogram().print("Bucket sizes")
       case "graph" =>
         val file = args(1)
         val db = new UBucketDB(file, options)
