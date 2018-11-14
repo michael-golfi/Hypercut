@@ -47,7 +47,10 @@ class Histogram(values: Seq[Int]) {
   dist.observe(values)
   
   val bnum = 10
-  val bs = (dist.max - dist.min)/bnum
+  var bs = (dist.max - dist.min)/bnum
+  if (bs < 1) {
+    bs = 1
+  }
   val buckets = dist.min.to(dist.max, bs)
   var counts = Array.fill(bnum)(0)
   
@@ -65,8 +68,9 @@ class Histogram(values: Seq[Int]) {
   }
   
   
-  def print(label: String) {
-    println(s"$label Median: $median")
+  def print(label: String) {    
+    Console.out.print(s"$label Median: $median ")
+    dist.print()
     println(buckets.take(bnum).mkString("\t"))
     println(counts.mkString("\t"))
   }

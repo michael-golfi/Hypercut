@@ -54,6 +54,7 @@ object SeqPrintBuckets {
     println(graph.numEdges + " edges")
     
     Distribution.printStats("Node degree", graph.nodes.map(graph.degree))
+    
     val hist = new Histogram(Seq() ++ graph.nodes.map(graph.degree))
     hist.print("Node degree")
     graph
@@ -78,6 +79,13 @@ object SeqPrintBuckets {
         val dbfile = args(3)
         val buckets = new SeqPrintBuckets(space, k, numMarkers, dbfile)
         val graph = makeGraph(kms, buckets)                
+        val mg = new MacroGraph(graph)
+        val parts = mg.partition(1000)
+        val hist = new Histogram(parts.map(_.size))
+        hist.print("Macro partition size")
+        val numKmers = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
+        new Histogram(numKmers).print("Macro partition expanded size")
+        
         GraphViz.writeUndirected[MarkerSet](graph, "out.dot", ms => ms.packedString)
     }
 

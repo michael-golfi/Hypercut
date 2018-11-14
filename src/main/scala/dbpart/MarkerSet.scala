@@ -131,6 +131,8 @@ object MarkerSet {
 case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
   import MarkerSet._
   
+  var tag1: Boolean = false
+  
   lazy val packedString = relativeMarkers.map(_.packedString).mkString(".")
   
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"
