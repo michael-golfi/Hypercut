@@ -98,12 +98,12 @@ object KmerSpace {
           val s2c = if (s2b.headPosition == 0) {
             s2b.stepForward(h2).setHeadsToZero(space)
           } else {
-            s2b.constrain(h2).dropAndAddOffset(space)
+            s2b.constrainMarker(h2).dropAndAddOffset(space)
           }
 
           //s1 is only constrained here, but an append must happen
           //later on the left hand side to compensate.
-          r ++= edges(s1b.constrain(h1), s2c, space, n, mayRemoveLeftRank,
+          r ++= edges(s1b.constrainMarker(h1), s2c, space, n, mayRemoveLeftRank,
             false, removedLeftPos, true)
         }
       }
@@ -232,18 +232,18 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   private def mergeSubspaces(ss: Iterable[KmerTree]): Iterable[KmerTree] = 
     ss.groupBy(_.key).map(_._2.reduce(_ merge _))
 
-  private def constrain(toSpaces: Iterable[KmerTree]) = {    
+  private def constrainSpaces(toSpaces: Iterable[KmerTree]) = {    
     copy(subspaces = toSpaces)
   }
   
   /**
    * Constrain without moving forward.
    */
-  def constrain(f: KmerTree => Boolean): ConstrainedSpace = 
-    constrain(subspaces filter f)
+  def constrainFilter(f: KmerTree => Boolean): ConstrainedSpace = 
+    constrainSpaces(subspaces.view.filter(f))
   
   def mapHeads(f: Marker => Marker) =
-    constrain(subspaces.map(_.mapHead(f)))
+    constrainSpaces(subspaces.map(_.mapHead(f)))
    
   def stepForward(constraint: Option[Marker]): ConstrainedSpace = 
     constraint match {
@@ -254,8 +254,8 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   def stepForward(m: Marker): ConstrainedSpace = 
     constrainAdvance(_.key == m)
   
-  def constrain(m: Marker): ConstrainedSpace = 
-    constrain(_.key == m)
+  def constrainMarker(m: Marker): ConstrainedSpace = 
+    constrainFilter(_.key == m)
     
   def stepForward(constraint: Int): ConstrainedSpace = 
     constrainAdvance(_.key.pos == constraint)
@@ -264,7 +264,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
     constrainAdvance(_.key.tag == constraint)
   
   def rankDrop(space: MarkerSpace): ConstrainedSpace =  
-    constrain(_.key.lowestRank == true).dropAndAddOffset(space)
+    constrainFilter(_.key.lowestRank == true).dropAndAddOffset(space)
   
   def setHeadsToZero(space: MarkerSpace) = mapHeads(
     m => space.get(m.tag, 0, m.lowestRank, m.sortValue))
