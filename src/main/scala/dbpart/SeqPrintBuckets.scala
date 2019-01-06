@@ -40,7 +40,7 @@ object SeqPrintBuckets {
       try {
         val n = asMarkerSet(key)
         graph.addNode(n)
-        kms.add(n.fixMarkers)
+        kms.add(n)
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
@@ -61,7 +61,7 @@ object SeqPrintBuckets {
     graph
   }
   
-    def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers
+  def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
     
   def main(args: Array[String]) {
   

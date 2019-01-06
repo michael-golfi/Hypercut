@@ -38,6 +38,15 @@ case class Marker(tag: String, pos: Int,
   
   override lazy val hashCode: Int = tag.hashCode * 41 + pos
   
+  lazy val asLowestRank = if (lowestRank) this else copy(lowestRank = true)
+  
+  /**
+   * Obtain the canonical version of this marker, to save memory
+   */
+  def canonical(ms: MarkerSpace): Marker = {
+    ms.get(tag, pos, lowestRank, sortValue)
+  }
+  
   //NB this limits the maximum k-mer size (1000)
   /**
    * A metric for sorting by rank.
@@ -239,7 +248,7 @@ case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
       val withSortValues = relativeMarkers.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
       val lowest = withSortValues.sortBy(_.sortValue).last
       val i = relativeMarkers.lastIndexOf(lowest)
-      MarkerSet(space, withSortValues.updated(i, lowest.copy(lowestRank = true)))
+      MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank))
     }
   }
   
@@ -250,4 +259,8 @@ case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
       MarkerSet(space, relativeMarkers.map(m =>
         space.get(m.tag, m.pos, false, m.sortValue)))
 
+  /**
+   * Produce a copy with canonical markers, to save memory.      
+   */
+  def canonical = MarkerSet(space, relativeMarkers.map(_.canonical(space)))
 } 
