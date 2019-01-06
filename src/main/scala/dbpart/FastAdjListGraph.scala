@@ -1,15 +1,14 @@
 package dbpart
 
-import friedrich.graph.AdjListGraph
+import scala.collection.mutable.Map
+
 import friedrich.graph.SetBackedGraph
 
-import scala.collection.mutable.Map
-import friedrich.graph.Graph
-
 /**
- * A graph that stores nodes in sets and edges in vectors
+ * A graph that stores nodes in sets and edges in vectors.
  * It is assumed that each edge is added only once, so no
  * deduplication is performed.
+ * The underlying implementation is based on mutable data structures for fast construction.
  */
 class FastAdjListGraph[N <: AnyRef] extends SetBackedGraph[N] {
   private val adjList = Map[N, Vector[N]]()

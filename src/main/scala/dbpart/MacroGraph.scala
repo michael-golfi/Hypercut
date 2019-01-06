@@ -3,6 +3,7 @@ package dbpart
 import friedrich.graph.Graph
 import scala.collection.mutable.{ Set => MSet, Map => MMap }
 import scala.annotation.tailrec
+import dbpart.ubucket.UBucketDB
 
 class MacroGraph(graph: Graph[MarkerSet]) {
   type Node = MarkerSet
@@ -54,5 +55,7 @@ class MacroGraph(graph: Graph[MarkerSet]) {
   def partition(groupSize: Int): List[List[Node]] = 
     new Partitioner(groupSize).partitions
 
+ 
+    
 }
 

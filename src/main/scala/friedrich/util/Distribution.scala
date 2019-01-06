@@ -12,7 +12,7 @@ object Distribution {
 /**
  * Track some properties of a distribution of integers.
  */
-class Distribution {
+class Distribution(format: String = "%.2f") {
   var max = 0
   var count = 0
   var avg = 0.0
@@ -37,16 +37,20 @@ class Distribution {
     }
   }
   
+  def fmt(x: Double) = format.format(x)
   def print() {
-    println(s"Min $min Max $max Avg $avg Count $count Sum $sum")
+    println(s"Min $min Max $max Avg ${fmt(avg)} Count $count Sum $sum")
   }
 }
 
-class Histogram(values: Seq[Int]) {
+/**
+ * Note: might be useful to display certain histograms on a log scale
+ * instead of linear
+ */
+class Histogram(values: Seq[Int], bnum: Int = 10) {
   val dist = new Distribution()
   dist.observe(values)
   
-  val bnum = 10
   var bs = (dist.max - dist.min)/bnum
   if (bs < 1) {
     bs = 1

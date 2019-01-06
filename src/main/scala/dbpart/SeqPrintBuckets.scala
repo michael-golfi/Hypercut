@@ -4,6 +4,7 @@ import scala.collection.JavaConversions._
 import friedrich.util.formats.GraphViz
 import friedrich.util.Distribution
 import friedrich.util.Histogram
+import dbpart.graph.CollapsedGraph
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
@@ -81,12 +82,14 @@ object SeqPrintBuckets {
         val graph = makeGraph(kms, buckets)                
         val mg = new MacroGraph(graph)
         val parts = mg.partition(1000)
-        val hist = new Histogram(parts.map(_.size))
+        val hist = new Histogram(parts.map(_.size), 20)
         hist.print("Macro partition size")
         val numKmers = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
-        new Histogram(numKmers).print("Macro partition expanded size")
+        new Histogram(numKmers, 20).print("Macro partition expanded size")                
+        val colGraph = CollapsedGraph.construct(parts, graph)
         
-        GraphViz.writeUndirected[MarkerSet](graph, "out.dot", ms => ms.packedString)
+        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot", 
+            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
     }
 
   }
