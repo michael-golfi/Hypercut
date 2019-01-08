@@ -12,8 +12,22 @@ object Marker {
   }
 }
 
-case class Marker(tag: String, pos: Int, 
-  lowestRank: Boolean = false, sortValue: Int = 0) {
+final class Features(val tag: String, val lowestRank: Boolean = false,
+  val sortValue: Int = 0) {
+  
+  def strongEquivalent(other: Features) = {
+    tag == other.tag && lowestRank == other.lowestRank
+  }
+  
+  def asLowestRank(space: MarkerSpace) = space.getFeatures(tag, true, sortValue)
+  
+  def withSortValue(space: MarkerSpace, value: Int) = space.getFeatures(tag, lowestRank, value)
+}
+
+final case class Marker(pos: Int, features: Features) { 
+  def tag = features.tag
+  def lowestRank = features.lowestRank
+  def sortValue = features.sortValue
   
   lazy val packedString = "%s%02d".format(tag, pos)
   
@@ -26,7 +40,7 @@ case class Marker(tag: String, pos: Int,
   }
   
   def strongEquivalent(other: Marker) = {
-    tag == other.tag && pos == other.pos && lowestRank == other.lowestRank
+    pos == other.pos && ((features eq other.features) || features.strongEquivalent(other.features))
   }  
   
   override def equals(other: Any) = {
@@ -36,9 +50,10 @@ case class Marker(tag: String, pos: Int,
     }
   }
   
-  override lazy val hashCode: Int = tag.hashCode * 41 + pos
+  override lazy val hashCode: Int = pos.hashCode * 41 + features.hashCode
   
-  lazy val asLowestRank = if (lowestRank) this else copy(lowestRank = true)
+  def asLowestRank(space: MarkerSpace) = if (lowestRank) this else 
+    copy(features = features.asLowestRank(space))
   
   /**
    * Obtain the canonical version of this marker, to save memory
@@ -54,7 +69,7 @@ case class Marker(tag: String, pos: Int,
    * @param posInSet position in a set of markers (not in the underlying sequence)
    */
   def withSortValue(space: MarkerSpace, posInSet: Int) =
-    copy(sortValue = (1000 * space.priorityOf(tag) + posInSet))
+    copy(features = features.withSortValue(space, 1000 * space.priorityOf(tag) + posInSet))
 }
 
 object MarkerSet {
@@ -248,7 +263,7 @@ case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
       val withSortValues = relativeMarkers.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
       val lowest = withSortValues.sortBy(_.sortValue).last
       val i = relativeMarkers.lastIndexOf(lowest)
-      MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank))
+      MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank(space)))
     }
   }
   
