@@ -240,7 +240,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
    * Constrain without moving forward.
    */
   def constrainFilter(f: KmerTree => Boolean): ConstrainedSpace = 
-    constrainSpaces(subspaces.view.filter(f))
+    constrainSpaces(subspaces.filter(f))
   
   def mapHeads(f: Marker => Marker) =
     constrainSpaces(subspaces.map(_.mapHead(f)))
