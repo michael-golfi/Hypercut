@@ -21,16 +21,20 @@ final class MarkerSpace(byPriority: Seq[String]) {
   @volatile 
   private var lookup = Map[(String, Boolean, Int), Features]()
     
-  def get(pattern: String, pos: Int, lowestRank: Boolean = false,
-          sortValue: Int = 0): Marker = {
+  def getFeatures(pattern: String, lowestRank: Boolean, sortValue: Int): Features = {
     val key = (pattern, lowestRank, sortValue)
     if (!lookup.contains(key)) {
       synchronized {
         val f = new Features(pattern, lowestRank, sortValue)
         lookup += key -> f
       }
-    } 
-    Marker(pos, lookup(key))
+    }
+    lookup(key)
+  }
+  
+  def get(pattern: String, pos: Int, lowestRank: Boolean = false,
+          sortValue: Int = 0): Marker = {    
+    Marker(pos, getFeatures(pattern, lowestRank, sortValue))
   }
     
   def priorityOf(mk: String) = byPriority.indexOf(mk)

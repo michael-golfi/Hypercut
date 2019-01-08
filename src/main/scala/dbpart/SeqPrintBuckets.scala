@@ -44,6 +44,7 @@ object SeqPrintBuckets {
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
+          e.printStackTrace()
       }
     }
 
