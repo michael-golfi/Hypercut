@@ -3,7 +3,7 @@ package dbpart.graph
 import dbpart.FastAdjListGraph
 import friedrich.graph.Graph
 
-case class NodeGroup[A](nodes: Seq[A])
+final class NodeGroup[A](val nodes: Seq[A])
 
 object CollapsedGraph {
   
@@ -17,7 +17,7 @@ object CollapsedGraph {
       underlying: Graph[A]): Graph[G[A]] = {
     type Group = NodeGroup[A]
     
-    val groups = partitions.map(p => NodeGroup(p.toSeq))
+    val groups = partitions.map(p => new NodeGroup(p.toSeq))
     val lookup = Map() ++ groups.flatMap(g => g.nodes.map(_ -> g)) 
     
     val r = new FastAdjListGraph[G[A]]
@@ -26,6 +26,10 @@ object CollapsedGraph {
     }
     for (g <- groups) {
       val underNodes = g.nodes
+      /*
+       * Note: deduplication of edges here is expensive.
+       * Given how edgesFrom works, is it necessary?
+       */
       val underEdges = underNodes.flatMap(n => underlying.edgesFrom(n)).distinct
       val underEdgeGroups = underEdges.map(e => lookup(e)).distinct
       for (ueg <- underEdgeGroups) {
