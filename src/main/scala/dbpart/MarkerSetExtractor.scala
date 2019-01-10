@@ -15,7 +15,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
    val n = numMarkers
    
   def markerSetFromUnsorted(ms: Seq[Marker]) = 
-    MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
+    new MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
   
   /**
    * Extract the markers in a given read. Marker sets will be repeated according to how many

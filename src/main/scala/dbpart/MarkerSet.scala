@@ -72,9 +72,9 @@ final case class Marker(pos: Int, features: Features) {
     copy(features = features.withSortValue(space, 1000 * space.priorityOf(tag) + posInSet))
 }
 
-object MarkerSet {
+object MarkerSet { 
   def unpack(space: MarkerSpace, key: String) = 
-    MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
+    new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
   
   /**
    * Mainly for testing
@@ -152,7 +152,7 @@ object MarkerSet {
 /*
  * Markers, with relative positions, sorted by absolute position
  */
-case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
+class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
   import MarkerSet._
   
   var tag1: Boolean = false
@@ -263,7 +263,8 @@ case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
       val withSortValues = relativeMarkers.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
       val lowest = withSortValues.sortBy(_.sortValue).last
       val i = relativeMarkers.lastIndexOf(lowest)
-      MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank(space)))
+
+      new MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank(space)))
     }
   }
   
@@ -271,11 +272,11 @@ case class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
    * Produces a copy where lowestRank values have all been set to false.
    */
   def unfixMarkers =     
-      MarkerSet(space, relativeMarkers.map(m =>
+      new MarkerSet(space, relativeMarkers.map(m =>
         space.get(m.tag, m.pos, false, m.sortValue)))
 
   /**
    * Produce a copy with canonical markers, to save memory.      
    */
-  def canonical = MarkerSet(space, relativeMarkers.map(_.canonical(space)))
+  def canonical = new MarkerSet(space, relativeMarkers.map(_.canonical(space)))
 } 
