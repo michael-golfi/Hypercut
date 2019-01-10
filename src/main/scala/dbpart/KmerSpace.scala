@@ -20,7 +20,6 @@ object KmerSpace {
    * their headPositions.
    */
   final def edges(s1: ConstrainedSpace, s2: ConstrainedSpace,
-                  space: MarkerSpace,
                   n: Int,
                   mayRemoveLeftRank: Boolean = true,
                   mayInsertRight: Boolean = true,
@@ -55,7 +54,7 @@ object KmerSpace {
 //        println(s"Std case $h1 $h2")
 //        println(s1b.toVector)
 //        println(s2b.toVector)
-        r ++= edges(s1b, s2b, space, n, mayRemoveLeftRank, mayInsertRight,
+        r ++= edges(s1b, s2b, n, mayRemoveLeftRank, mayInsertRight,
           removedLeftPos, mayAppendLeft) 
       }
     }
@@ -64,7 +63,7 @@ object KmerSpace {
       for (h2 <- s2.heads;
         s2b = s2.stepForward(h2)) {
 //        println(s"Right append case $h2")
-        r ++= edges(s1, s2b, space, n, mayRemoveLeftRank, mayInsertRight,
+        r ++= edges(s1, s2b, n, mayRemoveLeftRank, mayInsertRight,
           removedLeftPos, mayAppendLeft, true)
       }        
     }
@@ -72,7 +71,7 @@ object KmerSpace {
     if (s1.canStepForward && !s2.canStepForward && mayAppendLeft) {
       for (h1 <- s1.heads; 
          s1b = s1.stepForward(h1)) {
-        r ++= edges(s1b, s2, space, n, mayRemoveLeftRank, mayInsertRight,
+        r ++= edges(s1b, s2, n, mayRemoveLeftRank, mayInsertRight,
           removedLeftPos, false) 
       }
     }
@@ -96,14 +95,14 @@ object KmerSpace {
 //          println(Seq(s2b.headPosition, s2b.lengthLower, s2b.lengthUpper, s2b).mkString(" "))
 
           val s2c = if (s2b.headPosition == 0) {
-            s2b.stepForward(h2).setHeadsToZero(space)
+            s2b.stepForward(h2).setHeadsToZero
           } else {
-            s2b.constrainMarker(h2).dropAndAddOffset(space)
+            s2b.constrainMarker(h2).dropAndAddOffset
           }
 
           //s1 is only constrained here, but an append must happen
           //later on the left hand side to compensate.
-          r ++= edges(s1b.constrainMarker(h1), s2c, space, n, mayRemoveLeftRank,
+          r ++= edges(s1b.constrainMarker(h1), s2c, n, mayRemoveLeftRank,
             false, removedLeftPos, true)
         }
       }
@@ -157,9 +156,9 @@ final class KmerSpace {
     val s2 = asConstrained
     
     //Normal case
-    edges(s1, s2, space, n) ++ 
+    edges(s1, s2, n) ++ 
     //Case 2 and 4
-    edges(s1.stepForward(0).setHeadsToZero(space), s2.setHeadsToZero(space), space, n, 
+    edges(s1.stepForward(0).setHeadsToZero, s2.setHeadsToZero, n, 
         false, true, true)     
   }
 }
@@ -263,20 +262,18 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   def stepForward(constraint: String): ConstrainedSpace =
     constrainAdvance(_.key.tag == constraint)
   
-  def rankDrop(space: MarkerSpace): ConstrainedSpace =  
-    constrainFilter(_.key.lowestRank == true).dropAndAddOffset(space)
+  def rankDrop: ConstrainedSpace =  
+    constrainFilter(_.key.lowestRank == true).dropAndAddOffset
   
-  def setHeadsToZero(space: MarkerSpace) = mapHeads(
-    m => space.get(m.tag, 0, m.lowestRank, m.sortValue))
+  def setHeadsToZero = mapHeads(m => Marker(0, m.features))
   
-  def dropAndSetToZero(space: MarkerSpace) =
-    constrainAdvance(x => true).setHeadsToZero(space)
+  def dropAndSetToZero =
+    constrainAdvance(x => true).setHeadsToZero
 
-  def dropAndAddOffset(space: MarkerSpace) = {
+  def dropAndAddOffset = {
     val ns = subspaces.flatMap(s => {
       val n = s.key.pos
-      s.allSubspaces.map(_.mapHead(m => 
-        space.get(m.tag, m.pos + n, m.lowestRank, m.sortValue)))
+      s.allSubspaces.map(_.mapHead(m => Marker(m.pos + n, m.features)))        
     })
 //    println("ns:? " + ns.map(x => x.key + ":" + x).mkString(","))
     stepDown(ns, nextLeaves(subspaces))
