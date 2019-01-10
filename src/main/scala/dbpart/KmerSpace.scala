@@ -198,7 +198,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   def iterator: Iterator[MarkerSet] = 
     subspaces.iterator.flatMap(_.all(lengthLower, lengthUpper))
   
-  def heads: Iterable[Marker] = subspaceLookup.keys.toSeq
+  def heads: Iterator[Marker] = subspaceLookup.keys.iterator
   
   /**
    * Leaves that have passed (all markers have been stepped
