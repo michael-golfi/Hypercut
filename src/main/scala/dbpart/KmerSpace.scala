@@ -190,12 +190,14 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
     lengthLower: Option[Int] = None, lengthUpper: Option[Int] = None) 
     extends Iterable[MarkerSet] {  
   
+  lazy val subspaceLookup = subspaces.groupBy(_.key)
+  
   import KmerTree._
   
   def iterator: Iterator[MarkerSet] = 
     subspaces.iterator.flatMap(_.all(lengthLower, lengthUpper))
   
-  def heads: Iterable[Marker] = subspaces.map(_.key).toSeq.distinct
+  def heads: Iterable[Marker] = subspaceLookup.keys.toSeq
   
   /**
    * Leaves that have passed (all markers have been stepped
@@ -222,8 +224,20 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   /**
    * Filter the subspaces and advance deeper.
    */
-  def constrainAdvance(f: KmerTree => Boolean) = {
+  def keyConstrainAdvance(key: Marker) = {
+    val newSpaces = subspaceLookup(key)
+    constrainAdvance(newSpaces)
+  }
+  
+  /**
+   * Filter the subspaces and advance deeper.
+   */
+  def filterConstrainAdvance(f: KmerTree => Boolean): ConstrainedSpace = {
    val newSpaces = subspaces.filter(f)
+   constrainAdvance(newSpaces)
+  }
+  
+  def constrainAdvance(newSpaces: Iterable[KmerTree]): ConstrainedSpace = {
    val sub = mergeSubspaces(newSpaces.flatMap(_.allSubspaces))   
    stepDown(sub, nextLeaves(newSpaces))   
   }
@@ -247,20 +261,20 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   def stepForward(constraint: Option[Marker]): ConstrainedSpace = 
     constraint match {
       case Some(c) => stepForward(c)
-      case None => constrainAdvance(x => true)
+      case None => constrainAdvance(subspaces)
     }
   
   def stepForward(m: Marker): ConstrainedSpace = 
-    constrainAdvance(_.key == m)
+    keyConstrainAdvance(m)
   
   def constrainMarker(m: Marker): ConstrainedSpace = 
-    constrainFilter(_.key == m)
+    constrainSpaces(subspaceLookup(m))
     
   def stepForward(constraint: Int): ConstrainedSpace = 
-    constrainAdvance(_.key.pos == constraint)
+    filterConstrainAdvance(_.key.pos == constraint)
   
   def stepForward(constraint: String): ConstrainedSpace =
-    constrainAdvance(_.key.tag == constraint)
+    filterConstrainAdvance(_.key.tag == constraint)
   
   def rankDrop: ConstrainedSpace =  
     constrainFilter(_.key.lowestRank == true).dropAndAddOffset
@@ -268,7 +282,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
   def setHeadsToZero = mapHeads(m => Marker(0, m.features))
   
   def dropAndSetToZero =
-    constrainAdvance(x => true).setHeadsToZero
+    constrainAdvance(subspaces).setHeadsToZero
 
   def dropAndAddOffset = {
     val ns = subspaces.flatMap(s => {
