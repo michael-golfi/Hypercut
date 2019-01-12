@@ -4,6 +4,7 @@ import kyotocabinet._
 import dbpart.FlatQ
 import friedrich.util.Distribution
 import friedrich.util.Histogram
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Database of unique buckets for k-mers.
@@ -179,17 +180,17 @@ extends BucketDB(location, options, separator) {
   
   override def setInsertSingle(oldSet: String, value: String): Option[String] = 
     setInsertBulk(oldSet, Seq(value))
-  
+ 
   override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
     val old = unpackSet(oldSet)
-    var r: Iterable[String] = old
-    var overallUpdated = false
-    for (v <- values) {
-      val (newData, updated) = insertSequence(v, r)
-      r = newData
-      overallUpdated = overallUpdated || updated
+    var r: ArrayBuffer[String] = new ArrayBuffer(values.size + old.size)
+    r ++= old
+    var updated = false    
+    for (v <- values; if !seqExists(v, r)) {      
+      insertSequence(v, r)
+      updated = true
     }
-    if (overallUpdated) {
+    if (updated) {
       Some(r.mkString(separator))
     } else {
       None
@@ -200,35 +201,39 @@ extends BucketDB(location, options, separator) {
     setInsertBulk(values.head, values.tail).getOrElse(values.head)
   }
 
+  final def seqExists(data: String, in: Iterable[String]): Boolean = {
+    val it = in.iterator
+    while (it.hasNext) {
+      val s = it.next
+      if (s.indexOf(data) != -1) {
+        return true
+      }
+    }
+    false
+  }
+   
   /**
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
-   * Returns the new sequence set and a flag indicating whether any update was performed.
    */
-  final def insertSequence(data: String, into: Iterable[String]): (Iterable[String], Boolean) = {
-    for (existingSeq <- into) {
-      if (existingSeq.indexOf(data) != -1) {
-        return (into, false)
-      }
-    }
-    var inserted = false
-    var r = List[String]()
+  final def insertSequence(data: String, into: ArrayBuffer[String]) {    
+    var inserted = false    
     val suffix = data.drop(1)
     val prefix = data.dropRight(1)
-    for (existingSeq <- into) {
+    var i = 0
+    while (i < into.size) {
+      val existingSeq = into(i)
       if (!inserted && existingSeq.startsWith(suffix)) {
-        r ::= (data.charAt(0) + existingSeq)
+        into(i) = (data.charAt(0) + existingSeq)
         inserted = true
       } else if (!inserted && existingSeq.endsWith(prefix)) {
-        r ::= (existingSeq + data.charAt(data.length() - 1))
+        into(i) = (existingSeq + data.charAt(data.length() - 1))
         inserted = true
-      } else {
-        r ::= existingSeq
-      }
-    }
+      } 
+      i += 1
+    }    
     if (!inserted) {
-      r ::= data
+      into += data
     }
-    (r, true)
   }
 }
 
