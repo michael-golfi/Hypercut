@@ -93,7 +93,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
 //    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
     
-    for (insertGr <- insert.grouped(10000).toSeq.par) {
+    for (insertGr <- insert.grouped(1000).toSeq.par) {
       val existing = db.get_bulk(seqAsJavaList(insertGr.keys.toSeq), false)
       //    val existing = MMap[String, String]()
       val merged = merge(existing.asScala, insertGr)
@@ -216,24 +216,23 @@ extends BucketDB(location, options, separator) {
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
    */
   final def insertSequence(data: String, into: ArrayBuffer[String]) {    
-    var inserted = false    
-    val suffix = data.drop(1)
-    val prefix = data.dropRight(1)
+    
+    val suffix = data.substring(1)
+    val prefix = data.substring(0, k - 1)
     var i = 0
     while (i < into.size) {
       val existingSeq = into(i)
-      if (!inserted && existingSeq.startsWith(suffix)) {
+      if (existingSeq.startsWith(suffix)) {
         into(i) = (data.charAt(0) + existingSeq)
-        inserted = true
-      } else if (!inserted && existingSeq.endsWith(prefix)) {
+        return
+      }
+      if (existingSeq.endsWith(prefix)) {
         into(i) = (existingSeq + data.charAt(data.length() - 1))
-        inserted = true
+        return
       } 
       i += 1
-    }    
-    if (!inserted) {
-      into += data
-    }
+    }        
+    into += data    
   }
 }
 
