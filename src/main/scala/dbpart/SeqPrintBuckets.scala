@@ -8,7 +8,7 @@ import dbpart.graph.CollapsedGraph
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
-  val db = new UBucketDB(dbfile, UBucketDB.options)
+  val db = new PathBucketDB(dbfile, UBucketDB.options, k)
   
   def handle(reads: Iterator[(String, String)]) {
     for (rs <- reads.grouped(100000);

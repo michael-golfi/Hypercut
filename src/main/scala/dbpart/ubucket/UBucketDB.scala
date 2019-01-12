@@ -148,7 +148,8 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
 /**
  * BucketDB implementation that deduplicates entries.
  */
-class UBucketDB(location: String, options: String, separator: String = "\n") extends BucketDB(location, options, separator) {
+class UBucketDB(location: String, options: String, separator: String = "\n") 
+extends BucketDB(location, options, separator) {
 
   override def setInsertSingle(oldSet: String, value: String): Option[String] = 
     setInsertBulk(oldSet, Seq(value))  
@@ -168,6 +169,67 @@ class UBucketDB(location: String, options: String, separator: String = "\n") ext
   override def newSet(values: Iterable[String]) =    
     values.toSeq.distinct.mkString(separator)
   
+}
+
+/**
+ * BucketDB that merges k-mers into contiguous paths.
+ */
+class PathBucketDB(location: String, options: String, k: Int, separator: String = "\n") 
+extends BucketDB(location, options, separator) {
+  
+  override def setInsertSingle(oldSet: String, value: String): Option[String] = 
+    setInsertBulk(oldSet, Seq(value))
+  
+  override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
+    val old = unpackSet(oldSet)
+    var r: Iterable[String] = old
+    var overallUpdated = false
+    for (v <- values) {
+      val (newData, updated) = insertSequence(v, r)
+      r = newData
+      overallUpdated = overallUpdated || updated
+    }
+    if (overallUpdated) {
+      Some(r.mkString(separator))
+    } else {
+      None
+    }
+  }
+  
+  override def newSet(values: Iterable[String]) = {
+    setInsertBulk(values.head, values.tail).getOrElse(values.head)
+  }
+
+  /**
+   * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
+   * Returns the new sequence set and a flag indicating whether any update was performed.
+   */
+  final def insertSequence(data: String, into: Iterable[String]): (Iterable[String], Boolean) = {
+    for (existingSeq <- into) {
+      if (existingSeq.indexOf(data) != -1) {
+        return (into, false)
+      }
+    }
+    var inserted = false
+    var r = List[String]()
+    val suffix = data.drop(1)
+    val prefix = data.dropRight(1)
+    for (existingSeq <- into) {
+      if (!inserted && existingSeq.startsWith(suffix)) {
+        r ::= (data.charAt(0) + existingSeq)
+        inserted = true
+      } else if (!inserted && existingSeq.endsWith(prefix)) {
+        r ::= (existingSeq + data.charAt(data.length() - 1))
+        inserted = true
+      } else {
+        r ::= existingSeq
+      }
+    }
+    if (!inserted) {
+      r ::= data
+    }
+    (r, true)
+  }
 }
 
 object UBucketDB {
