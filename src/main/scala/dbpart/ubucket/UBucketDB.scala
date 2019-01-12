@@ -92,7 +92,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
 //    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
     
-    for (insertGr <- insert.grouped(10000)) {
+    for (insertGr <- insert.grouped(10000).toSeq.par) {
       val existing = db.get_bulk(seqAsJavaList(insertGr.keys.toSeq), false)
       //    val existing = MMap[String, String]()
       val merged = merge(existing.asScala, insertGr)
