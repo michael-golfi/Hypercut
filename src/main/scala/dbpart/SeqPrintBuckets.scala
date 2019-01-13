@@ -24,7 +24,9 @@ class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, d
     val kmers = read.sliding(k)
     val mss = extractor.markerSetsInRead(read)
     if (extractor.readCount % 10000 == 0) {
-      print(".")
+      extractor.synchronized {
+        print(".")
+      }
     }
     
     mss.map(_.packedString).iterator zip kmers
