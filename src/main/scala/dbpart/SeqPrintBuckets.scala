@@ -5,15 +5,42 @@ import friedrich.util.formats.GraphViz
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import dbpart.graph.CollapsedGraph
+import scala.concurrent.Future
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
+
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new PathBucketDB(dbfile, UBucketDB.options, k)
   
+  import scala.concurrent.ExecutionContext.Implicits.global
+  
+  def precompIterator[A](it: Iterator[A]) = new Iterator[A] {
+    def nextBuffer = if (it.hasNext) Some(Future(it.next)) else None
+    var buffer = nextBuffer
+
+    def hasNext = it.hasNext || buffer != None
+
+    def next = {
+      buffer match {
+        case Some(f) =>
+          val rs = Await.result(f, Duration.Inf)
+          buffer = nextBuffer
+          rs
+        case None => ???
+      }
+    }
+  }
+  
   def handle(reads: Iterator[(String, String)]) {
-    for (rs <- reads.grouped(100000);
-        chunk = rs.toSeq.par.flatMap(r => handle(r._1))) {
-      db.addBulk(chunk.seq)
+    val handledReads = 
+      reads.grouped(100000).map(group => 
+      { group.par.flatMap(r => handle(r._1))
+      })
+
+    for (rs <- precompIterator(handledReads)) {
+      db.addBulk(rs.seq)
     }
   }
   
