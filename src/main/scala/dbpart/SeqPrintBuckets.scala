@@ -65,7 +65,7 @@ object SeqPrintBuckets {
 
   def makeGraph(kms: KmerSpace, sbs: SeqPrintBuckets) = {
     val graph = new FastAdjListGraph[MarkerSet]
-    for ((key, vs) <- sbs.db.buckets) {
+    for (key <- sbs.db.bucketKeys) {
       try {
         val n = asMarkerSet(key)
         graph.addNode(n)
@@ -126,9 +126,11 @@ object SeqPrintBuckets {
         Stats.end("Partition graph")
 
         val hist = new Histogram(parts.map(_.size), 20)
-        hist.print("Macro partition size")
+        hist.print("Macro partition # marker sets")
         val numKmers = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
-        new Histogram(numKmers, 20).print("Macro partition expanded size")
+        new Histogram(numKmers, 20).print("Macro partition # sequences")
+        val seqLength = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.map(_.length).sum).sum)
+        new Histogram(seqLength, 20).print("Macro partition total sequence length")
 
         Stats.begin()
         val colGraph = CollapsedGraph.construct(parts, graph)

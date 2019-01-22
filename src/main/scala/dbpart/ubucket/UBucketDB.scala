@@ -105,16 +105,15 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.mapValues(unpackSet)
   }
 
-  def buckets: Iterator[(String, Iterable[String])] = {
-
-    new Iterator[(String, Iterable[String])] {
+  private def bucketsRaw: Iterator[(String, String)] = {
+    new Iterator[(String, String)] {
       val cur = db.cursor()
       cur.jump()
       var continue = cur.step()
       var nextVal: Array[String] = cur.get_str(true)
 
       override def next() = {
-        val r = (nextVal(0), unpackSet(nextVal(1)))
+        val r = (nextVal(0), nextVal(1))
         nextVal = cur.get_str(true)
         r
       }
@@ -129,6 +128,12 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
       }
     }
   }
+
+  def bucketKeys: Iterator[String] =
+    bucketsRaw.map(_._1)
+
+  def buckets: Iterator[(String, Iterable[String])] =
+    bucketsRaw.map(x => (x._1, unpackSet(x._2)))
 
   def bucketSizeStats() = {
     val r = new Distribution
