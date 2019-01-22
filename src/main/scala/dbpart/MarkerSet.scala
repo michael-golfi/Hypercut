@@ -29,7 +29,16 @@ final case class Marker(pos: Int, features: Features) {
   def lowestRank = features.lowestRank
   def sortValue = features.sortValue
   
-  lazy val packedString = "%s%02d".format(tag, pos)
+  //Note: implicit assumption that pos < 100 when we use this
+  lazy val packedString = {
+    val r = new StringBuilder
+    r.append(tag)
+    if (pos < 10) {
+      r.append("0")
+    }
+    r.append(pos)
+    r.toString()
+  }
   
   override def toString = "[%s,%02d%s]".format(tag, pos, lrs)
 

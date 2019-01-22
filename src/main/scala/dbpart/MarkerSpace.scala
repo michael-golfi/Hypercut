@@ -37,7 +37,8 @@ final class MarkerSpace(byPriority: Seq[String]) {
     Marker(pos, getFeatures(pattern, lowestRank, sortValue))
   }
     
-  def priorityOf(mk: String) = byPriority.indexOf(mk)
+  val priorityMap = Map() ++ byPriority.zipWithIndex 
+  def priorityOf(mk: String) = priorityMap(mk)
 
   @tailrec
   final def allIndexOf(s: String, ptn: String, from: Int, soFar: ListBuffer[Marker]) {
