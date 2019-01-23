@@ -102,9 +102,11 @@ object SeqPrintBuckets {
         val numMarkers = args(2).toInt //e.g. 4
         val dbfile = args(3)
 
+        Stats.begin()
         val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile)
         spb.handle(
           FlatQ.stream(Console.in.lines().iterator))
+        Stats.end("Build buckets")
 
         println("")
         var hist = spb.db.bucketSizeHistogram()
