@@ -8,6 +8,7 @@ import dbpart.graph.CollapsedGraph
 import scala.concurrent.Future
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import dbpart.graph.PathGraphBuilder
 
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
@@ -125,19 +126,24 @@ object SeqPrintBuckets {
         val parts = mg.partition(1000)
         Stats.end("Partition graph")
 
-        val hist = new Histogram(parts.map(_.size), 20)
-        hist.print("Macro partition # marker sets")
-        val numKmers = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
-        new Histogram(numKmers, 20).print("Macro partition # sequences")
-        val seqLength = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.map(_.length).sum).sum)
-        new Histogram(seqLength, 20).print("Macro partition total sequence length")
+//        val hist = new Histogram(parts.map(_.size), 20)
+//        hist.print("Macro partition # marker sets")
+//        val numSeqs = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
+//        new Histogram(numSeqs, 20).print("Macro partition # sequences")
+//        val seqLength = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.map(_.length).sum).sum)
+//        new Histogram(seqLength, 20).print("Macro partition total sequence length")
+
+//        Stats.begin()
+//        val colGraph = CollapsedGraph.construct(parts, graph)
+//        Stats.end("Collapse graph")
+
+//        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
+//            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
         Stats.begin()
-        val colGraph = CollapsedGraph.construct(parts, graph)
-        Stats.end("Collapse graph")
-
-        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
-            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
+        val pathGraph = new PathGraphBuilder(buckets.db, parts, graph).result
+        Stats.end("Construct path graph")
+        println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
     }
 
   }

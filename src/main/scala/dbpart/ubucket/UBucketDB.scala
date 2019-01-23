@@ -182,7 +182,7 @@ extends BucketDB(location, options, separator) {
  * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
  * can be used.
  */
-class PathBucketDB(location: String, options: String, k: Int, separator: String = "\n")
+class PathBucketDB(location: String, options: String, val k: Int, separator: String = "\n")
 extends BucketDB(location, options, separator) {
 
   override def setInsertSingle(oldSet: String, value: String): Option[String] =

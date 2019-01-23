@@ -10,19 +10,19 @@ class MacroGraph(graph: Graph[MarkerSet]) {
 
   class Partitioner(groupSize: Int) {
     var remaining = MSet() ++ graph.nodes
-    
+
     def partitions: List[List[Node]] = {
       for (n <- graph.nodes) {
         n.tag1 = false
       }
-      
+
       var r = List[List[Node]]()
       while (!remaining.isEmpty) {
         val n = remaining.head
         n.tag1 = true
         remaining -= n
         val group = from(n, List(n), 1)
-        r ::= group        
+        r ::= group
       }
       r
     }
@@ -35,7 +35,7 @@ class MacroGraph(graph: Graph[MarkerSet]) {
         val next = graph.edgesFrom(n).filter(a => !a.tag1)
         val need = groupSize - soFarSize
         val useNext = (next take need)
-        
+
         for (un <- useNext) {
           remaining -= un
           un.tag1 = true
@@ -52,10 +52,10 @@ class MacroGraph(graph: Graph[MarkerSet]) {
   /**
    * Group adjacent nodes in the graph.
    */
-  def partition(groupSize: Int): List[List[Node]] = 
+  def partition(groupSize: Int): List[List[Node]] =
     new Partitioner(groupSize).partitions
 
- 
-    
+
+
 }
 
