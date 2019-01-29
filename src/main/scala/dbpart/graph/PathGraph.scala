@@ -15,7 +15,7 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
                        macroGraph: Graph[MarkerSet]) {
 
   val k: Int = pathdb.k
-  val result: FastAdjListGraph[NTSeq] = new FastAdjListGraph[NTSeq]
+  val result: Graph[PathNode] = new DoublyLinkedGraph[PathNode]
 
   for (p <- partitions) {
     addPartition(p)
@@ -26,7 +26,8 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
 //      s" ... (${part.size})")
 
     val partSet = part.toSet
-    val sequences = pathdb.getBulk(part.map(_.packedString))
+    val sequences = Map() ++ pathdb.getBulk(part.map(_.packedString)).
+      map(x => (x._1 -> x._2.map(new PathNode(_))))
 
     for (
       subpart <- part;
@@ -36,18 +37,18 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
       result.addNode(s)
     }
 
-    var sortedCache = Map[String, Seq[String]]()
+    var sortedCache = Map[String, Seq[PathNode]]()
 
     def sorted(bucket: String) = {
       sortedCache.get(bucket) match {
         case Some(s) => s
         case _ =>
-          sortedCache += (bucket -> sequences(bucket).toSeq.sorted)
+          sortedCache += (bucket -> sequences(bucket).toSeq.sortBy(_.seq))
           sortedCache(bucket)
       }
     }
 
-    val byEnd = sequences.mapValues(_.groupBy(_.substring(1, k)))
+    val byEnd = sequences.map(x => (x._1 -> x._2.groupBy(_.seq.substring(1, k))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
     /**
@@ -59,8 +60,8 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
       (overlap, ss) <- byEnd(subpart.packedString)
       toBucket <- toInside
       toSeqs = sorted(toBucket.packedString).
-        dropWhile(! _.startsWith(overlap)).
-        takeWhile(_.startsWith(overlap))
+        dropWhile(! _.seq.startsWith(overlap)).
+        takeWhile(_.seq.startsWith(overlap))
       to <- toSeqs
       s <- ss
     } {

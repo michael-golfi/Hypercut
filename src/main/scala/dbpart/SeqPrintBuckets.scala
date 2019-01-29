@@ -9,6 +9,7 @@ import scala.concurrent.Future
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import dbpart.graph.PathGraphBuilder
+import dbpart.graph.PathPrinter
 
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
@@ -146,6 +147,17 @@ object SeqPrintBuckets {
         val pathGraph = new PathGraphBuilder(buckets.db, parts, graph).result
         Stats.end("Construct path graph")
         println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
+
+        Stats.begin()
+        val pp = new PathPrinter(pathGraph, "hypercut.fasta", k)
+        val ss = pp.findSequences()
+
+        val minLength = 100
+        for (s <- ss; if s.length >= minLength) {
+          pp.printSequence(s)
+        }
+        Stats.end("Find and print sequences")
+        new Histogram(ss.map(_.length), 20).print("Contig length")
     }
 
   }
