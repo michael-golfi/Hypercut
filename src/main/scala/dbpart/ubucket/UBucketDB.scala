@@ -102,7 +102,7 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   }
 
   def getBulk(keys: Iterable[String]): CMap[String, Iterable[String]] = {
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.mapValues(unpackSet)
+    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpackSet(x._2)))
   }
 
   private def bucketsRaw: Iterator[(String, String)] = {
