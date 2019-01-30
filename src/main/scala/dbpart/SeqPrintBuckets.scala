@@ -126,11 +126,11 @@ object SeqPrintBuckets {
 
         Stats.begin()
         val mg = new MacroGraph(graph)
-        val parts = mg.partition(100000)
+        val parts = mg.partition(10000)
         Stats.end("Partition graph")
 
-//        val hist = new Histogram(parts.map(_.size), 20)
-//        hist.print("Macro partition # marker sets")
+        val hist = new Histogram(parts.map(_.size), 20)
+        hist.print("Macro partition # marker sets")
 //        val numSeqs = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
 //        new Histogram(numSeqs, 20).print("Macro partition # sequences")
 //        val seqLength = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.map(_.length).sum).sum)
@@ -143,21 +143,35 @@ object SeqPrintBuckets {
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
-        Stats.begin()
-        val pathGraph = new PathGraphBuilder(buckets.db, parts, graph).result
-        Stats.end("Construct path graph")
-        println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
+        val pp = new PathPrinter("hypercut.fasta", k)
+        var pcount = 0
+        var lengths = List[Int]()
+        val minLength = 50
+        val minPrintLength = 65
 
         Stats.begin()
-        val pp = new PathPrinter(pathGraph, "hypercut.fasta", k)
-        val ss = pp.findSequences()
+        for (p <- parts.par) {
+          pcount += 1
 
-        val minLength = 100
-        for (s <- ss; if s.length >= minLength) {
-          pp.printSequence(s)
+          val pathGraph = new PathGraphBuilder(buckets.db, List(p), graph).result
+          println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
+
+          val ss = pp.findSequences(pathGraph)
+
+
+          for (s <- ss) {
+            if (s.length >= minLength) {
+              lengths ::= s.length
+            }
+            lengths ::= s.length
+            if (s.length >= minPrintLength) {
+              pp.printSequence(s"hypercut-part$pcount", s)
+            }
+          }
         }
+        pp.close()
         Stats.end("Find and print sequences")
-        new Histogram(ss.map(_.length), 20).print("Contig length")
+        new Histogram(lengths, 20).print("Contig length")
     }
 
   }

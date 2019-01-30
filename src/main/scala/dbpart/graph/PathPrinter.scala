@@ -23,8 +23,7 @@ case class Contig(nodes: List[PathNode], k: Int) {
   }
 }
 
-final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
-  k: Int, prefix: String = "hypercut") {
+final class PathPrinter(outputFasta: String, k: Int) {
   var count: Int = 0
   val w: java.io.PrintWriter = new PrintWriter(outputFasta)
 
@@ -32,17 +31,17 @@ final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
     w.close()
   }
 
-  def printSequence(seq: Contig) {
-    printSequence(seq.seq)
+  def printSequence(prefix: String, seq: Contig) {
+    printSequence(prefix, seq.seq)
   }
 
-  def printSequence(seq: NTSeq) {
+  def printSequence(prefix: String, seq: NTSeq) = synchronized {
     count += 1
     w.println(s">$prefix-seq$count-${seq.size}bp")
     w.println(seq)
   }
 
-  def findSequences() = {
+  def findSequences(graph: Graph[PathNode]) = {
     //Reset flag
     for (n <- graph.nodes) {
       n.seen = false
@@ -50,8 +49,8 @@ final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
     val r = for {
       n <- graph.nodes
       if !n.seen
-      p1 = extendForward(n);
-      p2 = extendBackward(n)
+      p1 = extendForward(graph, n);
+      p2 = extendBackward(graph, n)
       p = Contig(p2 ::: p1.reverse.tail, k)
     } yield p
     r.toList
@@ -62,7 +61,7 @@ final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
    * "from" is assumed to participate in the path.
    */
   @tailrec
-  def extendForward(from: PathNode, acc: List[PathNode] = Nil): List[PathNode] = {
+  def extendForward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): List[PathNode] = {
     from.seen = true
     val ef = graph.edgesFrom(from)
     if (ef.size > 1 || ef.size == 0) {
@@ -74,13 +73,13 @@ final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
         from :: acc
       } else {
         //'from' should be the only node linking to it
-        extendForward(candidate, from :: acc)
+        extendForward(graph, candidate, from :: acc)
       }
     }
   }
 
   @tailrec
-  def extendBackward(from: PathNode, acc: List[PathNode] = Nil): List[PathNode] = {
+  def extendBackward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): List[PathNode] = {
     from.seen = true
     val et = graph.edgesTo(from)
     if (et.size > 1 || et.size == 0) {
@@ -92,7 +91,7 @@ final class PathPrinter(graph: Graph[PathNode], outputFasta: String,
         from :: acc
       } else {
         //'from' should be the only node linking to it
-        extendBackward(candidate, from :: acc)
+        extendBackward(graph, candidate, from :: acc)
       }
     }
   }

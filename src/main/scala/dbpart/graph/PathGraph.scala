@@ -56,7 +56,7 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
      */
     for {
       subpart <- part
-      toInside = macroGraph.edgesFrom(subpart).filter(partSet.contains)
+      toInside = macroGraph.edgesFrom(subpart).iterator.filter(partSet.contains)
       (overlap, ss) <- byEnd(subpart.packedString)
       toBucket <- toInside
       toSeqs = sorted(toBucket.packedString).iterator.
