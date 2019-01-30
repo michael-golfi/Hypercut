@@ -126,7 +126,7 @@ object SeqPrintBuckets {
 
         Stats.begin()
         val mg = new MacroGraph(graph)
-        val parts = mg.partition(1000)
+        val parts = mg.partition(100000)
         Stats.end("Partition graph")
 
 //        val hist = new Histogram(parts.map(_.size), 20)
