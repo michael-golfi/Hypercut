@@ -1,10 +1,10 @@
 package dbpart.ubucket
 import scala.collection.JavaConverters._
 import kyotocabinet._
-import dbpart.FlatQ
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import scala.collection.mutable.ArrayBuffer
+import dbpart.FastQ
 
 /**
  * Database of unique buckets for k-mers.
@@ -282,7 +282,7 @@ object UBucketDB {
       case "add" =>
         val file = args(1)
         val db = new UBucketDB(file, options)
-        addFromStream(db, FlatQ.stream(Console.in.lines().iterator().asScala))
+        addFromStream(db, FastQ.iterator(Console.in))
       case "stats" =>
         val file = args(1)
         val db = new UBucketDB(file, options)
@@ -302,9 +302,9 @@ object UBucketDB {
   //2^20 = 1M possible keys
   def key(kmer: String) = kmer.substring(0, 10)
 
-  def addFromStream(db: UBucketDB, flatq: Iterator[(String, String)]) {
-    for (group <- flatq.grouped(10000);
-        kvs = group.map(x => (key(x._1), x._1))) {
+  def addFromStream(db: UBucketDB, reads: Iterator[String]) {
+    for (group <- reads.grouped(10000);
+        kvs = group.map(x => (key(x), x))) {
       db.addBulk(kvs)
     }
   }

@@ -105,9 +105,8 @@ object SeqPrintBuckets {
 
         Stats.begin()
         val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile)
-        //Fastq format - grab the sequence data lines
-        spb.handle(
-          Console.in.lines().iterator.grouped(4).map(_(1)))
+        spb.handle(FastQ.iterator(Console.in))
+
         Stats.end("Build buckets")
 
         println("")
