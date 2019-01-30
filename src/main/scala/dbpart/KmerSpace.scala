@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 object KmerSpace {
   type Edge = (MarkerSet, MarkerSet)
-  
+
   def apply(elements: Iterable[MarkerSet]) = {
     val r = new KmerSpace
     for (e <- elements) {
@@ -15,7 +15,7 @@ object KmerSpace {
 
   /**
    * Find edges from s1 to s2 by gradually constraining both.
-   * 
+   *
    * Invariant: s1 and s2 are validated up to, but not including,
    * their headPositions.
    */
@@ -38,44 +38,44 @@ object KmerSpace {
       n2 <- s2.currentLeaves;
       if (n1 != n2)
     ) yield (n1, n2))
-      
+
     if (mustStop) {
       return r
     }
-    
+
 //    println(s"Step: ${s1.canStepForward} ${s2.canStepForward}")
-    
-    if (s1.canStepForward && s2.canStepForward) {      
+
+    if (s1.canStepForward && s2.canStepForward) {
       for (
         h1 <- s1.heads; h2 <- s2.heads;
-        if (h1 equivalent h2); 
+        if (h1 equivalent h2);
         s1b = s1.stepForward(h1); s2b = s2.stepForward(h2)
       ) {
 //        println(s"Std case $h1 $h2")
 //        println(s1b.toVector)
 //        println(s2b.toVector)
         r ++= edges(s1b, s2b, n, mayRemoveLeftRank, mayInsertRight,
-          removedLeftPos, mayAppendLeft) 
+          removedLeftPos, mayAppendLeft)
       }
     }
-    
+
     if (!s1.canStepForward && s2.canStepForward && removedLeftPos) {
       for (h2 <- s2.heads;
         s2b = s2.stepForward(h2)) {
 //        println(s"Right append case $h2")
         r ++= edges(s1, s2b, n, mayRemoveLeftRank, mayInsertRight,
           removedLeftPos, mayAppendLeft, true)
-      }        
-    }
-    
-    if (s1.canStepForward && !s2.canStepForward && mayAppendLeft) {
-      for (h1 <- s1.heads; 
-         s1b = s1.stepForward(h1)) {
-        r ++= edges(s1b, s2, n, mayRemoveLeftRank, mayInsertRight,
-          removedLeftPos, false) 
       }
     }
-    
+
+    if (s1.canStepForward && !s2.canStepForward && mayAppendLeft) {
+      for (h1 <- s1.heads;
+         s1b = s1.stepForward(h1)) {
+        r ++= edges(s1b, s2, n, mayRemoveLeftRank, mayInsertRight,
+          removedLeftPos, false)
+      }
+    }
+
     if (s1.canStepForward && s2.canStepForward) {
       //Rank insert at arbitrary position - only happens if s1 was full
       if (mayInsertRight &&
@@ -87,7 +87,7 @@ object KmerSpace {
           if (!(h1 equivalent h2));
           if (h1.sortValue < h2.sortValue)
         ) {
-          
+
 //          println(s"IR case $h1 $h2")
 //          println(s1b.toVector)
 //          println(s2b.toVector)
@@ -117,28 +117,28 @@ object KmerSpace {
  */
 final class KmerSpace {
   import KmerSpace._
-  
+
   val root = new KmerTree(null)
-  
-  def add(ms: MarkerSet) = 
+
+  def add(ms: MarkerSet) =
     root.add(ms.relativeMarkers, ms)
-  
-  def get(markers: Seq[Marker]) = 
+
+  def get(markers: Seq[Marker]) =
     root.findLeaf(markers)
-    
-  def get(ms: MarkerSet) = 
+
+  def get(ms: MarkerSet) =
     root.findLeaf(ms.relativeMarkers)
-    
+
   def size = root.size
-    
-  def findSubspace(markers: Seq[Marker]): Option[KmerTree] = 
+
+  def findSubspace(markers: Seq[Marker]): Option[KmerTree] =
     root.findSubspace(markers)
-    
+
   def getSubspace(marker: Marker): Option[KmerTree] =
     root.getSubspace(marker)
-  
-  def asConstrained = new ConstrainedSpace(root.allSubspaces.toVector)
-  
+
+  def asConstrained = new ConstrainedSpace(root.allSubspaces.toList)
+
    /**
    * Construct missing edges in the graph.
    * The sequences in a pair can vary substantially, with 4 basic cases at the start.
@@ -154,12 +154,12 @@ final class KmerSpace {
   def completeEdges(space: MarkerSpace, n: Int): Iterator[Edge] = {
     val s1 = asConstrained
     val s2 = asConstrained
-    
+
     //Normal case
-    edges(s1, s2, n) ++ 
+    edges(s1, s2, n) ++
     //Case 2 and 4
-    edges(s1.stepForward(0).setHeadsToZero, s2.setHeadsToZero, n, 
-        false, true, true)     
+    edges(s1.stepForward(0).setHeadsToZero, s2.setHeadsToZero, n,
+        false, true, true)
   }
 }
 
@@ -167,38 +167,38 @@ final class KmerSpace {
  * A limited view of the k-mer space, constrained by conformance to some
  * (partial) marker sequence. Constraints can be applied gradually,
  * reducing the size of the space.
- * 
+ *
  * At each step, the heads are identical to the 'keys' of the current subspaces.
  * However, there can be multiple heads for each distinct key.
- * 
+ *
  * Unlike the KmerSpace and KmerTree, this class is immutable.
- * 
+ *
  * lower and upper bounds on length are applied lazily, at the time when
- * the entire space is iterated. 
- * They apply relative to the current tree depth. 
- * If lower <= 0 and upper >= 0, then leaves from the 
+ * the entire space is iterated.
+ * They apply relative to the current tree depth.
+ * If lower <= 0 and upper >= 0, then leaves from the
  * immediate subspaces may be used.
- * 
+ *
  * headPosition ranges from 0 (no markers stepped through) to n (max length of
  * MarkerSets) (all markers stepped through). currentLeaves corresponds to marker
  * sets of length 'headPosition' whose markers have all been stepped through.
- * 
+ *
  */
 final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
     headPosition: Int = 0,
-    currentLeaves: Iterable[MarkerSet] = Seq(),
-    lengthLower: Option[Int] = None, lengthUpper: Option[Int] = None) 
-    extends Iterable[MarkerSet] {  
-  
+    currentLeaves: Iterable[MarkerSet] = List(),
+    lengthLower: Option[Int] = None, lengthUpper: Option[Int] = None)
+    extends Iterable[MarkerSet] {
+
   lazy val subspaceLookup = subspaces.groupBy(_.key)
-  
+
   import KmerTree._
-  
-  def iterator: Iterator[MarkerSet] = 
+
+  def iterator: Iterator[MarkerSet] =
     subspaces.iterator.flatMap(_.all(lengthLower, lengthUpper))
-  
-  def heads: Iterator[Marker] = subspaceLookup.keys.iterator
-  
+
+  def heads: Iterator[Marker] = subspaceLookup.keysIterator
+
   /**
    * Leaves that have passed (all markers have been stepped
    * through)
@@ -207,20 +207,20 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
     if (lengthPass(lengthLower, lengthUpper)) {
       from.flatMap(_.leaves)
     } else {
-      Seq()
+      List()
     }
   }
-  
+
   def canStepForward: Boolean = {
     !subspaces.isEmpty
   }
-  
+
   private def stepDown(newSubspaces: Iterable[KmerTree],
                        newLeaves: Iterable[MarkerSet]) =
     new ConstrainedSpace(newSubspaces, headPosition + 1,
       newLeaves,
       lengthLower.map(_ - 1), lengthUpper.map(_ - 1))
-  
+
   /**
    * Filter the subspaces and advance deeper.
    */
@@ -228,7 +228,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
     val newSpaces = subspaceLookup(key)
     constrainAdvance(newSpaces)
   }
-  
+
   /**
    * Filter the subspaces and advance deeper.
    */
@@ -236,63 +236,63 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
    val newSpaces = subspaces.filter(f)
    constrainAdvance(newSpaces)
   }
-  
+
   def constrainAdvance(newSpaces: Iterable[KmerTree]): ConstrainedSpace = {
-   val sub = mergeSubspaces(newSpaces.flatMap(_.allSubspaces))   
-   stepDown(sub, nextLeaves(newSpaces))   
+   val sub = mergeSubspaces(newSpaces.flatMap(_.allSubspaces))
+   stepDown(sub, nextLeaves(newSpaces))
   }
-  
-  private def mergeSubspaces(ss: Iterable[KmerTree]): Iterable[KmerTree] = 
+
+  private def mergeSubspaces(ss: Iterable[KmerTree]): Iterable[KmerTree] =
     ss.groupBy(_.key).map(_._2.reduce(_ merge _))
 
-  private def constrainSpaces(toSpaces: Iterable[KmerTree]) = {    
+  private def constrainSpaces(toSpaces: Iterable[KmerTree]) = {
     copy(subspaces = toSpaces)
   }
-  
+
   /**
    * Constrain without moving forward.
    */
-  def constrainFilter(f: KmerTree => Boolean): ConstrainedSpace = 
+  def constrainFilter(f: KmerTree => Boolean): ConstrainedSpace =
     constrainSpaces(subspaces.filter(f))
-  
+
   def mapHeads(f: Marker => Marker) =
     constrainSpaces(subspaces.map(_.mapHead(f)))
-   
-  def stepForward(constraint: Option[Marker]): ConstrainedSpace = 
+
+  def stepForward(constraint: Option[Marker]): ConstrainedSpace =
     constraint match {
       case Some(c) => stepForward(c)
       case None => constrainAdvance(subspaces)
     }
-  
-  def stepForward(m: Marker): ConstrainedSpace = 
+
+  def stepForward(m: Marker): ConstrainedSpace =
     keyConstrainAdvance(m)
-  
-  def constrainMarker(m: Marker): ConstrainedSpace = 
+
+  def constrainMarker(m: Marker): ConstrainedSpace =
     constrainSpaces(subspaceLookup(m))
-    
-  def stepForward(constraint: Int): ConstrainedSpace = 
+
+  def stepForward(constraint: Int): ConstrainedSpace =
     filterConstrainAdvance(_.key.pos == constraint)
-  
+
   def stepForward(constraint: String): ConstrainedSpace =
     filterConstrainAdvance(_.key.tag == constraint)
-  
-  def rankDrop: ConstrainedSpace =  
+
+  def rankDrop: ConstrainedSpace =
     constrainFilter(_.key.lowestRank == true).dropAndAddOffset
-  
+
   def setHeadsToZero = mapHeads(m => Marker(0, m.features))
-  
+
   def dropAndSetToZero =
     constrainAdvance(subspaces).setHeadsToZero
 
   def dropAndAddOffset = {
     val ns = subspaces.flatMap(s => {
       val n = s.key.pos
-      s.allSubspaces.map(_.mapHead(m => Marker(m.pos + n, m.features)))        
+      s.allSubspaces.map(_.mapHead(m => Marker(m.pos + n, m.features)))
     })
 //    println("ns:? " + ns.map(x => x.key + ":" + x).mkString(","))
     stepDown(ns, nextLeaves(subspaces))
   }
-  
+
   /**
    * All leaves at a certain depth or longer (number of markers)
    * The length is relative to the current head position of the space.
@@ -306,7 +306,7 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
       currentLeaves = currentLeaves.filter(_.relativeMarkers.size >= leafLength)
       )
   }
-  
+
   def atMaxLength(leafLength: Int) = {
     if (lengthUpper != None) {
       throw new Exception("Overwriting length constraint")
@@ -315,23 +315,23 @@ final case class ConstrainedSpace(subspaces: Iterable[KmerTree],
       currentLeaves = currentLeaves.filter(_.relativeMarkers.size <= leafLength)
       )
   }
-  
+
   def atLength(leafLength: Int) = {
     if (lengthLower != None || lengthUpper != None) {
       throw new Exception(s"Overwriting length constraint. " +
         s"New: ${leafLength - headPosition - 1} Was: $lengthLower $lengthUpper")
     }
-    copy(lengthLower = Some(leafLength - headPosition - 1), 
+    copy(lengthLower = Some(leafLength - headPosition - 1),
       lengthUpper = Some(leafLength - headPosition - 1),
       currentLeaves = currentLeaves.filter(_.relativeMarkers.size == leafLength)
       )
   }
-  
-  override def size: Int = 
+
+  override def size: Int =
     if (subspaces.isEmpty) { 0 } else (subspaces.map(_.size).sum)
-  
+
   def breadth = subspaces.size
-    
+
 }
 
 object KmerTree {
@@ -353,11 +353,11 @@ object KmerTree {
 final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
   extends Iterable[MarkerSet] {
   import KmerTree._
-  
+
   private var subspaces = Map[Marker, KmerTree]()
-  
+
   //Merges two trees, which should have the same key and start from the same depth.
-  def merge(other: KmerTree): KmerTree = {    
+  def merge(other: KmerTree): KmerTree = {
     var newSub = Map[Marker, KmerTree]()
     val keys = Set() ++ subspaces.keySet ++ other.subspaces.keySet
     for (k <- keys) {
@@ -367,7 +367,7 @@ final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
     r.subspaces = newSub
     r
   }
-  
+
   def merged(t1: Option[KmerTree], t2: Option[KmerTree]): KmerTree = {
     (t1, t2) match {
       case (Some(t1), Some(t2)) => t1.merge(t2)
@@ -376,7 +376,7 @@ final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
       case _ => throw new Exception("Invalid merge of two empty trees")
     }
   }
-  
+
   @tailrec
   def add(markers: Seq[Marker], leaf: MarkerSet): Unit = {
     markers.headOption match {
@@ -386,18 +386,18 @@ final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
           case None =>
             val t = new KmerTree(m)
             subspaces += (m -> t)
-            t.add(markers.tail, leaf)            
+            t.add(markers.tail, leaf)
         }
-      case None =>     
-        this.leaves += leaf        
+      case None =>
+        this.leaves += leaf
     }
   }
-  
+
   /**
    * Get the subspace that corresponds to a single prefix item,
    * if any.
    */
-  def getSubspace(marker: Marker): Option[KmerTree] = 
+  def getSubspace(marker: Marker): Option[KmerTree] =
     subspaces.get(marker)
 
   /**
@@ -420,50 +420,50 @@ final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
     kt.subspaces = subspaces
     kt
   }
-  
+
   /**
    * Move forward one step in the MarkerSet sequence and get the subspaces at that step.
    */
   def allSubspaces: Iterator[KmerTree] = subspaces.valuesIterator
-  
+
   @tailrec
   def findLeaf(markers: Seq[Marker]): Iterable[MarkerSet] = {
     markers.headOption match {
-      case Some(m) => 
-        subspaces.get(m) match {          
+      case Some(m) =>
+        subspaces.get(m) match {
           case Some(t) => t.findLeaf(markers.tail)
           case _ => None
         }
       case None => leaves
-    } 
+    }
   }
-  
+
   override def size: Int = {
-     leaves.size + 
+     leaves.size +
        subspaces.values.map(_.size).sum
   }
-  
+
   def iterator: Iterator[MarkerSet] = {
     val rest = subspaces.valuesIterator.flatMap(_.iterator)
-    rest ++ leaves 
+    rest ++ leaves
   }
-  
+
   /**
    * Obtain markers at a certain depth (relative length).
    */
-  def allAtLength(length: Int): Iterator[MarkerSet] = 
+  def allAtLength(length: Int): Iterator[MarkerSet] =
     all(Some(length), Some(length))
-    
-  
+
+
 //  def allAtMinLength(length: Int): Iterator[MarkerSet] = {
 //    def rest = subspaces.valuesIterator.flatMap(_.allAtMinLength(length - 1))
 //    if (length <= 0) {
 //      rest ++ leaf
 //    } else {
 //      rest
-//    }  
+//    }
 //  }
-  
+
   /**
    * Get all leaves, optionally bounding their length (position in the tree) above and/or below.
    */
@@ -477,11 +477,11 @@ final class KmerTree(val key: Marker, var leaves: Set[MarkerSet] = Set())
       case Some(d) => d >= 0
       case None => true
     }
-    if (lengthPass(minDepth, maxDepth)) {    
+    if (lengthPass(minDepth, maxDepth)) {
       rest ++ leaves
     } else {
       rest
     }
-    
+
   }
 }
