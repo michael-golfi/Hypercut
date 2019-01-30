@@ -37,13 +37,13 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
       result.addNode(s)
     }
 
-    var sortedCache = Map[String, Seq[PathNode]]()
+    var sortedCache = Map[String, List[PathNode]]()
 
-    def sorted(bucket: String) = {
+    def sorted(bucket: String): List[PathNode] = {
       sortedCache.get(bucket) match {
         case Some(s) => s
         case _ =>
-          sortedCache += (bucket -> sequences(bucket).toSeq.sortBy(_.seq))
+          sortedCache += (bucket -> sequences(bucket).toList.sortBy(_.seq))
           sortedCache(bucket)
       }
     }
@@ -59,7 +59,7 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
       toInside = macroGraph.edgesFrom(subpart).filter(partSet.contains)
       (overlap, ss) <- byEnd(subpart.packedString)
       toBucket <- toInside
-      toSeqs = sorted(toBucket.packedString).
+      toSeqs = sorted(toBucket.packedString).iterator.
         dropWhile(! _.seq.startsWith(overlap)).
         takeWhile(_.seq.startsWith(overlap))
       to <- toSeqs
