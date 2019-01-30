@@ -35,10 +35,10 @@ class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, d
     }
   }
 
-  def handle(reads: Iterator[(String, String)]) {
+  def handle(reads: Iterator[String]) {
     val handledReads =
       reads.grouped(100000).map(group =>
-      { group.par.flatMap(r => handle(r._1))
+      { group.par.flatMap(r => handle(r))
       })
 
     for (rs <- precompIterator(handledReads)) {
@@ -105,8 +105,9 @@ object SeqPrintBuckets {
 
         Stats.begin()
         val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile)
+        //Fastq format - grab the sequence data lines
         spb.handle(
-          FlatQ.stream(Console.in.lines().iterator))
+          Console.in.lines().iterator.grouped(4).map(_(1)))
         Stats.end("Build buckets")
 
         println("")
