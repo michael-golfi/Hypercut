@@ -7,20 +7,21 @@ import dbpart.ubucket.UBucketDB
 
 class MacroGraph(graph: Graph[MarkerSet]) {
   type Node = MarkerSet
+  type Partition = List[Node]
 
   class Partitioner(groupSize: Int) {
 
     var assignCount = 0
     val totalCount = graph.numNodes
-    
-    def partitions: List[List[Node]] = {
+
+    def partitions: List[Partition] = {
       //tag1 will indicate whether the node is in a partition
       for (n <- graph.nodes) {
         n.tag1 = false
       }
 
-      var r = List[List[Node]]()
-      for (n <- graph.nodes; if ! n.tag1) {      
+      var r = List[Partition]()
+      for (n <- graph.nodes; if ! n.tag1) {
         n.tag1 = true
         assignCount += 1
         val group = from(n, List(n), 1)
@@ -52,9 +53,35 @@ class MacroGraph(graph: Graph[MarkerSet]) {
   }
 
   /**
+   * Merge adjacent small partitions to increase the average size.
+   * Very simple, dumb operation.
+   */
+  @tailrec
+  final def collapse(groupSize: Int, partitions: List[Partition],
+                     buildSize: Int = 0,
+                     building: Partition = Nil,
+                     acc: List[Partition] = Nil): List[Partition] = {
+    partitions match {
+      case p :: ps =>
+        if (p.size + buildSize < groupSize) {
+          collapse(groupSize, ps, buildSize + p.size, p ::: building, acc)
+        } else if (p.size < groupSize) {
+          //Go to next, try from p again
+          collapse(groupSize, p :: ps, 0, Nil, building :: acc)
+        } else {
+          //Go to next, try after p
+          collapse(groupSize, ps, 0, Nil, p :: building :: acc)
+        }
+      case _ =>
+        //Stop here
+        acc
+    }
+  }
+
+  /**
    * Group adjacent nodes in the graph.
    */
-  def partition(groupSize: Int): List[List[Node]] =
+  def partition(groupSize: Int): List[Partition] =
     new Partitioner(groupSize).partitions
 
 

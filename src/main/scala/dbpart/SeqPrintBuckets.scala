@@ -116,17 +116,18 @@ object SeqPrintBuckets {
         hist.print("Bucket size (kmers)")
       case "graph" =>
         Stats.begin()
-        val kms = new KmerSpace()
+        var kms = new KmerSpace()
         val k = args(1).toInt //e.g. 31
         val numMarkers = args(2).toInt //e.g. 4
         val dbfile = args(3)
         val buckets = new SeqPrintBuckets(space, k, numMarkers, dbfile)
         val graph = makeGraph(kms, buckets)
         Stats.end("Construct graph")
+        kms = null //Recover memory
 
         Stats.begin()
         val mg = new MacroGraph(graph)
-        val parts = mg.partition(10000)
+        var parts = mg.partition(10000)
         Stats.end("Partition graph")
 
         val hist = new Histogram(parts.map(_.size), 20)
@@ -149,7 +150,9 @@ object SeqPrintBuckets {
         val minLength = 50
         val minPrintLength = 65
 
+        parts = mg.collapse(1000, parts)
         Stats.begin()
+        //Collapse small partitions and then iterate over the result
         for (p <- parts.par) {
           pcount += 1
 
