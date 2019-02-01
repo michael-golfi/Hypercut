@@ -274,7 +274,8 @@ object UBucketDB {
   //256b byte alignment
   //8G mmap
   //#comp=zlib
-  val options = s"#msiz=$c20g#bnum=40000000#apow=8"
+  val options = s"#bnum=40000000#apow=8"
+  val mmapOptions = s"$options#msiz=$c20g"
 
   def main(args: Array[String]) {
 

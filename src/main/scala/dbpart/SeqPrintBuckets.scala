@@ -12,9 +12,10 @@ import dbpart.graph.PathGraphBuilder
 import dbpart.graph.PathPrinter
 
 
-class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String) {
+class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
+  dbOptions: String = UBucketDB.options) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
-  val db = new PathBucketDB(dbfile, UBucketDB.options, k)
+  val db = new PathBucketDB(dbfile, dbOptions, k)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -104,7 +105,7 @@ object SeqPrintBuckets {
         val dbfile = args(3)
 
         Stats.begin()
-        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile)
+        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, UBucketDB.mmapOptions)
         spb.handle(FastQ.iterator(Console.in))
 
         Stats.end("Build buckets")
@@ -127,7 +128,7 @@ object SeqPrintBuckets {
 
         Stats.begin()
         val mg = new MacroGraph(graph)
-        var parts = mg.partition(10000)
+        var parts = mg.partition(2000)
         Stats.end("Partition graph")
 
         val hist = new Histogram(parts.map(_.size), 20)
