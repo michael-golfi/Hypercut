@@ -151,32 +151,6 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
 }
 
 /**
- * BucketDB implementation that deduplicates entries.
- */
-class UBucketDB(location: String, options: String, separator: String = "\n")
-extends BucketDB(location, options, separator) {
-
-  override def setInsertSingle(oldSet: String, value: String): Option[String] =
-    setInsertBulk(oldSet, Seq(value))
-
-  import scala.collection.mutable.{Set => MSet}
-  override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
-    val old = MSet() ++ unpackSet(oldSet)
-    val oldSize = old.size
-    val newSet = old ++ values
-    if (newSet.size == oldSize) {
-      None
-    } else {
-      Some(newSet.mkString(separator))
-    }
-  }
-
-  override def newSet(values: Iterable[String]) =
-    values.toSeq.distinct.mkString(separator)
-
-}
-
-/**
  * BucketDB that merges k-mers into contiguous paths.
  * Buckets will contain lists of paths, not KMers.
  * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
@@ -271,42 +245,10 @@ object UBucketDB {
   val c20g = 20L * c1g
 
   //40M buckets
-  //256b byte alignment
-  //8G mmap
+  //256 byte alignment
+  //20G mmap
   //#comp=zlib
   val options = s"#bnum=40000000#apow=8"
   val mmapOptions = s"$options#msiz=$c20g"
 
-  def main(args: Array[String]) {
-
-    args(0) match {
-      case "add" =>
-        val file = args(1)
-        val db = new UBucketDB(file, options)
-        addFromStream(db, FastQ.iterator(Console.in))
-      case "stats" =>
-        val file = args(1)
-        val db = new UBucketDB(file, options)
-        db.bucketSizeStats().print()
-        db.bucketSizeHistogram().print("Bucket sizes")
-      case "graph" =>
-        val file = args(1)
-        val db = new UBucketDB(file, options)
-
-      case _ => throw new Exception("Unxpected command")
-    }
-  }
-
-
-  val k = 31
-  def kmers(read: String) = read.sliding(k)
-  //2^20 = 1M possible keys
-  def key(kmer: String) = kmer.substring(0, 10)
-
-  def addFromStream(db: UBucketDB, reads: Iterator[String]) {
-    for (group <- reads.grouped(10000);
-        kvs = group.map(x => (key(x), x))) {
-      db.addBulk(kvs)
-    }
-  }
 }
