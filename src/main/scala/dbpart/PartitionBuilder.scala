@@ -5,7 +5,7 @@ import scala.collection.mutable.{ Set => MSet, Map => MMap }
 import scala.annotation.tailrec
 import dbpart.ubucket.UBucketDB
 
-class MacroGraph(graph: Graph[MarkerSet]) {
+class PartitionBuilder(graph: Graph[MarkerSet]) {
   type Node = MarkerSet
   type Partition = List[Node]
 

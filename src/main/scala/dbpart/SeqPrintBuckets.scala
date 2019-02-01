@@ -10,6 +10,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import dbpart.graph.PathGraphBuilder
 import dbpart.graph.PathPrinter
+import friedrich.graph.Graph
 
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
@@ -127,8 +128,8 @@ object SeqPrintBuckets {
         kms = null //Recover memory
 
         Stats.begin()
-        val mg = new MacroGraph(graph)
-        var parts = mg.partition(2000)
+        val partBuild = new PartitionBuilder(graph)
+        var parts = partBuild.partition(2000)
         Stats.end("Partition graph")
 
         val hist = new Histogram(parts.map(_.size), 20)
@@ -145,14 +146,23 @@ object SeqPrintBuckets {
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
+
+
+        parts = partBuild.collapse(1000, parts)
+        findPaths(k, buckets, graph, parts)
+    }
+
+    def findPaths(k: Int, buckets: SeqPrintBuckets, graph: Graph[MarkerSet],
+                  parts: List[List[MarkerSet]]) {
         val pp = new PathPrinter("hypercut.fasta", k)
+
         var pcount = 0
+
+        @volatile
         var lengths = List[Int]()
         val minLength = 50
         val minPrintLength = 65
-
-        parts = mg.collapse(1000, parts)
-        Stats.begin()
+         Stats.begin()
         //Collapse small partitions and then iterate over the result
         for (p <- parts.par) {
           pcount += 1
@@ -161,7 +171,6 @@ object SeqPrintBuckets {
           println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
 
           val ss = pp.findSequences(pathGraph)
-
 
           for (s <- ss) {
             if (s.length >= minLength) {
