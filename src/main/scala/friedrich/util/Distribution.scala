@@ -2,10 +2,9 @@ package friedrich.util
 
 object Distribution {
   def printStats(label: String, vs: TraversableOnce[Int]) {
-    println(s"Distribution for $label")
     val d = new Distribution
     d.observe(vs)
-    d.print()
+    d.print(label)
   }
 }
 
@@ -38,7 +37,8 @@ class Distribution(format: String = "%.2f") {
   }
 
   def fmt(x: Double) = format.format(x)
-  def print() {
+  def print(title: String) {
+    println(s"* * * $title Distribution")
     println(s"Min $min Max $max Avg ${fmt(avg)} Count $count Sum $sum")
   }
 }
@@ -73,8 +73,8 @@ class Histogram(values: Seq[Int], bnum: Int = 10) {
 
 
   def print(label: String) {
-    Console.out.print(s"$label Median: $median ")
-    dist.print()
+    println(s"$label Median: $median ")
+    dist.print(label)
     println(buckets.take(bnum).mkString("\t"))
     println(counts.mkString("\t"))
   }

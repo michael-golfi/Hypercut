@@ -1,14 +1,14 @@
 package dbpart.ubucket
 
 import scala.collection.mutable.ArrayBuffer
+import scala.annotation.tailrec
 
-trait Unpacker[B <: Bucket[_]] {
+trait Unpacker[B <: Bucket[B]] {
   def unpack(value: String, k: Int): B
 }
 
-trait Bucket[B <: Bucket[_]] {
+trait Bucket[+B <: Bucket[_]] {
   def pack: String
-  def merge(other: B): B = ???
   def size: Int
   def items: Iterable[String]
 
@@ -63,7 +63,7 @@ object SeqBucket extends Unpacker[SeqBucket] {
 /**
  * Bucket that merges sequences if possible.
  */
-final class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucket] {
+class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucket] {
   import SeqBucket._
 
   def items = sequences
@@ -125,6 +125,124 @@ final class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[Se
 
   def size: Int = {
     sequences.size
+  }
+}
+
+/**
+ * A sequence bucket that merges sequences and tracks the coverage
+ * of each k-mer.
+ * Coverages are tracked similar to phred scores, with a single ascii char
+ * for each k-mer. They are clipped at a maximum bound.
+ */
+object CountingSeqBucket extends Unpacker[CountingSeqBucket] {
+  val separator: String = SeqBucket.separator
+
+  val zeroCoverage = '0'
+  val coverageCutoff = 150
+  val maxCoverage = (zeroCoverage + coverageCutoff).toChar
+
+  def asCoverage(cov: Int): Char = {
+    if (cov > maxCoverage) asCoverage(maxCoverage) else {
+      (cov + zeroCoverage).toChar
+    }
+  }
+
+  def covToInt(cov: Char): Int = {
+    (cov - zeroCoverage)
+  }
+
+  def clip(cov: Char) = if (cov > maxCoverage) maxCoverage else cov
+
+  def incrementCoverage(covString: String, pos: Int, amt: Int) = {
+    val pre = covString.substring(0, pos)
+    val nc = clip((covString.charAt(pos) + amt).toChar)
+    val post = covString.substring(pos + 1)
+    pre + nc + post
+  }
+
+  @tailrec
+  def unpack(from: Iterator[String], k: Int, buildingSeq: List[String] = Nil,
+             buildingCov: List[String] = Nil): CountingSeqBucket = {
+    if (from.hasNext) {
+      val s = from.next
+      val c = from.next
+      unpack(from, k, s:: buildingSeq, c:: buildingCov)
+    } else {
+      new CountingSeqBucket(buildingSeq, buildingCov, k)
+    }
+  }
+
+  def unpack(value: String, k: Int): CountingSeqBucket = {
+    unpack(value.split(separator, -1).iterator, k)
+  }
+
+}
+
+final class CountingSeqBucket(sequences: Iterable[String],
+  coverage: Iterable[String], k: Int) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
+  import CountingSeqBucket._
+
+  def kmerCoverages: Iterable[Int] = coverage.flatMap(_.map(covToInt))
+
+  override def pack: String = {
+    (sequences zip coverage).map(sc => s"${sc._1}$separator${sc._2}").mkString(separator)
+  }
+
+  override def insertSingle(value: String): Option[CountingSeqBucket] =
+    insertBulk(Seq(value))
+
+
+  def findAndIncrement(data: String, inSeq: Seq[String],
+                inCov: ArrayBuffer[String]): Boolean = {
+    var i = 0
+    while (i < inSeq.size) {
+      val s = inSeq(i)
+      val index = s.indexOf(data)
+      if (index != -1) {
+        inCov(i) = incrementCoverage(inCov(i), index, 1)
+        return true
+      }
+      i += 1
+    }
+    false
+  }
+
+  /**
+   * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
+   */
+  def insertSequence(data: String, intoSeq: ArrayBuffer[String], intoCov: ArrayBuffer[String]) {
+    val suffix = data.substring(1)
+    val prefix = data.substring(0, k - 1)
+    var i = 0
+    while (i < intoSeq.size) {
+      val existingSeq = intoSeq(i)
+      if (existingSeq.startsWith(suffix)) {
+        intoSeq(i) = (data.charAt(0) + existingSeq)
+        intoCov(i) = asCoverage(1) + intoCov(i)
+        return
+      }
+      if (existingSeq.endsWith(prefix)) {
+        intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
+        intoCov(i) = intoCov(i) + asCoverage(1)
+        return
+      }
+      i += 1
+    }
+    intoSeq += data
+    intoCov += asCoverage(1).toString()
+  }
+
+  override def insertBulk(values: Iterable[String]): Option[CountingSeqBucket] = {
+    var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+    var covR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+    r ++= sequences
+    covR ++= coverage
+
+    for (v <- values; if !findAndIncrement(v, r, covR)) {
+      insertSequence(v, r, covR)
+    }
+
+    Some(new CountingSeqBucket(r, covR, k))
   }
 }
 

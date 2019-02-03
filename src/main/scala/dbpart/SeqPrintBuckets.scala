@@ -114,8 +114,10 @@ object SeqPrintBuckets {
         println("")
         var hist = spb.db.bucketSizeHistogram()
         hist.print("Bucket size (sequences)")
-        hist = spb.db.kmerHistogram
-        hist.print("Bucket size (kmers)")
+//        hist = spb.db.kmerHistogram
+//        hist.print("Bucket size (kmers)")
+        var dist = spb.db.kmerCoverageStats
+        dist.print("Kmer coverage")
       case "graph" =>
         Stats.begin()
         var kms = new KmerSpace()

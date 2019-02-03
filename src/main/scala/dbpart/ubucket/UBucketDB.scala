@@ -145,15 +145,23 @@ abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpac
  * can be used.
  */
 final class SeqBucketDB(location: String, options: String, val k: Int)
-extends BucketDB[SeqBucket](location, options, SeqBucket, k) {
+extends BucketDB[CountingSeqBucket](location, options, CountingSeqBucket, k) {
 
   def newBucket(values: Iterable[String]) =
-    new SeqBucket(Seq(), k).insertBulk(values).get
+    new CountingSeqBucket(Seq(), Seq(), k).insertBulk(values).get
 
   def kmerBuckets = {
     buckets.map((kv) => (kv._1, kv._2.sequences.flatMap(s => {
       s.sliding(k)
     })))
+  }
+
+  def kmerCoverageStats = {
+    val d = new Distribution
+    for ((k, b) <- buckets) {
+      d.observe(b.kmerCoverages)
+    }
+    d
   }
 
   def kmerStats = {
