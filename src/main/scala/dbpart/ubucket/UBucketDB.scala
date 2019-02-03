@@ -10,8 +10,12 @@ import dbpart.FastQ
  * Database of unique buckets for k-mers.
  * k-mers with identical sequence data are stored together.
  */
-class BucketDB(location: String, options: String, separator: String = "\n") {
+abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpacker: Unpacker[B],
+    k: Int) {
 
+  /**
+   * Ensure that we close the database on JVM shutdown
+   */
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run() {
@@ -29,27 +33,9 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
 
   addHook()
 
+  def newBucket(values: Iterable[String]): B
 
-  /**
-   * The default bucket implementation simply adds to a list.
-   * Overriding methods can be more sophisticated, e.g. perform sorting or deduplication
-   */
-  def setInsertSingle(oldSet: String, value: String): Option[String] =
-    Some(s"$oldSet$separator$value")
-
-  /**
-   * Insert a number of values into the set, returning the updated set if an update is necessary.
-   * Returns None if no update is needed.
-   */
-  def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
-    val newVals = values.mkString(separator)
-    setInsertSingle(oldSet, newVals)
-  }
-
-  def newSet(values: Iterable[String]) =
-    values.mkString(separator)
-
-  def unpackSet(set: String): Iterable[String] = set.split(separator, -1)
+  def unpack(bucket: String): B = unpacker.unpack(bucket, k)
 
   def addSingle(key: String, record: String) {
     val v = Option(db.get(key))
@@ -58,32 +44,34 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
         if (value.size > 2000) {
           println(s"Key $key size ${value.size}")
         }
-        setInsertSingle(value, record) match {
-          case Some(nv) => db.set(key, nv)
+        unpack(value).insertSingle(record) match {
+          case Some(nv) => db.set(key, nv.pack)
           case None =>
         }
       case None =>
-        db.set(key, record)
+        db.set(key, newBucket(List(record)).pack)
     }
-
-    db.cursor()
   }
 
   import scala.collection.{Map => CMap}
   import scala.collection.mutable.{Map => MMap}
 
+  /**
+   * Merge new values into the existing values. Returns a map of buckets
+   * that need to be written back to the database.
+   */
   def merge(oldVals: MMap[String, String], from: CMap[String, Iterable[String]]) = {
     var r = MMap[String, String]()
     for ((k, vs) <- from) {
       oldVals.get(k) match {
-        case Some(existingSet) =>
-          setInsertBulk(existingSet, vs) match {
+        case Some(existingBucket) =>
+          unpack(existingBucket).insertBulk(vs) match {
             case Some(ins) =>
-              r += k -> ins
+              r += k -> ins.pack
             case None =>
           }
         case None =>
-          r += k -> newSet(vs)
+          r += k -> newBucket(vs).pack
       }
     }
     r
@@ -101,8 +89,8 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
     }
   }
 
-  def getBulk(keys: Iterable[String]): CMap[String, Iterable[String]] = {
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpackSet(x._2)))
+  def getBulk(keys: Iterable[String]): CMap[String, B] = {
+    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._2)))
   }
 
   private def bucketsRaw: Iterator[(String, String)] = {
@@ -132,8 +120,8 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
   def bucketKeys: Iterator[String] =
     bucketsRaw.map(_._1)
 
-  def buckets: Iterator[(String, Iterable[String])] =
-    bucketsRaw.map(x => (x._1, unpackSet(x._2)))
+  def buckets: Iterator[(String, B)] =
+    bucketsRaw.map(x => (x._1, unpack(x._2)))
 
   def bucketSizeStats() = {
     val r = new Distribution
@@ -156,69 +144,15 @@ class BucketDB(location: String, options: String, separator: String = "\n") {
  * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
  * can be used.
  */
-class PathBucketDB(location: String, options: String, val k: Int, separator: String = "\n")
-extends BucketDB(location, options, separator) {
+final class SeqBucketDB(location: String, options: String, val k: Int)
+extends BucketDB[SeqBucket](location, options, SeqBucket, k) {
 
-  override def setInsertSingle(oldSet: String, value: String): Option[String] =
-    setInsertBulk(oldSet, Seq(value))
-
-  override def setInsertBulk(oldSet: String, values: Iterable[String]): Option[String] = {
-    val old = unpackSet(oldSet)
-    var r: ArrayBuffer[String] = new ArrayBuffer(values.size + old.size)
-    r ++= old
-    var updated = false
-    for (v <- values; if !seqExists(v, r)) {
-      insertSequence(v, r)
-      updated = true
-    }
-    if (updated) {
-      Some(r.mkString(separator))
-    } else {
-      None
-    }
-  }
-
-  override def newSet(values: Iterable[String]) = {
-    setInsertBulk(values.head, values.tail).getOrElse(values.head)
-  }
-
-  final def seqExists(data: String, in: Iterable[String]): Boolean = {
-    val it = in.iterator
-    while (it.hasNext) {
-      val s = it.next
-      if (s.indexOf(data) != -1) {
-        return true
-      }
-    }
-    false
-  }
-
-  /**
-   * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
-   */
-  final def insertSequence(data: String, into: ArrayBuffer[String]) {
-
-    val suffix = data.substring(1)
-    val prefix = data.substring(0, k - 1)
-    var i = 0
-    while (i < into.size) {
-      val existingSeq = into(i)
-      if (existingSeq.startsWith(suffix)) {
-        into(i) = (data.charAt(0) + existingSeq)
-        return
-      }
-      if (existingSeq.endsWith(prefix)) {
-        into(i) = (existingSeq + data.charAt(data.length() - 1))
-        return
-      }
-      i += 1
-    }
-    into += data
-  }
+  def newBucket(values: Iterable[String]) =
+    new SeqBucket(Seq(), k).insertBulk(values).get
 
   def kmerBuckets = {
-    buckets.map((kv) => (kv._1, kv._2.flatMap(read => {
-      read.sliding(k)
+    buckets.map((kv) => (kv._1, kv._2.sequences.flatMap(s => {
+      s.sliding(k)
     })))
   }
 
@@ -237,7 +171,7 @@ extends BucketDB(location, options, separator) {
 
 }
 
-object UBucketDB {
+object BucketDB {
 
   val c1g = 1L * 1204 * 1204 * 1024
   val c4g = 4 * c1g

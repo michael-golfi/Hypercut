@@ -14,9 +14,9 @@ import friedrich.graph.Graph
 
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
-  dbOptions: String = UBucketDB.options) {
+  dbOptions: String = BucketDB.options) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
-  val db = new PathBucketDB(dbfile, dbOptions, k)
+  val db = new SeqBucketDB(dbfile, dbOptions, k)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -106,7 +106,7 @@ object SeqPrintBuckets {
         val dbfile = args(3)
 
         Stats.begin()
-        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, UBucketDB.mmapOptions)
+        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, BucketDB.mmapOptions)
         spb.handle(FastQ.iterator(Console.in))
 
         Stats.end("Build buckets")

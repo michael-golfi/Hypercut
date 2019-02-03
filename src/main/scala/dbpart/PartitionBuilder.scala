@@ -3,7 +3,7 @@ package dbpart
 import friedrich.graph.Graph
 import scala.collection.mutable.{ Set => MSet, Map => MMap }
 import scala.annotation.tailrec
-import dbpart.ubucket.UBucketDB
+import dbpart.ubucket.BucketDB
 
 class PartitionBuilder(graph: Graph[MarkerSet]) {
   type Node = MarkerSet

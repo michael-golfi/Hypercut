@@ -1,7 +1,7 @@
 package dbpart.graph
 
 import dbpart._
-import dbpart.ubucket.PathBucketDB
+import dbpart.ubucket.SeqBucketDB
 import dbpart.MarkerSet
 import friedrich.graph.Graph
 import dbpart.FastAdjListGraph
@@ -11,7 +11,7 @@ import scala.annotation.tailrec
  * A graph where every node is an unambiguous path of maximal length.
  * Paths are constructed by joining together nodes within partitions, up to the partition limit.
  */
-class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[MarkerSet]],
+class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[MarkerSet]],
                        macroGraph: Graph[MarkerSet]) {
 
   val k: Int = pathdb.k
@@ -27,7 +27,7 @@ class PathGraphBuilder(pathdb: PathBucketDB, partitions: Iterable[Iterable[Marke
 
     val partSet = part.toSet
     val sequences = Map() ++ pathdb.getBulk(part.map(_.packedString)).
-      map(x => (x._1 -> x._2.map(new PathNode(_))))
+      map(x => (x._1 -> x._2.sequences.map(new PathNode(_))))
 
     for (
       subpart <- part;
