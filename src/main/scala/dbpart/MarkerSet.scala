@@ -74,7 +74,7 @@ final case class Marker(pos: Int, features: Features) {
   //NB this limits the maximum k-mer size (1000)
   /**
    * A metric for sorting by rank.
-   * sortValue is higher if rank is lower.
+   * sorts earlier is higher if rank/priority number is lower.
    * @param posInSet position in a set of markers (not in the underlying sequence)
    */
   def withSortValue(space: MarkerSpace, posInSet: Int) =

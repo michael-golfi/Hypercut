@@ -46,35 +46,35 @@ final class MarkerSpace(byPriority: Seq[String]) {
       val i = s.indexOf(ptn, from)
       if (i != -1) {
         soFar += get(ptn, i)
-        allIndexOf(s, ptn, i + ptn.length(), soFar)
+        allIndexOf(s, ptn, i + 1, soFar)
       }
-    }
-  }
-
-  @tailrec
-  private def getMarkers(s: String, remMarkers: List[String], max: Int, soFar: ListBuffer[Marker])  {
-    if (!remMarkers.isEmpty && soFar.size < max) {
-      allIndexOf(s, remMarkers.head, 0, soFar)
-      getMarkers(s, remMarkers.tail, max, soFar)
     }
   }
 
   //Sort by position, inserting m2 into m1.
   //m1 has priority if there are position collisions.
+  //TODO: make this tailrec
   private def mergeMarkers(m1: List[Marker], m2: List[Marker],
                            nextMarkerAt: Int = 0): List[Marker] = {
-    if (m1.isEmpty) {
-      m2
-    } else if (m2.isEmpty) {
-      m1
-    } else {
-      if (m1.head.pos <= m2.head.pos) {
-        m1.head :: mergeMarkers(m1.tail, m2, m1.head.pos + m1.head.tag.length())
-      } else if (m2.head.pos < m1.head.pos && m2.head.pos >= nextMarkerAt) {
-        m2.head :: mergeMarkers(m1, m2.tail, m2.head.pos + m2.head.tag.length())
-      } else {
-        mergeMarkers(m1, m2.tail, nextMarkerAt)
-      }
+    m1 match {
+      case a :: ms =>
+        if (m2.isEmpty) {
+          m1
+        } else {
+          val m2h = m2.head
+          if (a.pos <= m2h.pos) {
+            //m1 has priority
+            a :: mergeMarkers(m1.tail, m2, a.pos + 1)
+            // && (m2h.pos + m2h.tag.length) <= a.pos
+          } else if (m2h.pos >= nextMarkerAt) {
+            //Insert one marker from m2
+              m2h :: mergeMarkers(m1, m2.tail, m2h.pos + 1)
+            } else {
+              //Drop one marker from m2
+              mergeMarkers(m1, m2.tail, nextMarkerAt)
+            }
+        }
+      case _ => m2.dropWhile(_.pos < nextMarkerAt)
     }
   }
 
@@ -96,15 +96,5 @@ final class MarkerSpace(byPriority: Seq[String]) {
       buf.clear()
     }
     r
-  }
-
-  /**
-   * Top markers sorted by position, relative
-   */
-  def topMarkers(s: String, max: Int): Seq[Marker] = {
-    val buf = ListBuffer[Marker]()
-    buf.sizeHint(max)
-    getMarkers(s, byPriority.toList, max, buf)
-    MarkerSet.relativePositions(this, buf take max)
   }
 }
