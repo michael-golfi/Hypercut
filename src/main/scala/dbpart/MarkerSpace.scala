@@ -46,7 +46,7 @@ final class MarkerSpace(byPriority: Seq[String]) {
       val i = s.indexOf(ptn, from)
       if (i != -1) {
         soFar += get(ptn, i)
-        allIndexOf(s, ptn, i + 1, soFar)
+        allIndexOf(s, ptn, i + ptn.length(), soFar)
       }
     }
   }
@@ -60,6 +60,7 @@ final class MarkerSpace(byPriority: Seq[String]) {
   }
 
   //Sort by position, inserting m2 into m1.
+  //m1 has priority if there are position collisions.
   private def mergeMarkers(m1: List[Marker], m2: List[Marker],
                            nextMarkerAt: Int = 0): List[Marker] = {
     if (m1.isEmpty) {
@@ -67,9 +68,9 @@ final class MarkerSpace(byPriority: Seq[String]) {
     } else if (m2.isEmpty) {
       m1
     } else {
-      if (m1.head.pos < m2.head.pos && m1.head.pos >= nextMarkerAt) {
+      if (m1.head.pos <= m2.head.pos) {
         m1.head :: mergeMarkers(m1.tail, m2, m1.head.pos + m1.head.tag.length())
-      } else if (m2.head.pos <= m1.head.pos && m2.head.pos >= nextMarkerAt) {
+      } else if (m2.head.pos < m1.head.pos && m2.head.pos >= nextMarkerAt) {
         m2.head :: mergeMarkers(m1, m2.tail, m2.head.pos + m2.head.tag.length())
       } else {
         mergeMarkers(m1.tail, m2.tail, nextMarkerAt)
