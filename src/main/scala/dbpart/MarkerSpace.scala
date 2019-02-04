@@ -73,7 +73,7 @@ final class MarkerSpace(byPriority: Seq[String]) {
       } else if (m2.head.pos < m1.head.pos && m2.head.pos >= nextMarkerAt) {
         m2.head :: mergeMarkers(m1, m2.tail, m2.head.pos + m2.head.tag.length())
       } else {
-        mergeMarkers(m1.tail, m2.tail, nextMarkerAt)
+        mergeMarkers(m1, m2.tail, nextMarkerAt)
       }
     }
   }

@@ -200,7 +200,7 @@ object SeqPrintBuckets {
 
       var errors = 0
       var count = 0
-      /**
+      /*
        * Check that each k-mer appears in only one bucket.
        * Expensive, memory intensive operation. Intended for debug purposes.
        */
@@ -211,6 +211,13 @@ object SeqPrintBuckets {
           Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
           errors += 1
         }
+        /*
+         * Also check the validity of each key
+         */
+        if (!checkKey(spb, key)) {
+          Console.err.println(s"Error: key $key is incorrect")
+          errors += 1
+        }
         map += (kmer -> key)
         if (count % 10000 == 0) {
           print(".")
@@ -218,6 +225,31 @@ object SeqPrintBuckets {
       }
 
       println(s"Check finished. $errors errors found.")
+    }
+
+    def checkKey(spb: SeqPrintBuckets, key: String): Boolean = {
+      try {
+        val ms = MarkerSet.unpack(spb.space, key)
+        if (ms.relativeMarkers(0).pos != 0) {
+          return false
+        }
+        for (
+          sub <- ms.relativeMarkers.sliding(2);
+          if (sub.length >= 2)
+        ) {
+          val pos1 = sub(1).pos
+          val l1 = sub(0).tag.length()
+          if (pos1 < l1) {
+            //Markers cannot overlap
+            return false
+          }
+        }
+        true
+      } catch {
+        case e: Exception =>
+          e.printStackTrace()
+          false
+      }
     }
 
   }
