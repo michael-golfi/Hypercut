@@ -118,6 +118,12 @@ object SeqPrintBuckets {
 //        hist.print("Bucket size (kmers)")
         var dist = spb.db.kmerCoverageStats
         dist.print("Kmer coverage")
+      case "check" =>
+        val k = args(1).toInt //e.g. 31
+        val numMarkers = args(2).toInt //e.g. 4
+        val dbfile = args(3)
+        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, BucketDB.options)
+        checkConsistency(spb)
       case "graph" =>
         Stats.begin()
         var kms = new KmerSpace()
@@ -187,6 +193,31 @@ object SeqPrintBuckets {
         pp.close()
         Stats.end("Find and print sequences")
         new Histogram(lengths, 20).print("Contig length")
+    }
+
+    def checkConsistency(spb: SeqPrintBuckets) {
+      import scala.collection.mutable.HashMap
+
+      var errors = 0
+      var count = 0
+      /**
+       * Check that each k-mer appears in only one bucket.
+       * Expensive, memory intensive operation. Intended for debug purposes.
+       */
+      var map = new HashMap[String, String]()
+      for ((key, bucket) <- spb.db.buckets; kmer <- bucket.kmers) {
+        count += 1
+        if (map.contains(kmer)) {
+          Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
+          errors += 1
+        }
+        map += (kmer -> key)
+        if (count % 10000 == 0) {
+          print(".")
+        }
+      }
+
+      println(s"Check finished. $errors errors found.")
     }
 
   }

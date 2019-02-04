@@ -68,6 +68,8 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
 
   def items = sequences
 
+  def kmers = items.flatMap(_.sliding(k))
+
   def insertSingle(value: String): Option[SeqBucket] =
     insertBulk(Seq(value))
 
