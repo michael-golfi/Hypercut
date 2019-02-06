@@ -4,7 +4,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec
 
 trait Unpacker[B <: Bucket[B]] {
-  def unpack(value: String, k: Int): B
+  def unpack(key: String, value: String, k: Int): B
 }
 
 trait Bucket[+B <: Bucket[_]] {
@@ -28,7 +28,7 @@ trait Bucket[+B <: Bucket[_]] {
 object KmerBucket extends Unpacker[KmerBucket] {
   val separator: String = "\n"
 
-  def unpack(set: String, k: Int): KmerBucket =
+  def unpack(key: String, set: String, k: Int): KmerBucket =
     new KmerBucket(set, set.split(separator, -1).toList, k)
 }
 
@@ -55,7 +55,7 @@ final class KmerBucket(oldSet: String, val kmers: List[String], k: Int) extends 
 object SeqBucket extends Unpacker[SeqBucket] {
   val separator: String = "\n"
 
-  def unpack(value: String, k: Int): SeqBucket = {
+  def unpack(key: String, value: String, k: Int): SeqBucket = {
     new SeqBucket(value.split(separator), k)
   }
 }
@@ -136,7 +136,7 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
  * Coverages are tracked similar to phred scores, with a single ascii char
  * for each k-mer. They are clipped at a maximum bound.
  */
-object CountingSeqBucket extends Unpacker[CountingSeqBucket] {
+object CountingSeqBucket {
   val separator: String = SeqBucket.separator
 
   val zeroCoverage = '0'
@@ -162,38 +162,33 @@ object CountingSeqBucket extends Unpacker[CountingSeqBucket] {
     pre + nc + post
   }
 
-  @tailrec
-  def unpack(from: Iterator[String], k: Int, buildingSeq: List[String] = Nil,
-             buildingCov: List[String] = Nil): CountingSeqBucket = {
-    if (from.hasNext) {
-      val s = from.next
-      val c = from.next
-      unpack(from, k, s:: buildingSeq, c:: buildingCov)
-    } else {
-      new CountingSeqBucket(buildingSeq, buildingCov, k)
-    }
-  }
+}
 
-  def unpack(value: String, k: Int): CountingSeqBucket = {
-    unpack(value.split(separator, -1).iterator, k)
-  }
+class CountingUnpacker(dbLocation: String) extends Unpacker[CountingSeqBucket] {
+  import CountingSeqBucket._
 
+  val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"))
+
+  def unpack(key: String, value: String, k: Int): CountingSeqBucket = {
+    val cov = covDB.get(key)
+    new CountingSeqBucket(value.split(separator, -1), cov, k)
+  }
 }
 
 final class CountingSeqBucket(sequences: Iterable[String],
-  coverage: Iterable[String], k: Int) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
+  val coverage: CoverageBucket, k: Int,
+  var sequencesUpdated: Boolean = false) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
   import CountingSeqBucket._
 
-  def kmerCoverages: Iterable[Int] = coverage.flatMap(_.map(covToInt))
-
-  override def pack: String = {
-    (sequences zip coverage).map(sc => s"${sc._1}$separator${sc._2}").mkString(separator)
-  }
+  def kmerCoverages: Iterable[Int] = coverage.kmerCoverages
 
   override def insertSingle(value: String): Option[CountingSeqBucket] =
     insertBulk(Seq(value))
 
-
+  /**
+   * Find a k-mer in the bucket, incrementing its coverage.
+   * @return true iff the sequence was found.
+   */
   def findAndIncrement(data: String, inSeq: Seq[String],
                 inCov: ArrayBuffer[String]): Boolean = {
     var i = 0
@@ -238,13 +233,13 @@ final class CountingSeqBucket(sequences: Iterable[String],
     var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
     var covR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
     r ++= sequences
-    covR ++= coverage
+    covR ++= coverage.coverages
 
     for (v <- values; if !findAndIncrement(v, r, covR)) {
       insertSequence(v, r, covR)
+      sequencesUpdated = true
     }
 
-    Some(new CountingSeqBucket(r, covR, k))
+    Some(new CountingSeqBucket(r, new CoverageBucket(covR), k, sequencesUpdated))
   }
 }
-

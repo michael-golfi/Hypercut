@@ -5,37 +5,46 @@ import friedrich.util.Distribution
 import friedrich.util.Histogram
 import scala.collection.mutable.ArrayBuffer
 import dbpart.FastQ
+import scala.collection.{ Map => CMap }
+import scala.collection.mutable.{ Map => MMap }
 
-/**
- * Database of unique buckets for k-mers.
- * k-mers with identical sequence data are stored together.
- */
-abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpacker: Unpacker[B],
-    k: Int) {
+trait KyotoDB {
+  def dbLocation: String
+  def dbOptions: String
 
-  /**
+  val db = new DB()
+  if (!db.open(s"$dbLocation$dbOptions", DB.OWRITER | DB.OCREATE)) {
+    throw new Exception("Unable to open db")
+  }
+  println(s"$dbLocation open")
+
+  addHook()
+
+
+    /**
    * Ensure that we close the database on JVM shutdown
    */
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run() {
-        println(s"Close $location")
+        println(s"Close $dbLocation")
         db.close()
       }
     })
   }
+}
 
-  val db = new DB()
-  if (!db.open(s"$location$options", DB.OWRITER | DB.OCREATE)) {
-    throw new Exception("Unable to open db")
-  }
-  println(s"$location open")
-
-  addHook()
+/**
+ * Database of unique buckets for k-mers.
+ * k-mers with identical sequence data are stored together.
+ */
+abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: String,
+    val unpacker: Unpacker[B],
+    k: Int) extends KyotoDB {
 
   def newBucket(values: Iterable[String]): B
 
-  def unpack(bucket: String): B = unpacker.unpack(bucket, k)
+  def unpack(key: String, bucket: String): B = unpacker.unpack(key, bucket, k)
 
   def addSingle(key: String, record: String) {
     val v = Option(db.get(key))
@@ -44,7 +53,7 @@ abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpac
         if (value.size > 2000) {
           println(s"Key $key size ${value.size}")
         }
-        unpack(value).insertSingle(record) match {
+        unpack(key, value).insertSingle(record) match {
           case Some(nv) => db.set(key, nv.pack)
           case None =>
         }
@@ -53,44 +62,55 @@ abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpac
     }
   }
 
-  import scala.collection.{Map => CMap}
-  import scala.collection.mutable.{Map => MMap}
-
   /**
    * Merge new values into the existing values. Returns a map of buckets
    * that need to be written back to the database.
    */
-  def merge(oldVals: MMap[String, String], from: CMap[String, Iterable[String]]) = {
-    var r = MMap[String, String]()
+  def merge(oldVals: CMap[String, B], from: CMap[String, Iterable[String]]) = {
+    var r = MMap[String, B]()
     for ((k, vs) <- from) {
       oldVals.get(k) match {
         case Some(existingBucket) =>
-          unpack(existingBucket).insertBulk(vs) match {
+          existingBucket.insertBulk(vs) match {
             case Some(ins) =>
-              r += k -> ins.pack
+              r += k -> ins
             case None =>
           }
         case None =>
-          r += k -> newBucket(vs).pack
+          val ins = newBucket(vs)
+          r += k -> ins
       }
     }
     r
   }
 
+  protected def shouldWriteBack(key: String, bucket: B): Boolean = true
+
+  protected def afterMerge(merged: CMap[String, B]) {}
+
+  protected def beforeBulkLoad(keys: Iterable[String]) {}
+
   def addBulk(data: Iterable[(String, String)]) {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
 //    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
 
-    for (insertGr <- insert.grouped(1000).toSeq.par) {
-      val existing = db.get_bulk(seqAsJavaList(insertGr.keys.toSeq), false)
-      //    val existing = MMap[String, String]()
-      val merged = merge(existing.asScala, insertGr)
-      db.set_bulk(merged.asJava, false)
+    for (insertGr <- insert.grouped(10000).toSeq.par) {
+      val existing = getBulk(insertGr.keys)
+      val merged = merge(existing, insertGr)
+      afterMerge(merged)
+      val forWrite = merged.filter(x => shouldWriteBack(x._1, x._2)).map(
+        x => (x._1 -> x._2.pack))
+
+      if (forWrite.size < merged.size) {
+        println(s"Write back ${forWrite.size}/${merged.size} seq buckets")
+      }
+      db.set_bulk(forWrite.asJava, false)
     }
   }
 
-  def getBulk(keys: Iterable[String]): CMap[String, B] = {
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._2)))
+  def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
+    beforeBulkLoad(keys)
+    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
   }
 
   private def bucketsRaw: Iterator[(String, String)] = {
@@ -121,7 +141,7 @@ abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpac
     bucketsRaw.map(_._1)
 
   def buckets: Iterator[(String, B)] =
-    bucketsRaw.map(x => (x._1, unpack(x._2)))
+    bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
 
   def bucketSizeStats() = {
     val r = new Distribution
@@ -145,10 +165,29 @@ abstract class BucketDB[B <: Bucket[B]](location: String, options: String, unpac
  * can be used.
  */
 final class SeqBucketDB(location: String, options: String, val k: Int)
-extends BucketDB[CountingSeqBucket](location, options, CountingSeqBucket, k) {
+extends BucketDB[CountingSeqBucket](location, options, new CountingUnpacker(location), k) {
+
+  def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
 
   def newBucket(values: Iterable[String]) =
-    new CountingSeqBucket(Seq(), Seq(), k).insertBulk(values).get
+    new CountingSeqBucket(Seq(), new CoverageBucket(Seq()), k).insertBulk(values).get
+
+  /**
+   * Only write back sequences if they did actually change
+   */
+  override protected def shouldWriteBack(key: String, bucket: CountingSeqBucket): Boolean =
+    bucket.sequencesUpdated
+
+  override protected def beforeBulkLoad(keys: Iterable[String]) {
+    covDB.bulkLoad(keys)
+  }
+
+  /**
+   * Always write back coverage when a bucket changes
+   */
+  override protected def afterMerge(merged: CMap[String, CountingSeqBucket]) {
+    covDB.setBulk(merged.map(x => x._1 -> x._2.coverage))
+  }
 
   def kmerBuckets = {
     buckets.map((kv) => (kv._1, kv._2.sequences.flatMap(s => {
@@ -188,9 +227,9 @@ object BucketDB {
   val c40g = 40L * c1g
 
   //10M buckets
-  //512 byte alignment
+  //256 byte alignment
   //40G mmap
-  val options = s"#bnum=10000000#apow=9#comp=zlib"
+  val options = s"#bnum=10000000#apow=8#comp=zlib"
   val mmapOptions = s"$options#msiz=$c40g"
 
 }
