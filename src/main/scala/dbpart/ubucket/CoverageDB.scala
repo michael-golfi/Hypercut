@@ -25,11 +25,10 @@ final class CoverageDB(val dbLocation: String) extends KyotoDB {
   }
 
   /**
-   * 10M buckets
    * 32 byte alignment
    * 8 GB mmap
    */
-  def dbOptions: String = s"#bnum=10000000#apow=5#mmap=$c8g"
+  def dbOptions: String = s"#bnum=$buckets#apow=5#mmap=$c8g#opts=l"
 
   var bulkData: CMap[String, CoverageBucket] = Map()
   def bulkLoad(keys: Iterable[String]) {
