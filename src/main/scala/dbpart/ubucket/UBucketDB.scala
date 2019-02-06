@@ -185,12 +185,12 @@ object BucketDB {
   val c4g = 4 * c1g
   val c8g = 8 * c1g
   val c20g = 20L * c1g
+  val c40g = 40L * c1g
 
-  //40M buckets
-  //256 byte alignment
-  //20G mmap
-  //#comp=zlib
-  val options = s"#bnum=40000000#apow=8"
-  val mmapOptions = s"$options#msiz=$c20g"
+  //10M buckets
+  //512 byte alignment
+  //40G mmap
+  val options = s"#bnum=10000000#apow=9#comp=zlib"
+  val mmapOptions = s"$options#msiz=$c40g"
 
 }
