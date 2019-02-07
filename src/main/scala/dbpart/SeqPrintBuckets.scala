@@ -12,7 +12,6 @@ import dbpart.graph.PathGraphBuilder
 import dbpart.graph.PathPrinter
 import friedrich.graph.Graph
 
-
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
   dbOptions: String = BucketDB.options) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
@@ -62,6 +61,79 @@ class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, d
 
     mss.map(_.packedString).iterator zip kmers
   }
+
+  def checkConsistency() {
+    import scala.collection.mutable.HashMap
+
+    var errors = 0
+    var count = 0
+    /*
+       * Check that each k-mer appears in only one bucket.
+       * Expensive, memory intensive operation. Intended for debug purposes.
+       */
+    var map = new HashMap[String, String]()
+    for ((key, bucket) <- db.buckets; kmer <- bucket.kmers) {
+      count += 1
+      if (map.contains(kmer)) {
+        Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
+        errors += 1
+      }
+      /*
+         * Also check the validity of each key
+         */
+      if (!checkKey(key)) {
+        Console.err.println(s"Error: key $key is incorrect")
+        errors += 1
+      }
+      map += (kmer -> key)
+      if (count % 10000 == 0) {
+        print(".")
+      }
+    }
+
+    println(s"Check finished. $errors errors found.")
+  }
+
+  def checkKey(key: String): Boolean = {
+    try {
+      val ms = MarkerSet.unpack(space, key)
+      if (ms.relativeMarkers(0).pos != 0) {
+        return false
+      }
+      for (
+        sub <- ms.relativeMarkers.sliding(2);
+        if (sub.length >= 2)
+      ) {
+        val pos1 = sub(1).pos
+        val l1 = sub(0).tag.length()
+        if (pos1 < l1) {
+          //Markers cannot overlap
+          return false
+        }
+      }
+      true
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        false
+    }
+  }
+
+  def build() {
+    Stats.begin()
+    handle(FastQ.iterator(Console.in))
+    Stats.end("Build buckets")
+    println("")
+  }
+
+  def stats() {
+    val hist = db.bucketSizeHistogram()
+    hist.print("Bucket size (sequences)")
+    //hist = spb.db.kmerHistogram
+    //hist.print("Bucket size (kmers)")
+    var dist = db.kmerCoverageStats
+    dist.print("Kmer coverage")
+  }
 }
 
 object SeqPrintBuckets {
@@ -100,30 +172,6 @@ object SeqPrintBuckets {
   def main(args: Array[String]) {
 
     args(0) match {
-      case "build" =>
-        val k = args(1).toInt //e.g. 31
-        val numMarkers = args(2).toInt //e.g. 4
-        val dbfile = args(3)
-
-        Stats.begin()
-        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, BucketDB.mmapOptions)
-        spb.handle(FastQ.iterator(Console.in))
-
-        Stats.end("Build buckets")
-
-        println("")
-        var hist = spb.db.bucketSizeHistogram()
-        hist.print("Bucket size (sequences)")
-//        hist = spb.db.kmerHistogram
-//        hist.print("Bucket size (kmers)")
-        var dist = spb.db.kmerCoverageStats
-        dist.print("Kmer coverage")
-      case "check" =>
-        val k = args(1).toInt //e.g. 31
-        val numMarkers = args(2).toInt //e.g. 4
-        val dbfile = args(3)
-        val spb = new SeqPrintBuckets(space, k, numMarkers, dbfile, BucketDB.options)
-        checkConsistency(spb)
       case "graph" =>
         Stats.begin()
         var kms = new KmerSpace()
@@ -154,104 +202,46 @@ object SeqPrintBuckets {
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
-
-
         parts = partBuild.collapse(1000, parts)
         findPaths(k, buckets, graph, parts)
     }
 
-    def findPaths(k: Int, buckets: SeqPrintBuckets, graph: Graph[MarkerSet],
-                  parts: List[List[MarkerSet]]) {
-        val pp = new PathPrinter("hypercut.fasta", k)
-
-        var pcount = 0
-
-        @volatile
-        var lengths = List[Int]()
-        val minLength = 50
-        val minPrintLength = 65
-         Stats.begin()
-        //Collapse small partitions and then iterate over the result
-        for (p <- parts.par) {
-          pcount += 1
-
-          val pathGraph = new PathGraphBuilder(buckets.db, List(p), graph).result
-          println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
-
-          val ss = pp.findSequences(pathGraph)
-
-          for (s <- ss) {
-            if (s.length >= minLength) {
-              lengths ::= s.length
-            }
-            lengths ::= s.length
-            if (s.length >= minPrintLength) {
-              pp.printSequence(s"hypercut-part$pcount", s)
-            }
-          }
-        }
-        pp.close()
-        Stats.end("Find and print sequences")
-        new Histogram(lengths, 20).print("Contig length")
-    }
-
-    def checkConsistency(spb: SeqPrintBuckets) {
-      import scala.collection.mutable.HashMap
-
-      var errors = 0
-      var count = 0
-      /*
-       * Check that each k-mer appears in only one bucket.
-       * Expensive, memory intensive operation. Intended for debug purposes.
-       */
-      var map = new HashMap[String, String]()
-      for ((key, bucket) <- spb.db.buckets; kmer <- bucket.kmers) {
-        count += 1
-        if (map.contains(kmer)) {
-          Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
-          errors += 1
-        }
-        /*
-         * Also check the validity of each key
-         */
-        if (!checkKey(spb, key)) {
-          Console.err.println(s"Error: key $key is incorrect")
-          errors += 1
-        }
-        map += (kmer -> key)
-        if (count % 10000 == 0) {
-          print(".")
-        }
-      }
-
-      println(s"Check finished. $errors errors found.")
-    }
-
-    def checkKey(spb: SeqPrintBuckets, key: String): Boolean = {
-      try {
-        val ms = MarkerSet.unpack(spb.space, key)
-        if (ms.relativeMarkers(0).pos != 0) {
-          return false
-        }
-        for (
-          sub <- ms.relativeMarkers.sliding(2);
-          if (sub.length >= 2)
-        ) {
-          val pos1 = sub(1).pos
-          val l1 = sub(0).tag.length()
-          if (pos1 < l1) {
-            //Markers cannot overlap
-            return false
-          }
-        }
-        true
-      } catch {
-        case e: Exception =>
-          e.printStackTrace()
-          false
-      }
-    }
-
   }
+
+  def findPaths(k: Int, buckets: SeqPrintBuckets, graph: Graph[MarkerSet],
+                parts: List[List[MarkerSet]]) {
+    val pp = new PathPrinter("hypercut.fasta", k)
+
+    var pcount = 0
+
+    @volatile
+    var lengths = List[Int]()
+    val minLength = 50
+    val minPrintLength = 65
+    Stats.begin()
+    //Collapse small partitions and then iterate over the result
+    for (p <- parts.par) {
+      pcount += 1
+
+      val pathGraph = new PathGraphBuilder(buckets.db, List(p), graph).result
+      println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
+
+      val ss = pp.findSequences(pathGraph)
+
+      for (s <- ss) {
+        if (s.length >= minLength) {
+          lengths ::= s.length
+        }
+        lengths ::= s.length
+        if (s.length >= minPrintLength) {
+          pp.printSequence(s"hypercut-part$pcount", s)
+        }
+      }
+    }
+    pp.close()
+    Stats.end("Find and print sequences")
+    new Histogram(lengths, 20).print("Contig length")
+  }
+
 
 }
