@@ -14,7 +14,7 @@ import friedrich.graph.Graph
 import miniasm.genome.util.DNAHelpers
 import friedrich.util.IO
 
-class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
+final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
   dbOptions: String = BucketDB.options) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new SeqBucketDB(dbfile, dbOptions, k)
