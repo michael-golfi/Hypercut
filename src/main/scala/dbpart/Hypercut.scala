@@ -29,6 +29,8 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     val build = new HCCommand("build")({
       val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.get.get,
         numMarkers.get.get, dbfile.get.get, BucketDB.mmapOptions)
+      val input = opt[String]()
+      val mates = opt[String]()
       spb.build
       spb.stats
     })
