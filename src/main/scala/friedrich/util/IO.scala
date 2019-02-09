@@ -5,26 +5,28 @@ import scala.io._
 import java.io._
 
 object IO {
-  def trimKnownSuffixes(file: String) = {
-    if (file.endsWith(".gz")) {
+  def trimKnownSuffixes(file: String): String = if (file.endsWith(".gz")) {
       file.substring(0, file.length() - 3)
     } else {
       file
     }
-  }
-  
+
   /**
    * Intelligently obtain a file reader, transparently performing
    * transformations such as compression.
    */
-  def reader(file: String): BufferedSource = {
-    var stream: InputStream = new FileInputStream(file)
-    if (file.endsWith(".gz")) {
-      stream = new GZIPInputStream(stream)
-    } 
-    new BufferedSource(stream)
+  def source(file: String): BufferedSource = {
+    if (file == "-") {
+      Source.stdin
+    } else {
+      var stream: InputStream = new FileInputStream(file)
+      if (file.endsWith(".gz")) {
+        stream = new GZIPInputStream(stream)
+      }
+      new BufferedSource(stream)
+    }
   }
-  
+
    /**
    * Intelligently obtain a file writer, transparently performing
    * transformations such as compression.

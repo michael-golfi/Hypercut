@@ -1,10 +1,12 @@
 package dbpart
 
-import java.io.BufferedReader
-import scala.collection.JavaConversions._
+import scala.io.BufferedSource
+import friedrich.util.IO
 
 object FastQ {
- def iterator(r: BufferedReader): Iterator[String] =
-   r.lines().iterator.grouped(4).map(_(1))
+ def iterator(file: String): Iterator[String] =
+   iterator(IO.source(file))
 
+ def iterator(r: BufferedSource): Iterator[String] =
+   r.getLines.grouped(4).map(_(1))
 }

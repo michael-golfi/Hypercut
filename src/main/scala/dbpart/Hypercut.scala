@@ -4,7 +4,13 @@ import org.rogach.scallop.ScallopConf
 import org.rogach.scallop.Subcommand
 import dbpart.ubucket.BucketDB
 
-class HCCommand(name: String)(act: => Unit) extends Subcommand(name) {
+trait RunnableCommand {
+  this: Subcommand =>
+
+  def run(): Unit
+}
+
+class HCCommand(name: String)(act: => Unit) extends Subcommand(name) with RunnableCommand {
   def run() {
     act
   }
@@ -23,17 +29,21 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     val dbfile = opt[String](required = true)
 
     lazy val defaultBuckets = new SeqPrintBuckets(
-      SeqPrintBuckets.space, k.get.get, numMarkers.get.get,
-      dbfile.get.get, BucketDB.options)
+      SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
+      dbfile.toOption.get, BucketDB.options)
 
-    val build = new HCCommand("build")({
-      val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.get.get,
-        numMarkers.get.get, dbfile.get.get, BucketDB.mmapOptions)
-      val input = opt[String]()
+    val build = new Subcommand("build") with RunnableCommand {
+      val input = opt[String](required = true)
       val mates = opt[String]()
-      spb.build
-      spb.stats
-    })
+
+      def run() {
+        val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
+          numMarkers.toOption.get, dbfile.toOption.get, BucketDB.mmapOptions)
+
+        spb.build(input.toOption.get, mates.toOption)
+        spb.stats
+      }
+    }
     addSubcommand(build)
 
     val stats = new HCCommand("stats")({
@@ -62,7 +72,7 @@ object Hypercut {
 
     for (com <- conf.subcommands) {
       com match {
-      case command: HCCommand =>
+      case command: RunnableCommand =>
         command.run
       case _ =>
       }

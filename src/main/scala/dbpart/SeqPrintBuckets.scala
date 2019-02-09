@@ -11,6 +11,8 @@ import scala.concurrent.duration.Duration
 import dbpart.graph.PathGraphBuilder
 import dbpart.graph.PathPrinter
 import friedrich.graph.Graph
+import miniasm.genome.util.DNAHelpers
+import friedrich.util.IO
 
 class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
   dbOptions: String = BucketDB.options) {
@@ -39,7 +41,10 @@ class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, d
   def handle(reads: Iterator[String]) {
     val handledReads =
       reads.grouped(100000).map(group =>
-      { group.par.flatMap(r => handle(r))
+      { group.par.flatMap(r => {
+        handle(r) ++
+        handle(DNAHelpers.reverseComplement(r))
+      })
       })
 
     for (rs <- precompIterator(handledReads)) {
@@ -119,9 +124,9 @@ class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, d
     }
   }
 
-  def build() {
+  def build(inputFile: String, matesFile: Option[String]) {
     Stats.begin()
-    handle(FastQ.iterator(Console.in))
+    handle(FastQ.iterator(inputFile))
     Stats.end("Build buckets")
     println("")
   }
