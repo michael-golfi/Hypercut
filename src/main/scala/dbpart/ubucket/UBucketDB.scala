@@ -182,7 +182,7 @@ extends BucketDB[CountingSeqBucket](location, options, new CountingUnpacker(loca
   def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
 
   def newBucket(values: Iterable[String]) =
-    new CountingSeqBucket(Seq(), new CoverageBucket(Seq()), k).insertBulk(values).get
+    new CountingSeqBucket(Iterable.empty, new CoverageBucket(Iterable.empty), k).insertBulk(values).get
 
   /**
    * Only write back sequences if they did actually change
