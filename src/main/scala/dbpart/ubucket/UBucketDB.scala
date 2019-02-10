@@ -94,6 +94,8 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
 //    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
 
+    var writeback = 0
+    var total = 0
     for (insertGr <- insert.grouped(10000).toSeq.par) {
       val existing = getBulk(insertGr.keys)
       val merged = merge(existing, insertGr)
@@ -101,11 +103,11 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
       val forWrite = merged.filter(x => shouldWriteBack(x._1, x._2)).map(
         x => (x._1 -> x._2.pack))
 
-      if (forWrite.size < merged.size) {
-        println(s"Write back ${forWrite.size}/${merged.size} seq buckets")
-      }
+      total += merged.size
+      writeback += forWrite.size
       db.set_bulk(forWrite.asJava, false)
     }
+    println(s"Write back ${writeback * 100 / total}% of sequence buckets")
   }
 
   def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
