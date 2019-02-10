@@ -18,6 +18,8 @@ final class MarkerSpace(byPriority: Seq[String]) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
+  val byFirstChar = Map() ++ byPriority.groupBy(_.charAt(0))
+
   @volatile
   private var lookup = Map[(String, Boolean, Int), Features]()
 
@@ -25,7 +27,7 @@ final class MarkerSpace(byPriority: Seq[String]) {
     val key = (pattern, lowestRank, sortValue)
     if (!lookup.contains(key)) {
       synchronized {
-        val f = new Features(pattern, lowestRank, sortValue)
+        val f = new Features(pattern, priorityOf(pattern), lowestRank, sortValue)
         lookup += key -> f
       }
     }

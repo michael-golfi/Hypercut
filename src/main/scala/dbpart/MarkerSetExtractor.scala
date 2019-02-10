@@ -1,10 +1,9 @@
 package dbpart
 
-
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
     def topRanked(ms: Seq[Marker], n: Int) =
-    (ms.sortBy(m => (space.priorityOf(m.tag), m.pos))
+    (ms.sortBy(m => (m.features.tagRank, m.pos))
         take n)
 
    @volatile
@@ -80,8 +79,8 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
           if (m1.pos + m1.tag.length <= m2.pos) {
             m1 :: removeOverlaps(m2 :: ms)
           } else {
-            val p1 = space.priorityOf(m1.tag)
-            val p2 = space.priorityOf(m2.tag)
+            val p1 = m1.features.tagRank
+            val p2 = m2.features.tagRank
             if (p1 <= p2) {
               removeOverlaps(m1 :: ms)
             } else {

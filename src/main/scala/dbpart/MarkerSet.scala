@@ -12,7 +12,7 @@ object Marker {
   }
 }
 
-final class Features(val tag: String, val lowestRank: Boolean = false,
+final class Features(val tag: String, val tagRank: Int, val lowestRank: Boolean = false,
   val sortValue: Int = 0) {
 
   def strongEquivalent(other: Features) = {
