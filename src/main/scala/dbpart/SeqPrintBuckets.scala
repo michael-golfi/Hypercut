@@ -40,7 +40,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def handle(reads: Iterator[String]) {
     val handledReads =
-      reads.grouped(50000).map(group =>
+      reads.grouped(25000).map(group =>
       { group.par.flatMap(r => {
         handle(r) ++
         handle(DNAHelpers.reverseComplement(r))

@@ -133,8 +133,11 @@ object MarkerSet {
    * (marker intervals)
    */
   def relativePositions(space: MarkerSpace, ms: Seq[Marker]): Seq[Marker] = {
-    val bp = ms.sortBy(_.pos)
-    if (bp.size == 0) {
+    relativePositionsFromSorted(space, ms.sortBy(_.pos))
+  }
+
+  def relativePositionsFromSorted(space: MarkerSpace, bp: Seq[Marker]): Seq[Marker] = {
+        if (bp.size == 0) {
       return bp
     }
     val first = bp.head
