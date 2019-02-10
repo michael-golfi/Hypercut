@@ -1,5 +1,7 @@
 package dbpart
 
+import scala.annotation.tailrec
+
 
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
@@ -14,20 +16,26 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
    val n = numMarkers
 
-  def markerSetFromUnsorted(ms: Seq[Marker]) =
+  def markerSetFromUnsorted(ms: List[Marker]) =
     new MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
 
   final class MarkerExtractor(read: String) {
-    var scannedToPos: Int = 0
+    var scannedToPos: Int = space.maxMotifLength - 2
     var markersByPos: List[Marker] = List()
 
-    //Final position with the rank has the lowest priority
-    def rankRemove(markers: List[Marker], rank: Int, amt: Int): List[Marker] = {
+    //Final position with the rank has the lowest priority.
+    //Reverses the list.
+    @tailrec
+    def rankRemove(markers: List[Marker], rank: Int, amt: Int, build: List[Marker] = Nil): List[Marker] = {
       if (amt == 0) {
-        markers
+        markers.reverse ::: build
       } else {
-        val idx = markers.indexWhere(_.features.tagRank == rank)
-        markers.take(idx) ::: rankRemove(markers.drop(idx + 1), rank, amt - 1)
+        val h = markers.head
+        if (h.features.tagRank == rank) {
+          rankRemove(markers.tail, rank, amt - 1, build)
+        } else {
+          rankRemove(markers.tail, rank, amt, h :: build)
+        }
       }
     }
 
@@ -46,9 +54,9 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
      * pos is the final position of the window we scan to, inclusive.
      */
     def scanTo(pos: Int): List[Marker] = {
-      if (pos > scannedToPos + 1) {
-        //Ensure we catch up
-        scanTo(pos - 1)
+      while (pos > scannedToPos + 1) {
+        //Catch up
+        scanTo(scannedToPos + 1)
       }
       if (pos < scannedToPos) {
         throw new Exception("Invalid parameter, please supply increasing values of pos only")
@@ -75,7 +83,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
             while (markersByPos.length > n) {
               val minRank = markersByPos.map(_.features.tagRank).min
               markersByPos =
-                rankRemove(markersByPos.reverse, minRank, markersByPos.length - n).reverse
+                rankRemove(markersByPos.reverse, minRank, markersByPos.length - n)
             }
           case None =>
         }
@@ -84,20 +92,22 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
     }
   }
 
-    def markerSetsInRead(read: String): List[MarkerSet] = {
+    def markerSetsInRead(read: String): Iterable[MarkerSet] = {
 //      Thread.sleep(500)
 //      println(s"Read $read")
 
       readCount += 1
 
+      var r = Vector[MarkerSet]()
       val ext = new MarkerExtractor(read)
-      for (p <- 0 until (k-1)) {
-        ext.scanTo(p)
-      }
-      val r = ((k - 1) until (read.size - space.maxMotifLength)).toList.map(p => {
+      ext.scanTo(k - 2)
+      var p = k - 1
+
+      while (p <= read.length - space.maxMotifLength) {
         kmerCount += 1
-        new MarkerSet(space, MarkerSet.relativePositionsFromSorted(space, ext.scanTo(p))).fromZero
-      })
+        r :+= new MarkerSet(space, MarkerSet.relativePositionsFromSorted(space, ext.scanTo(p))).fromZero
+        p += 1
+      }
 //      println(s"Extracted $r")
       r
     }

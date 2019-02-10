@@ -132,27 +132,23 @@ object MarkerSet {
    * Sort markers by position (should be absolute) and change to relative positions
    * (marker intervals)
    */
-  def relativePositions(space: MarkerSpace, ms: Seq[Marker]): Seq[Marker] = {
+  def relativePositions(space: MarkerSpace, ms: List[Marker]): List[Marker] = {
     relativePositionsFromSorted(space, ms.sortBy(_.pos))
   }
 
-  def relativePositionsFromSorted(space: MarkerSpace, bp: Seq[Marker]): Seq[Marker] = {
-        if (bp.size == 0) {
-      return bp
+  def relativePositionsFromSorted(space: MarkerSpace, bp: List[Marker]): List[Marker] = {
+    bp match {
+      case a :: xs =>
+        a :: relativePositionsFromSorted(space, a.pos, xs)
+      case _ => bp
     }
-    val first = bp.head
-    if (bp.size == 1) {
-      bp
-    } else {
-      val n = bp.size
-      val r = Array.fill[Marker](n)(null)
-      r(0) = first
-      var i = 1
-      while(i < n) {
-        r(i) = space.get(bp(i).tag, bp(i).pos - bp(i-1).pos)
-        i += 1
-      }
-      r
+  }
+
+  def relativePositionsFromSorted(space: MarkerSpace, lastPos: Int, bp: List[Marker]): List[Marker] = {
+    bp match {
+      case a :: xs =>
+        a.copy(pos = a.pos - lastPos) :: relativePositionsFromSorted(space, a.pos, xs)
+      case _ => Nil
     }
   }
 
