@@ -22,7 +22,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
    * times they appeared in the input, so that for a given read length, the return list
    * will always have the same length.
    */
-  def markerSetsInRead(read: String): List[MarkerSet] = synchronized {
+  def markerSetsInRead(read: String): List[MarkerSet] = {
 //    println(s"\nRead $read")
     var r = List[MarkerSet]()
     readCount += 1
