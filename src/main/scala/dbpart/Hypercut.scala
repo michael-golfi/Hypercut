@@ -22,7 +22,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   footer("Also see the documentation (to be written).")
 
   val k = opt[Int](required = true, descr = "Length of each k-mer")
-  val numMarkers = opt[Int](required = true, descr = "Number of markers to extract from each k-mer")
+  val numMarkers = opt[Int](required = true, descr = "Number of markers to extract from each k-mer", default = Some(4))
   val dbfile = opt[String](required = true, descr = "Path to database file (.kch) where sequences are stored")
 
   lazy val defaultBuckets = new SeqPrintBuckets(
@@ -44,6 +44,21 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     }
     addSubcommand(build)
 
+    val show = new Subcommand("show") with RunnableCommand {
+      val bucket = opt[String](required = true, descr = "Bucket to show")
+      def run() {}
+    }
+
+    val list = new HCCommand("list")({
+      ???
+    })
+
+    val copy = new Subcommand("copy") {
+      val minCoverage = opt[Int](descr = "Coverage cutoff to filter buckets by when copying")
+      val output = opt[String](required = true, descr = "Path to database file (.kch) to copy into")
+    }
+    addSubcommand(copy)
+
     val stats = new HCCommand("stats")({
       defaultBuckets.stats
     })
@@ -56,10 +71,14 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   }
   addSubcommand(buckets)
 
-  val graph = new HCCommand("graph")({
+  val graph = new Subcommand("graph") with RunnableCommand {
     val minCoverage = opt[Int](descr = "Coverage cutoff for graph construction")
-    defaultBuckets.makeGraphFindPaths()
-  })
+    val output = opt[String](required = true, descr = "Output file (.fasta) to write generated sequences to",
+        default = Some("hypercut.fasta"))
+    def run () {
+      defaultBuckets.makeGraphFindPaths()
+    }
+  }
   addSubcommand(graph)
 
   verify()
