@@ -21,20 +21,18 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   banner("Usage:")
   footer("Also see the documentation (to be written).")
 
-  val k = opt[Int](required = true)
-  val numMarkers = opt[Int](required = true)
-  val minQuality = opt[Int]()
+  val k = opt[Int](required = true, descr = "Length of each k-mer")
+  val numMarkers = opt[Int](required = true, descr = "Number of markers to extract from each k-mer")
+  val dbfile = opt[String](required = true, descr = "Path to database file (.kch) where sequences are stored")
+
+  lazy val defaultBuckets = new SeqPrintBuckets(
+    SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
+    dbfile.toOption.get, BucketDB.options)
 
   val buckets = new Subcommand("buckets") {
-    val dbfile = opt[String](required = true)
-
-    lazy val defaultBuckets = new SeqPrintBuckets(
-      SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
-      dbfile.toOption.get, BucketDB.options)
-
     val build = new Subcommand("build") with RunnableCommand {
-      val input = opt[String](required = true)
-      val mates = opt[String]()
+      val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
+      val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
 
       def run() {
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
@@ -58,9 +56,10 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   }
   addSubcommand(buckets)
 
-  val graph = new Subcommand("graph") {
-
-  }
+  val graph = new HCCommand("graph")({
+    val minCoverage = opt[Int](descr = "Coverage cutoff for graph construction")
+    defaultBuckets.makeGraphFindPaths()
+  })
   addSubcommand(graph)
 
   verify()

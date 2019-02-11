@@ -139,14 +139,12 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     var dist = db.kmerCoverageStats
     dist.print("Kmer coverage")
   }
-}
 
-object SeqPrintBuckets {
-  val space = MarkerSpace.default
+  def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
 
-  def makeGraph(kms: KmerSpace, sbs: SeqPrintBuckets) = {
+  def makeGraph(kms: KmerSpace) = {
     val graph = new FastAdjListGraph[MarkerSet]
-    for (key <- sbs.db.bucketKeys) {
+    for (key <- db.bucketKeys) {
       try {
         val n = asMarkerSet(key)
         graph.addNode(n)
@@ -160,7 +158,7 @@ object SeqPrintBuckets {
 
     println(graph.numNodes + " nodes")
 
-    for ((from, to) <- kms.completeEdges(space, sbs.numMarkers)) {
+    for ((from, to) <- kms.completeEdges(space, numMarkers)) {
       graph.uncheckedAddEdge(from, to)
     }
     println(graph.numEdges + " edges")
@@ -172,28 +170,19 @@ object SeqPrintBuckets {
     graph
   }
 
-  def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
+  def makeGraphFindPaths() {
+    var kms = new KmerSpace()
+    Stats.begin()
+    val graph = makeGraph(kms)
+    Stats.end("Construct graph")
+    kms = null //Recover memory
 
-  def main(args: Array[String]) {
+    Stats.begin()
+    val partBuild = new PartitionBuilder(graph)
+    var parts = partBuild.partition(2000)
+    Stats.end("Partition graph")
 
-    args(0) match {
-      case "graph" =>
-        Stats.begin()
-        var kms = new KmerSpace()
-        val k = args(1).toInt //e.g. 31
-        val numMarkers = args(2).toInt //e.g. 4
-        val dbfile = args(3)
-        val buckets = new SeqPrintBuckets(space, k, numMarkers, dbfile)
-        val graph = makeGraph(kms, buckets)
-        Stats.end("Construct graph")
-        kms = null //Recover memory
-
-        Stats.begin()
-        val partBuild = new PartitionBuilder(graph)
-        var parts = partBuild.partition(2000)
-        Stats.end("Partition graph")
-
-        val hist = new Histogram(parts.map(_.size), 20)
+      val hist = new Histogram(parts.map(_.size), 20)
         hist.print("Macro partition # marker sets")
 //        val numSeqs = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.size).sum)
 //        new Histogram(numSeqs, 20).print("Macro partition # sequences")
@@ -208,13 +197,12 @@ object SeqPrintBuckets {
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
         parts = partBuild.collapse(1000, parts)
-        findPaths(k, buckets, graph, parts)
-    }
-
+        findPaths(graph, parts)
   }
 
-  def findPaths(k: Int, buckets: SeqPrintBuckets, graph: Graph[MarkerSet],
-                parts: List[List[MarkerSet]]) {
+  def findPaths(
+    graph: Graph[MarkerSet],
+    parts: List[List[MarkerSet]]) {
     val pp = new PathPrinter("hypercut.fasta", k)
 
     var pcount = 0
@@ -228,7 +216,7 @@ object SeqPrintBuckets {
     for (p <- parts.par) {
       pcount += 1
 
-      val pathGraph = new PathGraphBuilder(buckets.db, List(p), graph).result
+      val pathGraph = new PathGraphBuilder(db, List(p), graph).result
       println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
 
       val ss = pp.findSequences(pathGraph)
@@ -248,5 +236,8 @@ object SeqPrintBuckets {
     new Histogram(lengths, 20).print("Contig length")
   }
 
+}
 
+object SeqPrintBuckets {
+  val space = MarkerSpace.default
 }
