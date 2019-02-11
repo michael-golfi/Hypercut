@@ -56,7 +56,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   //TODO: mate pairs
 
   def handle(read: String) = {
-    val kmers = read.sliding(k)
+    val kmers = Read.kmers(read, k)
     val mss = extractor.markerSetsInRead(read)
     if (extractor.readCount % 10000 == 0) {
       extractor.synchronized {
