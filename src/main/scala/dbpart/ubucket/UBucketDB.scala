@@ -44,7 +44,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
   def newBucket(values: Iterable[String]): B
 
-  def unpack(key: String, bucket: String): B = unpacker.unpack(key, bucket, k)
+  def unpack(key: String, bucket: String) = unpacker.unpack(key, bucket, k)
 
   def addSingle(key: String, record: String) {
     val v = Option(db.get(key))
@@ -175,9 +175,13 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
  * Buckets will contain lists of paths, not KMers.
  * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
  * can be used.
+ *
+ * The coverage filter, if present, affects extractor methods such as kmerBuckets, buckets,
+ * bucketKeys.
  */
-final class SeqBucketDB(location: String, options: String, val k: Int)
-extends BucketDB[CountingSeqBucket](location, options, new CountingUnpacker(location), k) {
+final class SeqBucketDB(location: String, options: String, val k: Int, minCoverage: Option[Int])
+extends BucketDB[CountingSeqBucket](location, options,
+    new CountingUnpacker(location, minCoverage), k) {
 
   def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
 

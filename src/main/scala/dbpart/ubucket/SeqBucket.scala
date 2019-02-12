@@ -164,14 +164,14 @@ object CountingSeqBucket {
 
 }
 
-class CountingUnpacker(dbLocation: String) extends Unpacker[CountingSeqBucket] {
+class CountingUnpacker(dbLocation: String, minCoverage: Option[Int]) extends Unpacker[CountingSeqBucket] {
   import CountingSeqBucket._
 
   val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"))
 
   def unpack(key: String, value: String, k: Int): CountingSeqBucket = {
     val cov = covDB.get(key)
-    new CountingSeqBucket(value.split(separator, -1), cov, k)
+    new CountingSeqBucket(value.split(separator, -1), cov, k).atMinCoverage(minCoverage)
   }
 }
 
@@ -179,6 +179,50 @@ final class CountingSeqBucket(sequences: Iterable[String],
   val coverage: CoverageBucket, k: Int,
   var sequencesUpdated: Boolean = false) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
   import CountingSeqBucket._
+
+  /**
+   * Produce a coverage-filtered version of this sequence bucket.
+   * sequencesUpdated is initially set to false.
+   */
+  def atMinCoverage(minCoverage: Option[Int]): CountingSeqBucket = {
+    minCoverage match {
+      case None => this
+      case Some(cov) => coverageFilter(cov)
+    }
+  }
+
+  def coverageFilter(cov: Int): CountingSeqBucket = {
+    var r: ArrayBuffer[String] = new ArrayBuffer(sequences.size)
+    var covR: ArrayBuffer[String] = new ArrayBuffer(sequences.size)
+    for {
+      (s,c) <- (sequences zip coverage.coverages)
+        filtered = coverageFilter(s, c, cov)
+        (fs, fc) <- filtered
+        if (fs.length > 0)
+    } {
+      r += s
+      covR += c
+    }
+    new CountingSeqBucket(r, new CoverageBucket(covR), k, false)
+  }
+
+  /**
+   * Filter a single contiguous sequence. Since it may be split as a result of
+   * coverage filtering, the result is a list of sequences.
+   * The result may contain empty sequences.
+   */
+  def coverageFilter(seq: String, covs: String, cov: Int): List[(String, String)] = {
+    if (covs.length() == 0) {
+      Nil
+    } else {
+      val dropKeepCov = covs.span(covToInt(_) < cov)
+      val keepNextCov = dropKeepCov._2.span(covToInt(_) >= cov)
+      val droppedLength = dropKeepCov._1.length
+      val keptLength = keepNextCov._1.length
+      val keepSeq = seq.substring(droppedLength, droppedLength + keptLength)
+      (keepSeq, keepNextCov._1) :: coverageFilter(seq.substring(droppedLength + keptLength), keepNextCov._2, cov)
+    }
+  }
 
   def kmerCoverages: Iterable[Int] = coverage.kmerCoverages
 

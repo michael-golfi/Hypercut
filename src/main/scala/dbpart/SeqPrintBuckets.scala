@@ -15,9 +15,9 @@ import miniasm.genome.util.DNAHelpers
 import friedrich.util.IO
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
-  dbOptions: String = BucketDB.options) {
+  dbOptions: String = BucketDB.options, minCov: Option[Int]) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
-  val db = new SeqBucketDB(dbfile, dbOptions, k)
+  val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
