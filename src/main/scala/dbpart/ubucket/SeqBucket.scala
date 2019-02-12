@@ -200,8 +200,8 @@ final class CountingSeqBucket(sequences: Iterable[String],
         (fs, fc) <- filtered
         if (fs.length > 0)
     } {
-      r += s
-      covR += c
+      r += fs
+      covR += fc
     }
     new CountingSeqBucket(r, new CoverageBucket(covR), k, false)
   }
