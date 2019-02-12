@@ -63,6 +63,18 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
   }
 
   /**
+   * Copy all values from another database of the same type.
+   */
+  def copyAllFrom(other: BucketDB[B]) {
+    for (bs <- other.buckets.grouped(1000)) {
+      val data = Map() ++ bs.map(b => b._1 -> b._2)
+      val dataPk = Map() ++ bs.map(b => b._1 -> b._2.pack)
+      db.set_bulk(dataPk.asJava, false)
+      afterBulkWrite(data)
+    }
+  }
+
+  /**
    * Merge new values into the existing values. Returns a map of buckets
    * that need to be written back to the database.
    */
@@ -86,7 +98,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
   protected def shouldWriteBack(key: String, bucket: B): Boolean = true
 
-  protected def afterMerge(merged: CMap[String, B]) {}
+  protected def afterBulkWrite(merged: CMap[String, B]) {}
 
   protected def beforeBulkLoad(keys: Iterable[String]) {}
 
@@ -110,7 +122,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     for (insertGr <- insert.grouped(10000).toSeq.par) {
       val existing = getBulk(insertGr.keys)
       val merged = merge(existing, insertGr)
-      afterMerge(merged)
+      afterBulkWrite(merged)
       val forWrite = merged.filter(x => shouldWriteBack(x._1, x._2)).map(
         x => (x._1 -> x._2.pack))
 
@@ -177,7 +189,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
  * can be used.
  *
  * The coverage filter, if present, affects extractor methods such as kmerBuckets, buckets,
- * bucketKeys.
+ * getBulk, bucketKeys.
  */
 final class SeqBucketDB(location: String, options: String, val k: Int, minCoverage: Option[Int])
 extends BucketDB[CountingSeqBucket](location, options,
@@ -187,6 +199,14 @@ extends BucketDB[CountingSeqBucket](location, options,
 
   def newBucket(values: Iterable[String]) =
     new CountingSeqBucket(Iterable.empty, new CoverageBucket(Iterable.empty), k).insertBulk(values).get
+
+  override def buckets =
+    super.buckets.filter(! _._2.sequences.isEmpty)
+
+  //Note: this is less efficient than the supertype operation since we have to unpack every bucket
+  //and filter by coverage
+  override def bucketKeys =
+    buckets.map(_._1)
 
   /**
    * Only write back sequences if they did actually change
@@ -201,7 +221,7 @@ extends BucketDB[CountingSeqBucket](location, options,
   /**
    * Always write back coverage when a bucket changes
    */
-  override protected def afterMerge(merged: CMap[String, CountingSeqBucket]) {
+  override protected def afterBulkWrite(merged: CMap[String, CountingSeqBucket]) {
     covDB.setBulk(merged.map(x => x._1 -> x._2.coverage))
   }
 

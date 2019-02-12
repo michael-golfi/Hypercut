@@ -3,6 +3,7 @@ package dbpart
 import org.rogach.scallop.ScallopConf
 import org.rogach.scallop.Subcommand
 import dbpart.ubucket.BucketDB
+import dbpart.ubucket.SeqBucketDB
 
 trait RunnableCommand {
   this: Subcommand =>
@@ -54,9 +55,12 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       ???
     })
 
-    val copy = new Subcommand("copy") {
-      val minCoverage = opt[Int](descr = "Coverage cutoff to filter buckets by when copying")
-      val output = opt[String](required = true, descr = "Path to database file (.kch) to copy into")
+    val copy = new Subcommand("copy", "filter") with RunnableCommand {
+      val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
+      def run() {
+        val out = new SeqBucketDB(output.toOption.get, BucketDB.options, k.toOption.get, None)
+        out.copyAllFrom(defaultBuckets.db)
+      }
     }
     addSubcommand(copy)
 
@@ -73,7 +77,6 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   addSubcommand(buckets)
 
   val graph = new Subcommand("graph") with RunnableCommand {
-    val minCoverage = opt[Int](descr = "Coverage cutoff for graph construction")
     val output = opt[String](required = true, descr = "Output file (.fasta) to write generated sequences to",
         default = Some("hypercut.fasta"))
     def run () {
