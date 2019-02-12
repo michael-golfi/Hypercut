@@ -210,6 +210,17 @@ final class CountingSeqBucket(sequences: Iterable[String],
    * Filter a single contiguous sequence. Since it may be split as a result of
    * coverage filtering, the result is a list of sequences.
    * The result may contain empty sequences.
+   *
+   * Example sequence assuming k=4:
+   * ACTGGTG
+   * Coverage:
+   * 3313
+   * Cut at k=3
+   * The result splits the sequence and should then be:
+   * ACTGG
+   * 33
+   * GGTG
+   * 3
    */
   def coverageFilter(seq: String, covs: String, cov: Int): List[(String, String)] = {
     if (covs.length() == 0) {
@@ -219,7 +230,11 @@ final class CountingSeqBucket(sequences: Iterable[String],
       val keepNextCov = dropKeepCov._2.span(covToInt(_) >= cov)
       val droppedLength = dropKeepCov._1.length
       val keptLength = keepNextCov._1.length
-      val keepSeq = seq.substring(droppedLength, droppedLength + keptLength)
+      val keepSeq = if (keptLength > 0) {
+        seq.substring(droppedLength, droppedLength + keptLength + k - 1)
+      } else {
+        ""
+      }
       (keepSeq, keepNextCov._1) :: coverageFilter(seq.substring(droppedLength + keptLength), keepNextCov._2, cov)
     }
   }
