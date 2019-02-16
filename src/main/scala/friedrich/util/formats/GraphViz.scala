@@ -13,42 +13,41 @@ import java.io._
  * Utility methods for exporting Graphs to .dot graphviz files.
  */
 object GraphViz {
-  
+
   private def begin(file: String, headerLine: String) = {
     val w = new PrintWriter(new FileWriter(file))
     w.println(headerLine)
     w
   }
-  
+
   private def end(w: PrintWriter) {
     w.println("}")
     w.close()
   }
-  
+
   /**
    * Write an undirected graph to a .dot file (graphviz format)
    */
   def writeUndirected[T <: AnyRef](g: Graph[T], file: String,
-      edgeFormat: T => String) = {
-    val w = begin(file, "graph mygraph {")    
-    for (n <- g.nodes; e <- g.edgesFrom(n)) {    
-      w.println("  \"" + edgeFormat(n) + "\" -- \"" + edgeFormat(e) + "\"")
+      nodeFormat: T => String): Unit = {
+    val w = begin(file, "digraph mygraph {")
+    for (n <- g.nodes; e <- g.edgesFrom(n)) {
+      w.println("  \"" + nodeFormat(n) + "\" -> \"" + nodeFormat(e) + "\"")
     }
-    end(w)    
+    end(w)
   }
-  
+
   /**
    * Write a directed graph to a .dot file (graphviz format)
    */
   def writeDirected[T <: AnyRef](g: Graph[T], file: String,
-      edgeFormat: T => String) = {
-    val w = begin(file, "digraph mygraph {")    
+      nodeFormat: T => String): Unit = {
+    val w = begin(file, "digraph mygraph {")
     for (e <- g.edges) {
-      w.println("  \"" + edgeFormat(e._1) + "\" -> \"" + edgeFormat(e._2) + "\"")
+      w.println("  \"" + nodeFormat(e._1) + "\" -> \"" + nodeFormat(e._2) + "\"")
     }
-    end(w)        
+    end(w)
   }
-  
-  def write[T <: AnyRef](g: Graph[T], file: String) =
-    writeDirected(g, file, (x: T) => x.toString)
+
+  def write[T <: AnyRef](g: Graph[T], file: String): Unit = writeDirected(g, file, (x: T) => x.toString)
 }

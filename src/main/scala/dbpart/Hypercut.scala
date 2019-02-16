@@ -79,8 +79,10 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   val graph = new Subcommand("graph") with RunnableCommand {
     val output = opt[String](required = true, descr = "Output file (.fasta) to write generated sequences to",
         default = Some("hypercut.fasta"))
+    val partitionGraphs = toggle("partitionGraphs", default = Some(false), descrYes = "Output partition graphs as .dot files")
+    
     def run () {
-      defaultBuckets.makeGraphFindPaths()
+      defaultBuckets.makeGraphFindPaths(partitionGraphs.toOption.get)
     }
   }
   addSubcommand(graph)

@@ -13,6 +13,7 @@ import dbpart.graph.PathPrinter
 import friedrich.graph.Graph
 import miniasm.genome.util.DNAHelpers
 import friedrich.util.IO
+import dbpart.graph.PathNode
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
   dbOptions: String = BucketDB.options, minCov: Option[Int]) {
@@ -170,7 +171,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     graph
   }
 
-  def makeGraphFindPaths() {
+  def makeGraphFindPaths(partitionGraphs: Boolean) {
     var kms = new KmerSpace()
     Stats.begin()
     val graph = makeGraph(kms)
@@ -179,7 +180,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
     Stats.begin()
     val partBuild = new PartitionBuilder(graph)
-    var parts = partBuild.partition(2000)
+    var parts = partBuild.partition(10000)
     Stats.end("Partition graph")
 
       val hist = new Histogram(parts.map(_.size), 20)
@@ -196,13 +197,14 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
-        parts = partBuild.collapse(1000, parts)
-        findPaths(graph, parts)
+        parts = partBuild.collapse(10000, parts)
+        findPaths(graph, parts, partitionGraphs)
   }
 
   def findPaths(
     graph: Graph[MarkerSet],
-    parts: List[List[MarkerSet]]) {
+    parts: List[List[MarkerSet]],
+    debugGraphs: Boolean) {
     val pp = new PathPrinter("hypercut.fasta", k)
 
     var pcount = 0
@@ -212,7 +214,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     val minLength = 50
     val minPrintLength = 65
     Stats.begin()
-    //Collapse small partitions and then iterate over the result
     for (p <- parts.par) {
       pcount += 1
 
@@ -229,6 +230,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         if (s.length >= minPrintLength) {
           pp.printSequence(s"hypercut-part$pcount", s)
         }
+      }
+
+      if (debugGraphs) {
+        GraphViz.writeUndirected(pathGraph, s"part$pcount.dot", (n: PathNode) => n.seq)
       }
     }
     pp.close()

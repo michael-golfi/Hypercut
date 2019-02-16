@@ -6,10 +6,10 @@ import dbpart.MarkerSet
 import friedrich.graph.Graph
 import dbpart.FastAdjListGraph
 import scala.annotation.tailrec
+import friedrich.util.formats.GraphViz
 
 /**
- * A graph where every node is an unambiguous path of maximal length.
- * Paths are constructed by joining together nodes within partitions, up to the partition limit.
+ * Builds a graph where every node is an unambiguous sequence path.
  */
 class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[MarkerSet]],
                        macroGraph: Graph[MarkerSet]) {
@@ -21,9 +21,18 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
     addPartition(p)
   }
 
+  /**
+   * Add marker set buckets to the path graph.
+   * The buckets passed in together are assumed to potentially contain adjacent sequences,
+   * and will be scanned for such. If they are found, an edge between two sequences is added
+   * to the graph being constructed.
+   */
   def addPartition(part: Iterable[MarkerSet]) {
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
+
+    //For manual inspection of local features
+    val localGraph = new DoublyLinkedGraph[PathNode]
 
     val partSet = part.toSet
     val sequences = Map() ++ pathdb.getBulk(part.map(_.packedString)).
@@ -48,7 +57,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       }
     }
 
-    val byEnd = sequences.map(x => (x._1 -> x._2.groupBy(_.seq.substring(1, k))))
+    val byEnd = sequences.map(x => (x._1 -> x._2.groupBy(_.seq.takeRight(k - 1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
     /**
