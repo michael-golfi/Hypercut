@@ -133,14 +133,14 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
 /**
  * A sequence bucket that merges sequences and tracks the coverage
  * of each k-mer.
- * Coverages are tracked similar to phred scores, with a single ascii char
+ * Coverages are tracked similar to phred scores, with a single unicode char
  * for each k-mer. They are clipped at a maximum bound.
  */
 object CountingSeqBucket {
   val separator: String = SeqBucket.separator
 
   val zeroCoverage = '0'
-  val coverageCutoff = 150
+  val coverageCutoff = 5000
   val maxCoverage = (zeroCoverage + coverageCutoff).toChar
 
   def asCoverage(cov: Int): Char = {
