@@ -164,7 +164,7 @@ object MarkerSet {
 final class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
   import MarkerSet._
 
-  var tag1: Boolean = false
+  var inPartition: Boolean = false
 
   lazy val packedString = relativeMarkers.map(_.packedString).mkString(".")
 

@@ -144,7 +144,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
 
   def makeGraph(kms: KmerSpace) = {
-    val graph = new FastAdjListGraph[MarkerSet]
+    val graph = new DoublyLinkedGraph[MarkerSet]
     for (key <- db.bucketKeys) {
       try {
         val n = asMarkerSet(key)
@@ -180,7 +180,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
     Stats.begin()
     val partBuild = new PartitionBuilder(graph)
-    var parts = partBuild.partition(10000)
+    var parts = partBuild.partition(25000)
     Stats.end("Partition graph")
 
       val hist = new Histogram(parts.map(_.size), 20)
@@ -197,7 +197,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
-        parts = partBuild.collapse(10000, parts)
+        parts = partBuild.collapse(25000, parts)
         findPaths(graph, parts, partitionGraphs)
   }
 

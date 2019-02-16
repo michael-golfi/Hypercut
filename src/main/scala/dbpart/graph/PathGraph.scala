@@ -31,9 +31,6 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
-    //For manual inspection of local features
-    val localGraph = new DoublyLinkedGraph[PathNode]
-
     val partSet = part.toSet
     val sequences = Map() ++ pathdb.getBulk(part.map(_.packedString)).
       map(x => (x._1 -> x._2.sequences.map(new PathNode(_))))

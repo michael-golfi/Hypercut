@@ -5,11 +5,11 @@ import scala.collection.mutable.{ Set => MSet, Map => MMap }
 import scala.annotation.tailrec
 import dbpart.ubucket.BucketDB
 
-class PartitionBuilder(graph: Graph[MarkerSet]) {
+final class PartitionBuilder(graph: Graph[MarkerSet]) {
   type Node = MarkerSet
   type Partition = List[Node]
 
-  class Partitioner(groupSize: Int) {
+  final class Partitioner(groupSize: Int) {
 
     var assignCount = 0
     val totalCount = graph.numNodes
@@ -17,38 +17,41 @@ class PartitionBuilder(graph: Graph[MarkerSet]) {
     def partitions: List[Partition] = {
       //tag1 will indicate whether the node is in a partition
       for (n <- graph.nodes) {
-        n.tag1 = false
+        n.inPartition = false
+        n.seen = false
       }
 
       var r = List[Partition]()
-      for (n <- graph.nodes; if ! n.tag1) {
-        n.tag1 = true
-        assignCount += 1
-        val group = from(n, List(n), 1)
-        r ::= group
+      for (n <- graph.nodes; if ! n.inPartition) {
+//        n.tag1 = true
+//        assignCount += 1
+//        r ::= BFSfrom(n, List(n), 1)\
+        val part = growFrom(n, groupSize)
+        r ::= part
       }
       r
     }
 
-    @tailrec
-    final def from(n: Node, soFar: List[Node], soFarSize: Int): List[Node] = {
-      if (soFarSize >= groupSize || (assignCount == totalCount)) {
-        soFar
-      } else {
-        val next = graph.edgesFrom(n).filter(a => !a.tag1)
-        val need = groupSize - soFarSize
-        val useNext = (next take need)
+    def degree(n: Node): Int = graph.fromDegree(n) + graph.toDegree(n)
 
-        for (un <- useNext) {
-          un.tag1 = true
-          assignCount += 1
-        }
-        if (useNext.isEmpty) {
-          soFar
-        } else {
-          from(useNext.head, useNext.toList ::: soFar, soFarSize + useNext.size)
+    def growFrom(n: Node, maxSize: Int): List[Node] = {
+      var soFarSize = 1
+      var r: List[Node] = List(n)
+      n.inPartition = true
+      var stack: List[Node] = graph.edges(n).toList
+      while (!stack.isEmpty && soFarSize < maxSize) {
+        val o = stack.head
+        stack = stack.tail
+        if (!o.inPartition) {
+          r ::= o
+          o.inPartition = true
+          soFarSize += 1
+          //favour low-degree nodes in an effort to avoid branches
+          //expensive.
+          stack :::= graph.edges(o).toList.sortBy(degree)
         }
       }
+      r
     }
   }
 
