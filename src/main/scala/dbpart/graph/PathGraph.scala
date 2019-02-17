@@ -85,8 +85,8 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
         realEdges += ((subpart, toBucket))
       }
       for {
-        from <- fromSeqs
         to <- toSeqs
+        from <- fromSeqs
       } {
         result.addEdge(from, to)
       }
