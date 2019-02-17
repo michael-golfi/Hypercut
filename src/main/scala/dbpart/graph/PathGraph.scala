@@ -57,7 +57,6 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
     val byEnd = sequences.map(x => (x._1 -> x._2.groupBy(_.seq.takeRight(k - 1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
-    var realEdges = 0
     var hypotheticalEdges = 0
 
     // Counting hypothetical edges (between buckets) for testing purposes
@@ -68,29 +67,31 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       hypotheticalEdges += toInside.size
     }
 
+    var realEdges = Set[(MarkerSet, MarkerSet)]()
+
     /**
      * Constructing all the edges here can be somewhat expensive.
      */
     for {
       subpart <- part
+      (overlap, fromSeqs) <- byEnd(subpart.packedString)
       toInside = macroGraph.edgesFrom(subpart).iterator.filter(partSet.contains)
-      (overlap, ss) <- byEnd(subpart.packedString)
       toBucket <- toInside
     } {
       val toSeqs = sorted(toBucket.packedString).iterator.
         dropWhile(!_.seq.startsWith(overlap)).
         takeWhile(_.seq.startsWith(overlap))
       if (!toSeqs.isEmpty) {
-        realEdges += 1
+        realEdges += ((subpart, toBucket))
       }
       for {
+        from <- fromSeqs
         to <- toSeqs
-        s <- ss
       } {
-        result.addEdge(s, to)
+        result.addEdge(from, to)
       }
     }
-    println(s"Real/hypothetical edges $realEdges/$hypotheticalEdges")
+    println(s"Real/hypothetical edges ${realEdges.size}/$hypotheticalEdges")
   }
 
 }
