@@ -76,7 +76,7 @@ final class PartitionBuilder(graph: Graph[MarkerSet]) {
         }
       case _ =>
         //Stop here
-        acc
+        acc.filter(!_.isEmpty)
     }
   }
 

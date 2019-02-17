@@ -15,7 +15,8 @@ import dbpart.SeqPrintBuckets
  * from each partition.
  */
 class PathExtraction(buckets: SeqPrintBuckets,
-  partitionSize: Int, minPrintLength: Int, outputPartitionGraphs: Boolean) {
+  partitionSize: Int, minPrintLength: Int, outputPartitionGraphs: Boolean,
+  printReasons: Boolean) {
   val k: Int = buckets.k
   val db: dbpart.ubucket.SeqBucketDB = buckets.db
 
@@ -50,7 +51,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
   }
 
   def printPaths(graph: Graph[MarkerSet], parts: List[List[MarkerSet]]) {
-    val pp = new PathPrinter("hypercut.fasta", k)
+    val pp = new PathPrinter("hypercut.fasta", k, printReasons)
 
     var pcount = 0
 

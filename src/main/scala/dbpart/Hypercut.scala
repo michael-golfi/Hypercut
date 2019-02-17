@@ -87,10 +87,13 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     val minLength = opt[Int](default = Some(65), descr = "Minimum length of contigs to print")
     val partitionGraphs = toggle("partitionGraphs", default = Some(false),
       descrYes = "Output partition graphs as .dot files")
+    val reasons = toggle("reasons", default = Some(false),
+      descrYes = "Output reasons for contig endings")
 
     def run () {
       val extr = new PathExtraction(defaultBuckets, partitionSize.toOption.get,
-        minLength.toOption.get, partitionGraphs.toOption.get)
+        minLength.toOption.get, partitionGraphs.toOption.get,
+        reasons.toOption.get)
       extr.printPathsByPartition()
     }
   }
