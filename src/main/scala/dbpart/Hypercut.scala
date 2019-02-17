@@ -4,6 +4,7 @@ import org.rogach.scallop.ScallopConf
 import org.rogach.scallop.Subcommand
 import dbpart.ubucket.BucketDB
 import dbpart.ubucket.SeqBucketDB
+import dbpart.graph.PathExtraction
 
 trait RunnableCommand {
   this: Subcommand =>
@@ -88,8 +89,9 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       descrYes = "Output partition graphs as .dot files")
 
     def run () {
-      defaultBuckets.makeGraphFindPaths(partitionSize.toOption.get,
+      val extr = new PathExtraction(defaultBuckets, partitionSize.toOption.get,
         minLength.toOption.get, partitionGraphs.toOption.get)
+      extr.printPathsByPartition()
     }
   }
   addSubcommand(graph)
