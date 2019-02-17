@@ -158,7 +158,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
 
     println(graph.numNodes + " nodes")
-    for ((from, to) <- validateEdges(kms.completeEdges(space, numMarkers))) {
+    val edges = validateEdges(kms.completeEdges(space, numMarkers))
+    for ((from, to) <- edges) {
       graph.uncheckedAddEdge(from, to)
     }
     println(s"${graph.numEdges} edges (filtered out $filteredOutEdges)")
@@ -176,10 +177,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   //Should eventually be replaced by a dedicated edges database built at
   //insertion time.
   def validateEdges(edges: Iterator[(MarkerSet, MarkerSet)]) = {
-    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.heads))
+    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.heads.toSet))
     val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.tails))
     edges.filter(e => {
-      val ts = allTails(e._1.packedString).toSet
+      val ts = allTails(e._1.packedString)
       val hs = allHeads(e._2.packedString)
       val pass = hs.exists(ts.contains)
       if (!pass) {
@@ -189,7 +190,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     })
   }
 
-  def makeGraphFindPaths(partitionGraphs: Boolean) {
+  def makeGraphFindPaths(partitionSize: Int, minPrintLength: Int, partitionGraphs: Boolean) {
     var kms = new KmerSpace()
     Stats.begin()
     val graph = makeGraph(kms)
@@ -198,7 +199,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
     Stats.begin()
     val partBuild = new PartitionBuilder(graph)
-    var parts = partBuild.partition(25000)
+    var parts = partBuild.partition(partitionSize)
     Stats.end("Partition graph")
 
       val hist = new Histogram(parts.map(_.size), 20)
@@ -215,13 +216,14 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
 //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
 
-        parts = partBuild.collapse(25000, parts)
-        findPaths(graph, parts, partitionGraphs)
+        parts = partBuild.collapse(partitionSize, parts)
+        findPaths(graph, parts, minPrintLength, partitionGraphs)
   }
 
   def findPaths(
     graph: Graph[MarkerSet],
     parts: List[List[MarkerSet]],
+    minPrintLength: Int,
     debugGraphs: Boolean) {
     val pp = new PathPrinter("hypercut.fasta", k)
 
@@ -229,8 +231,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
     @volatile
     var lengths = List[Int]()
-    val minLength = 50
-    val minPrintLength = 65
+    val minLength = k + 10
     Stats.begin()
     for (p <- parts.par) {
       pcount += 1
@@ -244,7 +245,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         if (s.length >= minLength) {
           lengths ::= s.length
         }
-        lengths ::= s.length
         if (s.length >= minPrintLength) {
           pp.printSequence(s"hypercut-part$pcount", s)
         }

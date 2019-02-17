@@ -23,8 +23,10 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   footer("Also see the documentation (to be written).")
 
   val k = opt[Int](required = true, descr = "Length of each k-mer")
-  val numMarkers = opt[Int](required = true, descr = "Number of markers to extract from each k-mer", default = Some(4))
-  val dbfile = opt[String](required = true, descr = "Path to database file (.kch) where sequences are stored")
+  val numMarkers = opt[Int](required = true,
+      descr = "Number of markers to extract from each k-mer", default = Some(4))
+  val dbfile = opt[String](required = true,
+      descr = "Path to database file (.kch) where sequences are stored")
   val minCov = opt[Int](descr = "Minimum coverage cutoff (does not affect the 'buckets build' command)")
 
   lazy val defaultBuckets = new SeqPrintBuckets(
@@ -77,12 +79,17 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   addSubcommand(buckets)
 
   val graph = new Subcommand("graph") with RunnableCommand {
-    val output = opt[String](required = true, descr = "Output file (.fasta) to write generated sequences to",
+    val output = opt[String](required = true,
+        descr = "Output file (.fasta) to write generated sequences to",
         default = Some("hypercut.fasta"))
-    val partitionGraphs = toggle("partitionGraphs", default = Some(false), descrYes = "Output partition graphs as .dot files")
-    
+    val partitionSize = opt[Int](default = Some(100000), descr = "Desired partition size of macro graph")
+    val minLength = opt[Int](default = Some(65), descr = "Minimum length of contigs to print")
+    val partitionGraphs = toggle("partitionGraphs", default = Some(false),
+      descrYes = "Output partition graphs as .dot files")
+
     def run () {
-      defaultBuckets.makeGraphFindPaths(partitionGraphs.toOption.get)
+      defaultBuckets.makeGraphFindPaths(partitionSize.toOption.get,
+        minLength.toOption.get, partitionGraphs.toOption.get)
     }
   }
   addSubcommand(graph)
