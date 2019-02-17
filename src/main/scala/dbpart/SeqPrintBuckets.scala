@@ -158,17 +158,35 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
 
     println(graph.numNodes + " nodes")
-
-    for ((from, to) <- kms.completeEdges(space, numMarkers)) {
+    for ((from, to) <- validateEdges(kms.completeEdges(space, numMarkers))) {
       graph.uncheckedAddEdge(from, to)
     }
-    println(graph.numEdges + " edges")
+    println(s"${graph.numEdges} edges (filtered out $filteredOutEdges)")
 
     Distribution.printStats("Node degree", graph.nodes.map(graph.degree))
 
     val hist = new Histogram(Seq() ++ graph.nodes.map(graph.degree))
     hist.print("Node degree")
     graph
+  }
+
+  var filteredOutEdges = 0
+
+  //Testing operation that is probably slow and memory intensive.
+  //Should eventually be replaced by a dedicated edges database built at
+  //insertion time.
+  def validateEdges(edges: Iterator[(MarkerSet, MarkerSet)]) = {
+    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.heads))
+    val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.tails))
+    edges.filter(e => {
+      val ts = allTails(e._1.packedString).toSet
+      val hs = allHeads(e._2.packedString)
+      val pass = hs.exists(ts.contains)
+      if (!pass) {
+        filteredOutEdges += 1
+      }
+      pass
+    })
   }
 
   def makeGraphFindPaths(partitionGraphs: Boolean) {

@@ -128,6 +128,18 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
   def size: Int = {
     sequences.size
   }
+
+  /**
+   * Distinct k-1 length beginnings of sequences in this bucket
+   */
+  def heads: Iterable[String] =
+    sequences.map(_.take(k-1)).toSeq.distinct
+
+  /**
+   * Distinct k-1 length endings of sequences in this bucket
+   */
+  def tails: Iterable[String] =
+    sequences.map(_.takeRight(k-1)).toSeq.distinct
 }
 
 /**

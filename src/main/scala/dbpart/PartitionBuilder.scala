@@ -18,7 +18,6 @@ final class PartitionBuilder(graph: Graph[MarkerSet]) {
       //tag1 will indicate whether the node is in a partition
       for (n <- graph.nodes) {
         n.inPartition = false
-        n.seen = false
       }
 
       var r = List[Partition]()
