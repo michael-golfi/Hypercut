@@ -60,7 +60,7 @@ class Histogram(values: Seq[Int], bnum: Int = 10) {
 
   val mpos = values.size/2
   var srt = values.toArray.sorted
-  val median = srt(mpos)
+  val median = if (values.size > 0) Some(srt(mpos)) else None
 
   for (v <- values) {
     val i = buckets.indexWhere(_ >= v)
