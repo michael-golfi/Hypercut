@@ -22,23 +22,45 @@ final class PartitionBuilder(graph: Graph[MarkerSet]) {
 
       var r = List[Partition]()
       for (n <- graph.nodes; if ! n.inPartition) {
-//        n.tag1 = true
-//        assignCount += 1
-//        r ::= BFSfrom(n, List(n), 1)\
-        val part = growFrom(n, groupSize)
-        r ::= part
+        r ::= BFSfrom(n)        
       }
       r
     }
 
+    def BFSfrom(n: Node): List[Node] = {
+      n.inPartition = true
+      assignCount += 1
+      BFSfrom(List(n), 1, List(n))
+    }
+    
+    @tailrec
+    final def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
+      if (soFarSize >= groupSize || (assignCount == totalCount)) {
+        soFar
+      } else {
+        if (!nextLevel.isEmpty) {
+          val next = nextLevel.flatMap(n => graph.edgesFrom(n).filter(a => !a.inPartition))
+          val need = groupSize - soFarSize
+          val useNext = (next take need)
+          for (un <- useNext) {
+            un.inPartition = true
+            assignCount += 1
+          }
+          BFSfrom(useNext.toList ::: soFar, soFarSize + useNext.size, useNext)
+        } else {
+          soFar
+        }
+      }
+    }
+    
     def degree(n: Node): Int = graph.fromDegree(n) + graph.toDegree(n)
 
-    def growFrom(n: Node, maxSize: Int): List[Node] = {
+    def DFSfrom(n: Node): List[Node] = {
       var soFarSize = 1
       var r: List[Node] = List(n)
       n.inPartition = true
       var stack: List[Node] = graph.edges(n).toList
-      while (!stack.isEmpty && soFarSize < maxSize) {
+      while (!stack.isEmpty && soFarSize < groupSize) {
         val o = stack.head
         stack = stack.tail
         if (!o.inPartition) {

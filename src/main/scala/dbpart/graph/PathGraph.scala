@@ -73,17 +73,26 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
      * Constructing all the edges here can be somewhat expensive.
      */
     for {
-      subpart <- part
-      (overlap, fromSeqs) <- byEnd(subpart.packedString)
-      toInside = macroGraph.edgesFrom(subpart).iterator.filter(partSet.contains)
+      fromBucket <- part
+      (overlap, fromSeqs) <- byEnd(fromBucket.packedString)
+      toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
       toBucket <- toInside
     } {
       val toSeqs = sorted(toBucket.packedString).iterator.
         dropWhile(!_.seq.startsWith(overlap)).
-        takeWhile(_.seq.startsWith(overlap))
+        takeWhile(_.seq.startsWith(overlap)).toSeq
       if (!toSeqs.isEmpty) {
-        realEdges += ((subpart, toBucket))
+        realEdges += ((fromBucket, toBucket))
       }
+//
+//      synchronized {
+//        println(s"${fromBucket.packedString} -> ${toBucket.packedString}")
+//        println(fromSeqs.map(_.seq).mkString("\t"))
+//        println(s"[[ overlap $overlap to ]]")
+//        println(toSeqs.map(_.seq).mkString("\t"))
+//        Thread.sleep(1000)
+//      }
+
       for {
         to <- toSeqs
         from <- fromSeqs
