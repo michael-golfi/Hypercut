@@ -55,6 +55,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
     val r = for {
       n <- graph.nodes
       if !n.seen
+      if !n.noise
       p1 = extendForward(graph, n)
       p2 = extendBackward(graph, n)
       p = Contig(p2._1 ::: p1._1.reverse.tail, k,
@@ -77,12 +78,12 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   @tailrec
   def extendForward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): (List[PathNode], String) = {
     from.seen = true
-    val ef = graph.edgesFrom(from)
+    val ef = graph.edgesFrom(from).filter(! _.noise)
     if (ef.size > 1 || ef.size == 0) {
       (from :: acc, edgeStopReason(ef))
     } else {
       val candidate = ef.head
-      val et = graph.edgesTo(candidate)
+      val et = graph.edgesTo(candidate).filter(! _.noise)
       if (et.size > 1 || candidate.seen) {
         (from :: acc, edgeStopReason(et))
       } else {
@@ -95,12 +96,12 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   @tailrec
   def extendBackward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): (List[PathNode], String) = {
     from.seen = true
-    val et = graph.edgesTo(from)
+    val et = graph.edgesTo(from).filter(! _.noise)
     if (et.size > 1 || et.size == 0) {
       (from :: acc, edgeStopReason(et))
     } else {
       val candidate = et.head
-      val ef = graph.edgesFrom(candidate)
+      val ef = graph.edgesFrom(candidate).filter(! _.noise)
       if (ef.size > 1 || candidate.seen) {
         (from :: acc, edgeStopReason(ef))
       } else {

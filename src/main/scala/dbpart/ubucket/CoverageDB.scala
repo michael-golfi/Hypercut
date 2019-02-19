@@ -13,6 +13,13 @@ final class CoverageBucket(val coverages: Iterable[String]) {
 
   def kmerCoverages: Iterable[Int] = coverages.flatMap(_.map(covToInt))
 
+  def sequenceCoverages: Iterable[Iterable[Int]] = coverages.map(_.map(covToInt))
+
+  def average(xs: Iterable[Double]): Double = xs.sum/xs.size
+
+  def sequenceAvgCoverages: Iterable[Double] =
+    sequenceCoverages.map(sc => average(sc.map(_.toDouble)))
+
   def pack: String = coverages.mkString(separator)
 }
 

@@ -192,6 +192,9 @@ final class CountingSeqBucket(sequences: Iterable[String],
   var sequencesUpdated: Boolean = false) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
   import CountingSeqBucket._
 
+  def sequencesWithCoverage =
+    sequences zip coverage.sequenceAvgCoverages
+
   /**
    * Produce a coverage-filtered version of this sequence bucket.
    * sequencesUpdated is initially set to false.
