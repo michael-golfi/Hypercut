@@ -45,11 +45,11 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       sequence <-  kmers(subpart.packedString)
     } {
       for { n <- sequence } { result.addNode(n) }
-      if (sequence.size > 1) {
-        for { edge <- sequence.sliding(2) } {
-          result.addEdge(edge(0), edge(1))
-        }
-      }
+//      if (sequence.size > 1) {
+//        for { edge <- sequence.sliding(2) } {
+//          result.addEdge(edge(0), edge(1))
+//        }
+//      }
     }
 
 //    var sortedCache = Map[String, List[PathNode]]()
@@ -86,7 +86,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       fromBucket <- part
       (overlap, fromSeqs) <- byEnd(fromBucket.packedString)
       toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
-      toBucket <- toInside
+      toBucket <- toInside ++ Iterator(fromBucket)
     } {
 //      val toSeqs = sorted(toBucket.packedString).iterator.
 //        dropWhile(!_.seq.startsWith(overlap)).
