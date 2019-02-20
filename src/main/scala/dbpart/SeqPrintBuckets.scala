@@ -177,8 +177,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   //Should eventually be replaced by a dedicated edges database built at
   //insertion time.
   def validateEdges(edges: Iterator[(MarkerSet, MarkerSet)]) = {
-    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.heads.toSet))
-    val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.tails))
+    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(0, k - 1))))
+    val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(1)).toSet))
     edges.filter(e => {
       val ts = allTails(e._1.packedString)
       val hs = allHeads(e._2.packedString)

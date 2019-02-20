@@ -9,57 +9,66 @@ import scala.annotation.tailrec
 import friedrich.util.formats.GraphViz
 
 /**
- * Builds a graph where every node is an unambiguous sequence path.
+ * Builds a graph that contains both inter-bucket and intra-bucket edges in a
+ * region.
  */
 class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[MarkerSet]],
                        macroGraph: Graph[MarkerSet]) {
 
   val k: Int = pathdb.k
-  val result: Graph[PathNode] = new DoublyLinkedGraph[PathNode]
+  val result: Graph[KmerNode] = new DoublyLinkedGraph[KmerNode]
 
   for (p <- partitions) {
     addPartition(p)
   }
 
+  def sequenceToKmerNodes(seqs: Iterator[String], covs: Iterator[Int]) =
+    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
+
+
   /**
-   * Add marker set buckets to the path graph.
-   * The buckets passed in together are assumed to potentially contain adjacent sequences,
-   * and will be scanned for such. If they are found, an edge between two sequences is added
-   * to the graph being constructed.
+   * Add marker set buckets to the path graph, constructing all edges between k-mers
+   * in the buckets of this partition.
    */
   def addPartition(part: Iterable[MarkerSet]) {
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
     val partSet = part.toSet
-    val sequences = Map() ++ pathdb.getBulk(part.map(_.packedString)).
-      map(x => (x._1 -> x._2.sequencesWithCoverage.map(s => new PathNode(s._1, s._2))))
+    val bulkData =  pathdb.getBulk(part.map(_.packedString))
+    val kmers = Map() ++ bulkData.
+      map(x => (x._1 -> x._2.kmersBySequenceWithCoverage.map(x =>
+        sequenceToKmerNodes(x._1, x._2.iterator))))
 
-    for (
-      subpart <- part;
-      subpartSeqs = sequences(subpart.packedString);
-      s <- subpartSeqs
-    ) {
-      result.addNode(s)
-    }
-
-    var sortedCache = Map[String, List[PathNode]]()
-
-    def sorted(bucket: String): List[PathNode] = {
-      sortedCache.get(bucket) match {
-        case Some(s) => s
-        case _ =>
-          sortedCache += (bucket -> sequences(bucket).toList.sortBy(_.seq))
-          sortedCache(bucket)
+    for {
+      subpart <- part
+      sequence <-  kmers(subpart.packedString)
+    } {
+      for { n <- sequence } { result.addNode(n) }
+      if (sequence.size > 1) {
+        for { edge <- sequence.sliding(2) } {
+          result.addEdge(edge(0), edge(1))
+        }
       }
     }
 
-    val byEnd = sequences.map(x => (x._1 -> x._2.groupBy(_.seq.takeRight(k - 1))))
+//    var sortedCache = Map[String, List[PathNode]]()
+//
+//    def sorted(bucket: String): List[PathNode] = {
+//      sortedCache.get(bucket) match {
+//        case Some(s) => s
+//        case _ =>
+//          sortedCache += (bucket -> sequences(bucket).toList.sortBy(_.seq))
+//          sortedCache(bucket)
+//      }
+//    }
+
+    val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.takeRight(k - 1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
     var hypotheticalEdges = 0
 
-    // Counting hypothetical edges (between buckets) for testing purposes
+    // Counting hypothetical edges (between buckets) for testing/evaluation purposes
     for {
       subpart <- part
       toInside = macroGraph.edgesFrom(subpart).iterator.filter(partSet.contains)
@@ -67,6 +76,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       hypotheticalEdges += toInside.size
     }
 
+    //Tracking bucket pairs with actual edges being constructed
     var realEdges = Set[(MarkerSet, MarkerSet)]()
 
     /**
@@ -78,12 +88,12 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
       toBucket <- toInside
     } {
-      val toSeqs = sorted(toBucket.packedString).iterator.
-        dropWhile(!_.seq.startsWith(overlap)).
-        takeWhile(_.seq.startsWith(overlap)).toSeq
-      if (!toSeqs.isEmpty) {
-        realEdges += ((fromBucket, toBucket))
-      }
+//      val toSeqs = sorted(toBucket.packedString).iterator.
+//        dropWhile(!_.seq.startsWith(overlap)).
+//        takeWhile(_.seq.startsWith(overlap)).toSeq
+//      if (!toSeqs.isEmpty) {
+//        realEdges += ((fromBucket, toBucket))
+//      }
 //
 //      synchronized {
 //        println(s"${fromBucket.packedString} -> ${toBucket.packedString}")
@@ -93,11 +103,16 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
 //        Thread.sleep(1000)
 //      }
 
+      var added = false
       for {
-        to <- toSeqs
-        from <- fromSeqs
+        toKmer <- kmers(toBucket.packedString).flatten.iterator.filter(_.seq.startsWith(overlap))
+        fromKmer <- fromSeqs
       } {
-        result.addEdge(from, to)
+        result.addEdge(fromKmer, toKmer)
+        if (!added) {
+          realEdges += ((fromBucket, toBucket))
+          added = true
+        }
       }
     }
     println(s"Real/hypothetical edges ${realEdges.size}/$hypotheticalEdges")
@@ -108,8 +123,8 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
  * Bubble collapsing algorithm, lifted more or less as it is
  * from Friedrich's miniasm
  */
-final class PathGraphAnalyzer(g: Graph[PathNode], k: Int) {
-  type N = PathNode
+final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
+  type N = KmerNode
 
   /**
    * A list of nodes that have multiple forward edges.
@@ -154,7 +169,7 @@ final class PathGraphAnalyzer(g: Graph[PathNode], k: Int) {
    * Compute the average coverage of this path
    */
   def computePathCov(path: Iterable[N]): Double =
-    path.map(p => p.avgCoverage * p.numKmers(k)).sum / path.map(_.numKmers(k)).sum
+    path.map(p => p.coverage).sum.toDouble / path.size
 
   final def transform(list: List[List[N]]): List[List[N]] = transform(Nil, list)
 
@@ -178,7 +193,7 @@ final class PathGraphAnalyzer(g: Graph[PathNode], k: Int) {
     var count = 1
     var gcount = 0
     var reduced = 0
-    var found = false    
+    var found = false
     var paths = List[List[N]]()
     val junctions = findForwardJunctions().toList
     println("total of " + junctions.size + " branches to inspect")
@@ -206,11 +221,11 @@ final class PathGraphAnalyzer(g: Graph[PathNode], k: Int) {
     def allKmers(path: List[N]) = {
       var r = new MSet[String]
       for (p <- path) {
-        r ++= p.kmers(k)
+        r += p.seq
       }
       r
     }
-    
+
     def haveIntersection(paths: List[List[N]]) =
       ! (paths.map(allKmers).reduce(_ intersect _).isEmpty)
 

@@ -2,6 +2,7 @@ package dbpart.ubucket
 
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec
+import dbpart.Read
 
 trait Unpacker[B <: Bucket[B]] {
   def unpack(key: String, value: String, k: Int): B
@@ -68,7 +69,8 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
 
   def items = sequences
 
-  def kmers = items.flatMap(_.sliding(k))
+  def kmers = kmersBySequence.flatten
+  def kmersBySequence = items.map(Read.kmers(_, k))
 
   def insertSingle(value: String): Option[SeqBucket] =
     insertBulk(Seq(value))
@@ -194,6 +196,12 @@ final class CountingSeqBucket(sequences: Iterable[String],
 
   def sequencesWithCoverage =
     sequences zip coverage.sequenceAvgCoverages
+
+  def kmersWithCoverage =
+    kmers zip coverage.kmerCoverages
+
+  def kmersBySequenceWithCoverage =
+    kmersBySequence zip coverage.sequenceCoverages
 
   /**
    * Produce a coverage-filtered version of this sequence bucket.

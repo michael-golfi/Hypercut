@@ -6,7 +6,7 @@ import java.io.PrintWriter
 import friedrich.graph.Graph
 import scala.annotation.tailrec
 
-case class Contig(nodes: List[PathNode], k: Int,
+case class Contig(nodes: List[KmerNode], k: Int,
   stopReasonStart: String, stopReasonEnd: String) {
   lazy val length = seq.length
 
@@ -17,7 +17,7 @@ case class Contig(nodes: List[PathNode], k: Int,
       val sb = new StringBuilder
       sb.append(nodes.head.seq)
       for (s <- nodes.tail) {
-        sb.append(s.seq.substring(k-1))
+        sb.append(s.seq.charAt(k-1))
       }
       sb.result()
     }
@@ -25,6 +25,8 @@ case class Contig(nodes: List[PathNode], k: Int,
 }
 
 final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
+  type N = KmerNode
+
   var count: Int = 0
   val w: java.io.PrintWriter = new PrintWriter(outputFasta)
 
@@ -47,7 +49,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
     w.println(seq)
   }
 
-  def findSequences(graph: Graph[PathNode]) = {
+  def findSequences(graph: Graph[N]) = {
     //Reset flag
     for (n <- graph.nodes) {
       n.seen = false
@@ -64,7 +66,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
     r.toList
   }
 
-  private def edgeStopReason(edges: Iterable[PathNode]) = {
+  private def edgeStopReason(edges: Iterable[N]) = {
     if (edges.size > 1) "Branch"
     else if (edges.size == 0) "Terminus"
     else "Loop?"
@@ -76,7 +78,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
    * Also return the reason for stopping.
    */
   @tailrec
-  def extendForward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): (List[PathNode], String) = {
+  def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     val ef = graph.edgesFrom(from).filter(! _.noise)
     if (ef.size > 1 || ef.size == 0) {
@@ -94,7 +96,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   }
 
   @tailrec
-  def extendBackward(graph: Graph[PathNode], from: PathNode, acc: List[PathNode] = Nil): (List[PathNode], String) = {
+  def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     val et = graph.edgesTo(from).filter(! _.noise)
     if (et.size > 1 || et.size == 0) {

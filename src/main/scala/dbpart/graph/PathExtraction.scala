@@ -61,8 +61,8 @@ class PathExtraction(buckets: SeqPrintBuckets,
       val pathGraph = new PathGraphBuilder(db, List(p), graph).result
       println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
 
-      val analyzer = new PathGraphAnalyzer(pathGraph, k)
-      analyzer.findBubbles()
+//      val analyzer = new PathGraphAnalyzer(pathGraph, k)
+//      analyzer.findBubbles()
 
       val ss = pp.findSequences(pathGraph)
 
@@ -78,7 +78,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
       }
 
       if (outputPartitionGraphs) {
-        GraphViz.writeUndirected(pathGraph, s"part$pcount.dot", (n: PathNode) => n.seq)
+        GraphViz.writeUndirected(pathGraph, s"part$pcount.dot", (n: KmerNode) => n.seq)
       }
     }
     pp.close()
