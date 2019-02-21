@@ -1,5 +1,7 @@
 package dbpart
 
+import friedrich.util.IO
+
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
     def topRanked(ms: Seq[Marker], n: Int) =
@@ -92,4 +94,39 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
         case _ => markers
       }
     }
+
+    //TODO: mate pairs
+
+  def handle(read: String) = {
+    val kmers = Read.kmers(read, k)
+
+    val mss = markerSetsInRead(read)
+    if (readCount % 10000 == 0) {
+      synchronized {
+        print(".")
+      }
+    }
+    mss.map(_.packedString).iterator zip kmers
+  }
+
+  def prettyPrintMarkers(input: String) = {
+   val data = FastQ.iterator(input)
+   for (read <- data) {
+     print(s"Read: $read")
+     val analysed = handle(read)
+     var lastMarkers: String = ""
+     for ((markers, kmer) <- analysed) {
+       if (markers == lastMarkers) {
+         print(s"$kmer ")
+       } else {
+         println("")
+         lastMarkers = markers
+         println(s"  $lastMarkers")
+         print(s"    $kmer ")
+       }
+     }
+     println("")
+   }
+  }
+
 }

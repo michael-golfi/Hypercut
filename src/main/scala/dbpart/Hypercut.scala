@@ -26,7 +26,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   val k = opt[Int](required = true, descr = "Length of each k-mer")
   val numMarkers = opt[Int](required = true,
       descr = "Number of markers to extract from each k-mer", default = Some(4))
-  val dbfile = opt[String](required = true,
+  val dbfile = opt[String](required = false,
       descr = "Path to database file (.kch) where sequences are stored")
   val minCov = opt[Int](descr = "Minimum coverage cutoff (does not affect the 'buckets build' command)")
 
@@ -78,6 +78,22 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     addSubcommand(check)
   }
   addSubcommand(buckets)
+
+  val sequence = new Subcommand("sequence") {
+    lazy val defaultExtractor = new MarkerSetExtractor(SeqPrintBuckets.space,
+      numMarkers.toOption.get, k.toOption.get)
+
+    val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
+        default = Some("-"))
+
+    val analyse = new Subcommand("analyse") with RunnableCommand {
+      def run() {
+        defaultExtractor.prettyPrintMarkers(input.toOption.get)
+      }
+    }
+    addSubcommand(analyse)
+  }
+  addSubcommand(sequence)
 
   val graph = new Subcommand("graph") with RunnableCommand {
     val output = opt[String](required = true,

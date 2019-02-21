@@ -43,29 +43,14 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     val handledReads =
       reads.grouped(50000).map(group =>
       { group.par.flatMap(r => {
-        handle(r) ++
-        handle(DNAHelpers.reverseComplement(r))
+        extractor.handle(r) ++
+        extractor.handle(DNAHelpers.reverseComplement(r))
       })
       })
 
     for (rs <- precompIterator(handledReads)) {
       db.addBulk(rs.seq)
     }
-  }
-
-  //TODO: also handle the reverse complement of each read
-  //TODO: mate pairs
-
-  def handle(read: String) = {
-    val kmers = Read.kmers(read, k)
-    val mss = extractor.markerSetsInRead(read)
-    if (extractor.readCount % 10000 == 0) {
-      extractor.synchronized {
-        print(".")
-      }
-    }
-
-    mss.map(_.packedString).iterator zip kmers
   }
 
   def checkConsistency() {
