@@ -177,7 +177,7 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
   final def transform(acc: List[List[N]], list: List[List[N]]): List[List[N]] =
     list match {
       case (m :: ms) :: ls => {
-        val ef = g.edgesFrom(m).filter(! _.noise)
+        val ef = g.edgesFrom(m).filter(e => ! e.noise && ! ms.contains(e))
         if (ef.size > 0) {
           //ef.toList.map(_ :: m :: ms) ++ transform(ls)
           transform(ef.toList.map(_ :: m :: ms) ::: acc, ls)
@@ -195,9 +195,13 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
     var reduced = 0
     var found = false
     var paths = List[List[N]]()
+
     val junctions = findForwardJunctions().toList
     println("total of " + junctions.size + " branches to inspect")
-    for (split <- junctions) {
+    for {
+      split <- junctions.par
+      if ! split.noise
+    } {
       //println("branch node: " + split)
       paths = g.edgesFrom(split).map(_ :: Nil).toList
       while ((!found) && (count < k * 3)) {
@@ -217,17 +221,14 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
     }
     println(s"Reduced $reduced bubbles")
 
-    import scala.collection.mutable.{HashSet => MSet}
-    def allKmers(path: List[N]) = {
-      var r = new MSet[String]
-      for (p <- path) {
-        r += p.seq
-      }
-      r
-    }
 
-    def haveIntersection(paths: List[List[N]]) =
-      ! (paths.map(allKmers).reduce(_ intersect _).isEmpty)
+    def haveIntersection(paths: List[List[N]]) = {
+      paths match {
+        case p :: ps =>
+          !paths.tail.foldLeft(p.toSet)((a, b) => b.filter(a.contains(_)).toSet).isEmpty
+        case _ => false
+      }
+    }
 
   }
 }

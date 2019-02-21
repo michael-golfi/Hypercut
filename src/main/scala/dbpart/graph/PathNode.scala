@@ -14,7 +14,10 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
 }
 
 final class KmerNode(val seq: NTSeq, val coverage: Double) {
+  @volatile
   var seen: Boolean = false
+
+  @volatile
   var noise: Boolean = false
   override def toString: String = s"$seq($coverage)"
 }
