@@ -39,7 +39,8 @@ final class PartitionBuilder(graph: Graph[MarkerSet]) {
         soFar
       } else {
         if (!nextLevel.isEmpty) {
-          val next = nextLevel.flatMap(n => graph.edgesFrom(n).filter(a => !a.inPartition))
+          val next = nextLevel.flatMap(n => 
+            (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(a => !a.inPartition))
           val need = groupSize - soFarSize
           val useNext = (next take need)
           for (un <- useNext) {
