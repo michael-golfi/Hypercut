@@ -141,7 +141,6 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     new Iterator[(String, String)] {
       val cur = db.cursor()
       cur.jump()
-      var continue = cur.step()
       var nextVal: Array[String] = cur.get_str(true)
 
       override def next() = {
