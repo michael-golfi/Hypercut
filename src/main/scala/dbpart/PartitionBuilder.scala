@@ -98,7 +98,7 @@ final class PartitionBuilder(graph: Graph[MarkerSet]) {
         }
       case _ =>
         //Stop here
-        acc.filter(!_.isEmpty)
+        (building :: acc).filter(!_.isEmpty)
     }
   }
 
