@@ -21,11 +21,9 @@ class PathExtraction(buckets: SeqPrintBuckets,
   val db: dbpart.ubucket.SeqBucketDB = buckets.db
 
   def printPathsByPartition() {
-    var kms = new KmerSpace()
     Stats.begin()
-    val graph = buckets.makeGraph(kms)
+    val graph = buckets.makeGraph()
     Stats.end("Construct graph")
-    kms = null //Recover memory
 
     Stats.begin()
     val partBuild = new PartitionBuilder(graph)

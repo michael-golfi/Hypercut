@@ -9,8 +9,8 @@ import scala.annotation.tailrec
 import friedrich.util.formats.GraphViz
 
 /**
- * Builds a graph that contains both inter-bucket and intra-bucket edges in a
- * region.
+ * Builds a graph that contains both inter-bucket and intra-bucket edges
+ * between k-mers in a partition.
  */
 class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[MarkerSet]],
                        macroGraph: Graph[MarkerSet]) {
@@ -45,23 +45,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
       sequence <-  kmers(subpart.packedString)
     } {
       for { n <- sequence } { result.addNode(n) }
-//      if (sequence.size > 1) {
-//        for { edge <- sequence.sliding(2) } {
-//          result.addEdge(edge(0), edge(1))
-//        }
-//      }
     }
-
-//    var sortedCache = Map[String, List[PathNode]]()
-//
-//    def sorted(bucket: String): List[PathNode] = {
-//      sortedCache.get(bucket) match {
-//        case Some(s) => s
-//        case _ =>
-//          sortedCache += (bucket -> sequences(bucket).toList.sortBy(_.seq))
-//          sortedCache(bucket)
-//      }
-//    }
 
     val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.takeRight(k - 1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
@@ -79,30 +63,12 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
     //Tracking bucket pairs with actual edges being constructed
     var realEdges = Set[(MarkerSet, MarkerSet)]()
 
-    /**
-     * Constructing all the edges here can be somewhat expensive.
-     */
     for {
       fromBucket <- part
       (overlap, fromSeqs) <- byEnd(fromBucket.packedString)
       toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
       toBucket <- toInside ++ Iterator(fromBucket)
     } {
-//      val toSeqs = sorted(toBucket.packedString).iterator.
-//        dropWhile(!_.seq.startsWith(overlap)).
-//        takeWhile(_.seq.startsWith(overlap)).toSeq
-//      if (!toSeqs.isEmpty) {
-//        realEdges += ((fromBucket, toBucket))
-//      }
-//
-//      synchronized {
-//        println(s"${fromBucket.packedString} -> ${toBucket.packedString}")
-//        println(fromSeqs.map(_.seq).mkString("\t"))
-//        println(s"[[ overlap $overlap to ]]")
-//        println(toSeqs.map(_.seq).mkString("\t"))
-//        Thread.sleep(1000)
-//      }
-
       var added = false
       for {
         toKmer <- kmers(toBucket.packedString).flatten.iterator.filter(_.seq.startsWith(overlap))
@@ -189,6 +155,10 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
       case _ => acc
     }
 
+  /**
+   * Note: This bubble collapsing algorithm is currently too memory intensive,
+   * doesn't scale well to large jobs
+   */
   def findBubbles() = {
     var count = 1
     var gcount = 0

@@ -138,7 +138,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
 
-  def makeGraph(kms: KmerSpace) = {
+  def makeGraph() = {
     val graph = new DoublyLinkedGraph[MarkerSet]
     var nodeLookup = new scala.collection.mutable.HashMap[String, MarkerSet]
 
@@ -148,7 +148,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         val n = asMarkerSet(key)
         graph.addNode(n)
         nodeLookup += (n.packedString -> n)
-//        kms.add(n)
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
@@ -159,13 +158,12 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
 //    val allPossibleEdges = (for (a <- graph.nodes; b <- graph.nodes; if a != b) yield (a,b))
 //    val edges = validateEdges(allPossibleEdges)
-//    val edges = validateEdges(kms.completeEdges(space, numMarkers))
+//    val edges = validateEdges(kmerSpace.completeEdges(space, numMarkers))
 
     /*
      * Note: marker sets currently use reference equality only (no deep structural equality)
      * so it is necessary to reuse the same objects.
      */
-
     var count = 0
     val edges = edgeDb.allEdges(nodeLookup.get)
     for {

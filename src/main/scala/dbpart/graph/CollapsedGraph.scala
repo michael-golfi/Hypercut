@@ -12,6 +12,8 @@ object CollapsedGraph {
   /**
    * Construct a collapsed graph by turning each partition into a node group,
    * giving each group the union of the corresponding edges in the underlying graph.
+   * 
+   * Not currently used.
    */
   def construct[A](partitions: Iterable[Iterable[A]],
       underlying: Graph[A]): Graph[G[A]] = {

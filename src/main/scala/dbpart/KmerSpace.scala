@@ -113,7 +113,8 @@ object KmerSpace {
 
 /**
  * A set of k-mers, represented by marker sets, organised as a tree.
- * Suitable for partial and incremental lookups.
+ * Suitable for partial and incremental lookups and for computing the set of all existing bucket
+ * edges. Not currently used, contains bugs.
  */
 final class KmerSpace {
   import KmerSpace._
