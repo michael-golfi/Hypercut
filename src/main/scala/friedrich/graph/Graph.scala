@@ -17,18 +17,18 @@ trait Graph[N] {
 
   def nodes: Iterator[N]
 
-  def containsNode(node: N)
+  def containsNode(node: N): Boolean
 
   def numEdges: Int = edges.size
   def numNodes: Int = nodes.size
 
   def edgesFrom(from: N): Iterable[N]
   def edgesTo(to: N): Iterable[N]
-  
+
   def degree(from: N) = fromDegree(from)
   def fromDegree(from: N) = edgesFrom(from).size
   def toDegree(to: N) = edgesTo(to).size
-  
+
   /**
    * Both to- and from-nodes of the given node
    */
@@ -40,7 +40,7 @@ trait Graph[N] {
 
   def hasEdge(from: N, to: N): Boolean = edgesFrom(from).toSet.contains(to)
   def hasNode(node: N): Boolean = nodes.contains(node)
-  
+
   /**
    * Users should call this method to add a node.
    */
@@ -96,8 +96,8 @@ trait Graph[N] {
   }
 
   def stats() {
-    println(s"$numNodes nodes")    
-    println(s"$numEdges edges")    
+    println(s"$numNodes nodes")
+    println(s"$numEdges edges")
   }
 }
 
@@ -105,14 +105,14 @@ trait Graph[N] {
  * Trait for a graph that stores nodes in a mutable set.
  */
 trait SetBackedGraph[N <: AnyRef] extends Graph[N] {
-  override def addNode(node: N): Unit = {    
-    implAddNode(node)    
+  override def addNode(node: N): Unit = {
+    implAddNode(node)
   }
-  
+
   final def implAddNode(node: N) {
     nodesv.add(node)
   }
-  
+
   final def containsNode(node: N) = nodesv.contains(node)
 
   override def removeNode(node: N) {

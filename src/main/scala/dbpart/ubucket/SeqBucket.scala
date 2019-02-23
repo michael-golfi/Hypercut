@@ -26,6 +26,10 @@ trait Bucket[+B <: Bucket[_]] {
   def insertBulk(values: Iterable[String]): Option[B]
 }
 
+/**
+ * Simple bucket implementation that stores k-mers in a list.
+ * No sorting or deduplication is performed.
+ */
 object KmerBucket extends Unpacker[KmerBucket] {
   val separator: String = "\n"
 
@@ -38,10 +42,6 @@ final class KmerBucket(oldSet: String, val kmers: List[String], k: Int) extends 
   def size: Int = kmers.size
   def items = kmers
 
-  /**
-   * The default bucket implementation simply adds to a list.
-   * Overriding methods can be more sophisticated, e.g. perform sorting or deduplication
-   */
   def insertSingle(value: String): Option[KmerBucket] =
     Some(new KmerBucket(s"$oldSet$separator$value", value :: kmers, k))
 
@@ -53,6 +53,45 @@ final class KmerBucket(oldSet: String, val kmers: List[String], k: Int) extends 
   def pack: String = oldSet
 }
 
+/**
+ * Stores distinct strings (not necessarily NT sequences).
+ * The value of k has no meaning for this implementation.
+ */
+object DistinctBucket extends Unpacker[DistinctBucket] {
+  val separator: String = "\n"
+
+  def unpack(key: String, set: String, k: Int): DistinctBucket =
+    new DistinctBucket(set, set.split(separator, -1).toList)
+}
+
+final class DistinctBucket(oldSet: String, val items: List[String]) extends Bucket[DistinctBucket] {
+  import DistinctBucket._
+  def size: Int = items.size
+
+   def insertSingle(value: String): Option[DistinctBucket] = {
+    if (!items.contains(value)) {
+      Some(new DistinctBucket(s"$oldSet$separator$value", value :: items))
+    } else {
+      None
+    }
+  }
+
+  def insertBulk(values: Iterable[String]): Option[DistinctBucket] = {
+    val newVals = values.filter(!items.contains(_)).toList.distinct
+    if (!newVals.isEmpty) {
+      val newString = newVals.mkString(separator)
+      Some(new DistinctBucket(s"$oldSet$separator$newString", newVals ::: items))
+    } else {
+      None
+    }
+  }
+
+  def pack: String = oldSet
+}
+
+/**
+ * Bucket that merges sequences if possible.
+ */
 object SeqBucket extends Unpacker[SeqBucket] {
   val separator: String = "\n"
 
@@ -61,9 +100,6 @@ object SeqBucket extends Unpacker[SeqBucket] {
   }
 }
 
-/**
- * Bucket that merges sequences if possible.
- */
 class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucket] {
   import SeqBucket._
 

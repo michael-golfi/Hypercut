@@ -19,6 +19,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   dbOptions: String = BucketDB.options, minCov: Option[Int]) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
+  val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"), dbOptions)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -39,17 +40,26 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
+  def packEdge(e: MacroEdge) = (e._1.packedString, e._2.packedString)
+
   def handle(reads: Iterator[String]) {
     val handledReads =
       reads.grouped(50000).map(group =>
-      { group.par.flatMap(r => {
-        extractor.handle(r) ++
-        extractor.handle(DNAHelpers.reverseComplement(r))
+      { group.par.map(r => {
+        val forward = extractor.handle(r)
+        val rev = extractor.handle(DNAHelpers.reverseComplement(r))
+        (forward._1 ++ rev._1,
+            forward._2.iterator.map(packEdge) ++ rev._2.iterator.map(packEdge))
       })
       })
 
-    for (rs <- precompIterator(handledReads)) {
-      db.addBulk(rs.seq)
+    for {
+      segment <- precompIterator(handledReads)
+      data = segment.flatMap(_._1)
+      edges = segment.flatMap(_._2)
+    } {
+      db.addBulk(data.seq)
+      edgeDb.addBulk(edges.seq)
     }
   }
 
@@ -130,23 +140,47 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def makeGraph(kms: KmerSpace) = {
     val graph = new DoublyLinkedGraph[MarkerSet]
+    var nodeLookup = new scala.collection.mutable.HashMap[String, MarkerSet]
+
+    //This will produce the coverage filtered set of nodes
     for (key <- db.bucketKeys) {
       try {
         val n = asMarkerSet(key)
         graph.addNode(n)
-        kms.add(n)
+        nodeLookup += (n.packedString -> n)
+//        kms.add(n)
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
           e.printStackTrace()
       }
     }
-
     println(graph.numNodes + " nodes")
-    val edges = validateEdges(kms.completeEdges(space, numMarkers))
-    for ((from, to) <- edges) {
-      graph.uncheckedAddEdge(from, to)
+
+//    val allPossibleEdges = (for (a <- graph.nodes; b <- graph.nodes; if a != b) yield (a,b))
+//    val edges = validateEdges(allPossibleEdges)
+//    val edges = validateEdges(kms.completeEdges(space, numMarkers))
+
+    /*
+     * Note: marker sets currently use reference equality only (no deep structural equality)
+     * so it is necessary to reuse the same objects.
+     */
+
+    var count = 0
+    val edges = edgeDb.allEdges(nodeLookup.get)
+    for {
+      (from, to) <- edges
+      filtFrom <- from
+      filtTo <- to
+    } {
+      graph.uncheckedAddEdge(filtFrom, filtTo)
+      count += 1
+      if (count % 100000 == 0) {
+        println(s"${graph.numNodes} nodes ${graph.numEdges} edges")
+      }
     }
+    nodeLookup = null
+
     println(s"${graph.numEdges} edges (filtered out $filteredOutEdges)")
 
     Distribution.printStats("Node degree", graph.nodes.map(graph.degree))
@@ -158,16 +192,18 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   var filteredOutEdges = 0
 
-  //Testing operation that is probably slow and memory intensive.
-  //Should eventually be replaced by a dedicated edges database built at
-  //insertion time.
+  /**
+   * Testing/validation operation for edges. Verifies that edges in the macro graph
+   * correspond to overlapping k-mers in the actual de Bruijn graph.
+   * Slow and memory intensive.
+   */
   def validateEdges(edges: Iterator[(MarkerSet, MarkerSet)]) = {
     val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(0, k - 1))))
     val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(1)).toSet))
     edges.filter(e => {
       val ts = allTails(e._1.packedString)
       val hs = allHeads(e._2.packedString)
-      val pass = hs.exists(ts.contains)
+      val pass = (e._1 != e._2) && hs.exists(ts.contains)
       if (!pass) {
         filteredOutEdges += 1
       }

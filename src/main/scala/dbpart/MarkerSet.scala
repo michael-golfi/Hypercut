@@ -82,8 +82,15 @@ final case class Marker(pos: Int, features: Features) {
 }
 
 object MarkerSet {
-  def unpack(space: MarkerSpace, key: String) =
-    new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
+  def unpack(space: MarkerSpace, key: String) = {
+    if (key == "") {
+      //Temporary solution while we think about how to handle the no-markers case
+      Console.err.println("Warning: constructed MarkerSet with no markers")
+      new MarkerSet(space, Vector())
+    } else {
+      new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
+    }
+  }
 
   /**
    * Mainly for testing

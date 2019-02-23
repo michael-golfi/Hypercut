@@ -1,6 +1,7 @@
 package dbpart
 
 import friedrich.util.IO
+import scala.annotation.tailrec
 
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
@@ -95,9 +96,28 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       }
     }
 
-    //TODO: mate pairs
+ /**
+  * Extract bucket transitions (i.e. macro edges).
+  */
+  @tailrec
+  def transitions(data: List[MarkerSet],
+                  acc: List[MacroEdge] = Nil): List[MacroEdge] = {
+    data match {
+      case x :: y :: xs =>
+        if (x.packedString == y.packedString) {
+          transitions(y :: xs, acc)
+        } else {
+          transitions(y :: xs, (x, y) :: acc)
+        }
+      case _ => acc
+    }
+  }
 
-  def handle(read: String) = {
+  /**
+   * Ingest a read.
+   * Returns pairs of buckets and their k-mers, as well as bucket transitions.
+   */
+  def handle(read: String): (Iterator[(String, String)], List[MacroEdge]) = {
     val kmers = Read.kmers(read, k)
 
     val mss = markerSetsInRead(read)
@@ -106,7 +126,8 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
         print(".")
       }
     }
-    mss.map(_.packedString).iterator zip kmers
+    (mss.map(_.packedString).iterator zip kmers,
+        transitions(mss))
   }
 
   def prettyPrintMarkers(input: String) = {
@@ -115,7 +136,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
      print(s"Read: $read")
      val analysed = handle(read)
      var lastMarkers: String = ""
-     for ((markers, kmer) <- analysed) {
+     for ((markers, kmer) <- analysed._1) {
        if (markers == lastMarkers) {
          print(s"$kmer ")
        } else {
@@ -125,6 +146,8 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
          print(s"    $kmer ")
        }
      }
+     println("  Edges " + analysed._2.map(e =>
+       e._1.packedString + "->" + e._2.packedString).mkString(" "))
      println("")
    }
   }

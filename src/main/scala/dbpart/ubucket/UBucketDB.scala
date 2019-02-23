@@ -7,6 +7,7 @@ import scala.collection.mutable.ArrayBuffer
 import dbpart.FastQ
 import scala.collection.{ Map => CMap }
 import scala.collection.mutable.{ Map => MMap }
+import scala.annotation.tailrec
 
 trait KyotoDB {
   def dbLocation: String
@@ -110,10 +111,15 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
       total += tot
     }
     def print() = synchronized {
-      println(s"Write back ${writeback * 100 / total}% of sequence buckets ($writeback)")
+      if (total > 0) {
+        println(s"Write back ${writeback * 100 / total}% of buckets ($writeback)")
+      }
     }
   }
 
+  /**
+   * Add pairs of buckets and sequences.
+   */
   def addBulk(data: Iterable[(String, String)]) {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
 //    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
@@ -179,6 +185,23 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     new Histogram(ss.toSeq)
   }
 
+}
+
+final class EdgeDB(location: String, options: String)
+  extends BucketDB[DistinctBucket](location, options, DistinctBucket, 0) {
+
+  def newBucket(values: Iterable[String]) = {
+    val seed = values.head
+    val b = new DistinctBucket(seed, List(seed))
+    b.insertBulk(values.tail).getOrElse(b)
+  }
+
+  def allEdges: Iterator[(String, String)] = buckets.flatMap(b => b._2.items.map(to => (b._1, to)))
+
+  def allEdges[A](f: String => A): Iterator[(A, A)] =
+    buckets.flatMap(b => b._2.items.map(to =>
+      (f(b._1), f(to))
+    ))
 }
 
 /**
