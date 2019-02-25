@@ -187,8 +187,18 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
 }
 
-final class EdgeDB(location: String, options: String)
-  extends BucketDB[DistinctBucket](location, options, DistinctBucket, 0) {
+object EdgeDB {
+  import SeqBucketDB._
+
+  /**
+   * 128 byte alignment
+   * 8 GB mmap
+   */
+  def dbOptions: String = s"#bnum=$buckets#apow=7#mmap=$c8g#opts=l"
+}
+
+final class EdgeDB(location: String)
+  extends BucketDB[DistinctBucket](location, EdgeDB.dbOptions, DistinctBucket, 0) {
 
   def newBucket(values: Iterable[String]) = {
     val seed = values.head
@@ -202,6 +212,21 @@ final class EdgeDB(location: String, options: String)
     buckets.flatMap(b => b._2.items.map(to =>
       (f(b._1), f(to))
     ))
+}
+
+object SeqBucketDB {
+  val c1g = 1L * 1204 * 1204 * 1024
+  val c4g = 4 * c1g
+  val c8g = 8 * c1g
+  val c20g = 20L * c1g
+  val c40g = 40L * c1g
+
+  val buckets = 20000000
+  //20M buckets
+  //256 byte alignment
+  //40G mmap
+  val options = s"#bnum=$buckets#apow=8#opts=l"
+  val mmapOptions = s"$options#msiz=$c40g"
 }
 
 /**
@@ -273,22 +298,5 @@ extends BucketDB[CountingSeqBucket](location, options,
     val ss = kmerBuckets.map(_._2.size)
     new Histogram(ss.toSeq)
   }
-
-}
-
-object BucketDB {
-
-  val c1g = 1L * 1204 * 1204 * 1024
-  val c4g = 4 * c1g
-  val c8g = 8 * c1g
-  val c20g = 20L * c1g
-  val c40g = 40L * c1g
-
-  val buckets = 20000000
-  //20M buckets
-  //256 byte alignment
-  //40G mmap
-  val options = s"#bnum=$buckets#apow=8#opts=l"
-  val mmapOptions = s"$options#msiz=$c40g"
 
 }

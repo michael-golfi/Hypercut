@@ -4,7 +4,6 @@ import scala.collection.JavaConversions._
 import friedrich.util.formats.GraphViz
 import friedrich.util.Distribution
 import friedrich.util.Histogram
-import dbpart.graph.CollapsedGraph
 import scala.concurrent.Future
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -16,10 +15,10 @@ import friedrich.util.IO
 import dbpart.graph.PathNode
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
-  dbOptions: String = BucketDB.options, minCov: Option[Int]) {
+  dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
-  val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"), dbOptions)
+  val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"))
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -128,12 +127,14 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   }
 
   def stats() {
-    val hist = db.bucketSizeHistogram()
+    var hist = db.bucketSizeHistogram()
     hist.print("Bucket size (sequences)")
     //hist = spb.db.kmerHistogram
     //hist.print("Bucket size (kmers)")
     var dist = db.kmerCoverageStats
     dist.print("Kmer coverage")
+    hist = edgeDb.bucketSizeHistogram()
+    hist.print("Macro graph node degree (no coverage threshold)")
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
@@ -207,6 +208,35 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
       }
       pass
     })
+  }
+
+  def list() {
+    for (b <- db.bucketKeys) println(b)
+  }
+
+  def show(buckets: Iterable[String]) {
+    for { b <- buckets } show(b)
+  }
+
+  def show(bucket: String) {
+    println(s"Bucket $bucket")
+    val seqs = db.getBulk(List(bucket))
+    val edges = edgeDb.getBulk(List(bucket))
+
+    val ind = "  "
+    //Note: could also print sequence average coverage, integer coverages etc.
+    for {
+      b <- seqs.headOption
+      sc <- (b._2.sequences zip b._2.coverage.coverages)
+    } {
+      println(ind + sc._1)
+      println(ind + sc._2)
+    }
+    for {
+      e <- edges.headOption
+    } {
+      println(ind + "Edges forward: " + e._2.items.mkString(" "))
+    }
   }
 }
 

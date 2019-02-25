@@ -37,13 +37,6 @@ class PathExtraction(buckets: SeqPrintBuckets,
     //        val seqLength = parts.map(p => buckets.db.getBulk(p.map(_.packedString)).map(_._2.map(_.length).sum).sum)
     //        new Histogram(seqLength, 20).print("Macro partition total sequence length")
 
-    //        Stats.begin()
-    //        val colGraph = CollapsedGraph.construct(parts, graph)
-    //        Stats.end("Collapse graph")
-
-    //        GraphViz.writeUndirected[CollapsedGraph.G[MarkerSet]](colGraph, "out.dot",
-    //            ms => ms.nodes.size + ":" + ms.nodes.head.packedString)
-
     parts = partBuild.collapse(partitionSize, parts)
     printPaths(graph, parts)
   }

@@ -32,16 +32,17 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 
   lazy val defaultBuckets = new SeqPrintBuckets(
     SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
-    dbfile.toOption.get, BucketDB.options, minCov.toOption)
+    dbfile.toOption.get, SeqBucketDB.options, minCov.toOption)
 
   val buckets = new Subcommand("buckets") {
     val build = new Subcommand("build") with RunnableCommand {
+      banner("Hash reads and append them to a bucket database.")
       val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
       val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
 
       def run() {
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
-          numMarkers.toOption.get, dbfile.toOption.get, BucketDB.mmapOptions, None)
+          numMarkers.toOption.get, dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
 
         spb.build(input.toOption.get, mates.toOption)
         spb.stats
@@ -49,19 +50,27 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     }
     addSubcommand(build)
 
-    val show = new Subcommand("show") with RunnableCommand {
-      val bucket = opt[String](required = true, descr = "Bucket to show")
-      def run() {}
+    val list = new Subcommand("list") with RunnableCommand {
+      banner("List the buckets in a database.")
+      def run() { defaultBuckets.list }
     }
+    addSubcommand(list)
 
-    val list = new HCCommand("list")({
-      ???
-    })
+    val show = new Subcommand("show") with RunnableCommand {
+      banner("Show the sequences, coverages and edges contained in a bucket.")
+      val buckets = trailArg[List[String]](required = true, descr = "Buckets to show")
+      def run() {
+        defaultBuckets.show(buckets.toOption.get)
+      }
+    }
+    addSubcommand(show)
 
     val copy = new Subcommand("copy", "filter") with RunnableCommand {
+      banner("Copy a bucket database into another one (appending), optionally applying coverage filtering. Edges are not coverage filtered.")
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
-        val out = new SeqBucketDB(output.toOption.get, BucketDB.options, k.toOption.get, None)
+        //TODO: not copying edges yet
+        val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options, k.toOption.get, None)
         out.copyAllFrom(defaultBuckets.db)
       }
     }
@@ -79,23 +88,22 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   }
   addSubcommand(buckets)
 
-  val sequence = new Subcommand("sequence") {
+  val analyse = new Subcommand("analyse") with RunnableCommand {
+    banner("Analyse reads and display their fingerprints.")
     lazy val defaultExtractor = new MarkerSetExtractor(SeqPrintBuckets.space,
       numMarkers.toOption.get, k.toOption.get)
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
-        default = Some("-"))
+      default = Some("-"))
 
-    val analyse = new Subcommand("analyse") with RunnableCommand {
-      def run() {
-        defaultExtractor.prettyPrintMarkers(input.toOption.get)
-      }
+    def run() {
+      defaultExtractor.prettyPrintMarkers(input.toOption.get)
     }
-    addSubcommand(analyse)
   }
-  addSubcommand(sequence)
+  addSubcommand(analyse)
 
-  val graph = new Subcommand("graph") with RunnableCommand {
+  val assemble = new Subcommand("assemble") with RunnableCommand {
+    banner("Assemble contigs from a bucket database.")
     val output = opt[String](required = true,
         descr = "Output file (.fasta) to write generated sequences to",
         default = Some("hypercut.fasta"))
@@ -113,7 +121,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       extr.printPathsByPartition()
     }
   }
-  addSubcommand(graph)
+  addSubcommand(assemble)
 
   verify()
 }

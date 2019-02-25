@@ -12,7 +12,7 @@ final class CoverageBucket(val coverages: Iterable[String]) {
   import CountingSeqBucket._
 
   def kmerCoverages: Iterable[Int] = coverages.flatMap(_.map(covToInt))
-  
+
   def sequenceCoverages: Iterable[Iterable[Int]] = coverages.map(_.map(covToInt))
 
   def average(xs: Iterable[Double]): Double = xs.sum/xs.size
@@ -24,7 +24,7 @@ final class CoverageBucket(val coverages: Iterable[String]) {
 }
 
 final class CoverageDB(val dbLocation: String) extends KyotoDB {
-  import BucketDB._
+  import SeqBucketDB._
   import CountingSeqBucket._
 
   def unpack(value: String): CoverageBucket = {
