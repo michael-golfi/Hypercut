@@ -1,4 +1,8 @@
 import com.typesafe.sbt.SbtStartScript
+import com.github.retronym.SbtOneJar._
+
+oneJarSettings
+
 seq(SbtStartScript.startScriptForClassesSettings: _*)
 
 name := "DBPart"
