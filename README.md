@@ -1,4 +1,4 @@
-# Overview
+## Overview
 
 Hypercut is a tool for working with short read NGS data.
 
@@ -10,7 +10,7 @@ Licensed under GPL v3 (see LICENSE.txt).
 Includes parts of the Friedrich framework (GPL license), which is Copyright (c) 
 Johan Nyström-Persson and Gabriel Keeble-Gagnere 2010-2015.
 
-# Compiling
+## Compiling
 
 To compile:
 Install Scala 2.12, SBT, and Kyoto cabinet (native libraries, i.e. libkyotocabinet and 
@@ -29,7 +29,7 @@ Then run with:
 ./run.sh --help
 to see the command line parameters.
 
-# Usage
+## Usage
 
 This tool has so far been tested on E.coli (accession ERX008638),
 which can be assembled into contigs e.g. as follows:
