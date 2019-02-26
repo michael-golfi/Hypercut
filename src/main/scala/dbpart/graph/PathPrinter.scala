@@ -29,9 +29,11 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
 
   var count: Int = 0
   val w: java.io.PrintWriter = new PrintWriter(outputFasta)
+  val statsW = if (printReasons) Some(new PrintWriter(outputFasta + "_stats.txt")) else None
 
   def close() {
     w.close()
+    for (w2 <- statsW) w2.close
   }
 
   def printSequence(prefix: String, seq: Contig) {
@@ -41,12 +43,15 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
 
   def printSequence(prefix: String, seq: NTSeq, reasons: Option[String]) = synchronized {
     count += 1
-    w.println(s">$prefix-seq$count-${seq.size}bp")
-    reasons match {
-      case Some(r) => w.println(r)
-      case _ =>
-    }
+    val idLine = s">$prefix-seq$count-${seq.size}bp"
+    w.println(idLine)
     w.println(seq)
+    (reasons, statsW) match {
+      case (Some(r), Some(w)) =>
+        w.println(idLine)
+        w.println(r)
+      case _ =>
+    }    
   }
 
   def findSequences(graph: Graph[N]) = {
