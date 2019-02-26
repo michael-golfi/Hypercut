@@ -29,9 +29,9 @@ to see the command line parameters.
 This tool has so far been tested on E.coli (accession ERX008638),
 which can be assembled into contigs e.g. as follows:
 
-zcat ERR022075_1.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ~/scratch/ERR022075_51_5.kch buckets build -i -
-zcat ERR022075_2.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ~/scratch/ERR022075_51_5.kch buckets build -i -
-./run.sh -d ~/scratch/ERR022075_51_5.kch -k 51 -n 5 -m 400  assemble -p 25000 -r              
+zcat ERR022075_1.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
+zcat ERR022075_2.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
+./run.sh -d ERR022075_51_5.kch -k 51 -n 5 -m 400  assemble -p 25000 -r              
 
 This uses k=51, extracts 5 markers per k-mer, uses partitions of size 25000 macro nodes when 
 performing the piecewise assembly, and filters coverage at 400.
