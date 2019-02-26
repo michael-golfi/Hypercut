@@ -5,9 +5,20 @@ import scala.annotation.tailrec
 
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
-    def topRanked(ms: Seq[Marker], n: Int) =
-    (ms.sortBy(m => (m.features.tagRank, m.pos))
-        take n)
+   def topNByRank(ms: List[Marker], n: Int, fromRank: Int = 0) = {
+     var useRank = fromRank
+     var atRank = ms.partition(_.features.tagRank == useRank)
+     var r = atRank._1
+     while (r.size < n && !atRank._2.isEmpty) {
+       useRank += 1
+       atRank = atRank._2.partition(_.features.tagRank == useRank)
+       r :::= atRank._1
+     }
+     r
+   }
+
+   def topRanked(ms: List[Marker], n: Int) =
+     topNByRank(ms, n).sortBy(m => (m.features.tagRank, m.pos)).take(n)
 
    @volatile
    var readCount = 0
