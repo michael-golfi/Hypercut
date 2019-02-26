@@ -18,22 +18,30 @@ libjkyotocabinet). The latter can be obtained from here: https://fallabs.com/kyo
 
 Then run: 
 
+```
 > sbt compile
+```
 
 Package with: 
 
+```
 > sbt one-jar
+```
 
 Edit run.sh to set the appropriate flags in JAVA_OPTS.
 The following java options are recommended, for example (more memory helps if available): 
 
+```
 > JAVA_OPTS="-Djava.library.path=/usr/local/lib -Xmx8g -Xms8g"
+```
 
 libkyotocabinet and libjkyotocabinet are expected in the library path.
 
 Then run with: 
 
+```
 > ./run.sh --help
+```
 
 to see the command line parameters.
 
@@ -42,9 +50,12 @@ to see the command line parameters.
 This tool has so far been tested on E.coli (accession ERX008638),
 which can be assembled into contigs e.g. as follows:
 
-> zcat ERR022075_1.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
-> zcat ERR022075_2.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
-> ./run.sh -d ERR022075_51_5.kch -k 51 -n 5 -m 400  assemble -p 25000 -r              
+
+```
+zcat ERR022075_1.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
+zcat ERR022075_2.qf.fastq.gz | ./run.sh -k 51 -n 5 -d ERR022075_51_5.kch buckets build -i -
+./run.sh -d ERR022075_51_5.kch -k 51 -n 5 -m 400  assemble -p 25000 -r              
+```
 
 This uses k=51, extracts 5 markers per k-mer, uses partitions of size 25000 macro nodes when 
 performing the piecewise assembly, and filters coverage at 400.
