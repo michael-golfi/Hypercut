@@ -7,18 +7,19 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
    def topNByRank(ms: List[Marker], n: Int, fromRank: Int = 0) = {
      var useRank = fromRank
-     var atRank = ms.partition(_.features.tagRank == useRank)
-     var r = atRank._1
-     while (r.size < n && !atRank._2.isEmpty) {
+     var (atRank, others) = ms.partition(_.features.tagRank == useRank)
+     var r = atRank.sortBy(_.pos)
+     while (r.size < n && !others.isEmpty) {
        useRank += 1
-       atRank = atRank._2.partition(_.features.tagRank == useRank)
-       r :::= atRank._1
+       var (nAtRank, nOthers) = others.partition(_.features.tagRank == useRank)
+       r ++= nAtRank.sortBy(_.pos)
+       others = nOthers
      }
-     r
+     r.take(n)
    }
 
    def topRanked(ms: List[Marker], n: Int) =
-     topNByRank(ms, n).sortBy(m => (m.features.tagRank, m.pos)).take(n)
+     topNByRank(ms, n)
 
    @volatile
    var readCount = 0

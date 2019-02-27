@@ -2,6 +2,11 @@ package dbpart
 
 import scala.annotation.tailrec
 
+/**
+ * Utilities for working with collections of MarkerSets.
+ * Note that the classes/objects in this file are still under development, 
+ * and not currently used.
+ */
 object KmerSpace {
   type Edge = (MarkerSet, MarkerSet)
 

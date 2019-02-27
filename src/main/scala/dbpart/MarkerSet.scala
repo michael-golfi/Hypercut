@@ -12,6 +12,9 @@ object Marker {
   }
 }
 
+/**
+ * The attributes of a marker, except its position.
+ */
 final class Features(val tag: String, val tagRank: Int, val lowestRank: Boolean = false,
   val sortValue: Int = 0) {
 
@@ -78,7 +81,7 @@ final case class Marker(pos: Int, features: Features) {
    * @param posInSet position in a set of markers (not in the underlying sequence)
    */
   def withSortValue(space: MarkerSpace, posInSet: Int) =
-    copy(features = features.withSortValue(space, 1000 * space.priorityOf(tag) + posInSet))
+    copy(features = features.withSortValue(space, 1000 * features.tagRank + posInSet))
 }
 
 object MarkerSet {
@@ -176,16 +179,6 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
   lazy val packedString = relativeMarkers.map(_.packedString).mkString(".")
 
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"
-
-  override lazy val hashCode: Int = relativeMarkers.hashCode
-
-//  override def equals(other: Any) = {
-//    other match {
-//      case ms: MarkerSet =>
-//        sameObjects(relativeMarkers, ms.relativeMarkers)
-//      case _ => false
-//    }
-//  }
 
   def apply(pos: Int): Marker = relativeMarkers(pos)
 
