@@ -18,7 +18,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
-  val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"))
+  lazy val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"))
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -41,7 +41,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def packEdge(e: MacroEdge) = (e._1.packedString, e._2.packedString)
 
+
   def handle(reads: Iterator[String]) {
+    val edgeSet = new EdgeSet
     val handledReads =
       reads.grouped(50000).map(group =>
       { group.par.map(r => {
@@ -53,13 +55,16 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
       })
 
     for {
-      segment <- precompIterator(handledReads)
+      segment <- handledReads
       data = segment.flatMap(_._1)
-      edges = segment.flatMap(_._2)
+      edges = segment.map(_._2).seq
     } {
       db.addBulk(data.seq)
-      edgeDb.addBulk(edges.seq)
+      for (es <- edges) {
+        edgeSet.add(es)
+      }
     }
+    edgeSet.writeTo(edgeDb)
   }
 
   def checkConsistency() {

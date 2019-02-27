@@ -122,8 +122,10 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
    */
   def addBulk(data: Iterable[(String, String)]) {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
-//    Distribution.printStats("Insertion buckets", insert.map(_._2.size))
+    addBulk(insert)
+  }
 
+  def addBulk(insert: CMap[String, Iterable[String]]) {
     val stats = new InsertStats
     for (insertGr <- insert.grouped(10000).toSeq.par) {
       val existing = getBulk(insertGr.keys)
@@ -137,6 +139,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     }
     stats.print()
   }
+
 
   def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
     beforeBulkLoad(keys)
