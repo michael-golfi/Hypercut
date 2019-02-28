@@ -33,6 +33,18 @@ trait KyotoDB {
       }
     })
   }
+
+  def setBulk(kvs: Iterable[(String, String)]) {
+    val recary = Array.ofDim[Array[Byte]](kvs.size * 2)
+    var ridx = 0
+    for (kv <- kvs) {
+      recary(ridx) = kv._1.getBytes
+      ridx += 1
+      recary(ridx) = kv._2.getBytes
+      ridx += 1
+    }
+    db.set_bulk(recary, false)
+  }
 }
 
 /**
@@ -80,18 +92,18 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
    * that need to be written back to the database.
    */
   def merge(oldVals: CMap[String, B], from: CMap[String, Iterable[String]]) = {
-    var r = MMap[String, B]()
+    var r = List[(String, B)]()
     for ((k, vs) <- from) {
       oldVals.get(k) match {
         case Some(existingBucket) =>
           existingBucket.insertBulk(vs) match {
             case Some(ins) =>
-              r += k -> ins
+              r ::= (k, ins)
             case None =>
           }
         case None =>
           val ins = newBucket(vs)
-          r += k -> ins
+          r ::= (k, ins)
       }
     }
     r
@@ -99,7 +111,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
   protected def shouldWriteBack(key: String, bucket: B): Boolean = true
 
-  protected def afterBulkWrite(merged: CMap[String, B]) {}
+  protected def afterBulkWrite(merged: Iterable[(String, B)]) {}
 
   protected def beforeBulkLoad(keys: Iterable[String]) {}
 
@@ -135,7 +147,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
         x => (x._1 -> x._2.pack))
 
       stats.add(forWrite.size, merged.size)
-      db.set_bulk(forWrite.asJava, false)
+      setBulk(forWrite)
     }
     stats.print()
   }
@@ -271,8 +283,8 @@ extends BucketDB[CountingSeqBucket](location, options,
   /**
    * Always write back coverage when a bucket changes
    */
-  override protected def afterBulkWrite(merged: CMap[String, CountingSeqBucket]) {
-    covDB.setBulk(merged.map(x => x._1 -> x._2.coverage))
+  override protected def afterBulkWrite(merged: Iterable[(String, CountingSeqBucket)]) {
+    covDB.setBulk(merged.map(x => (x._1 -> x._2.coverage.pack)))
   }
 
   def kmerBuckets = {
