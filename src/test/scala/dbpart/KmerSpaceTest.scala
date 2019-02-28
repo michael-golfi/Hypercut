@@ -128,7 +128,8 @@ class KmerSpaceTest extends FunSuite with Matchers {
 
   def asFixed(edges: Iterable[(Seq[Marker], Seq[Marker])]) =
     edges.map(x =>
-      ((new MarkerSet(space, x._1).fixMarkers, new MarkerSet(space, x._2).fixMarkers)))
+      ((new MarkerSet(space, x._1.toList).fixMarkers,
+          new MarkerSet(space, x._2.toList).fixMarkers)))
 
   def makeAllEdges(markers: Iterable[MarkerSet], n: Int) = {
     val kms = mkSpace(markers)
@@ -161,9 +162,11 @@ class KmerSpaceTest extends FunSuite with Matchers {
 
   test("edges distinct") {
     val negAsMs = negativeSuccessors4.map(x =>
-      ((new MarkerSet(space, x._1).fixMarkers, new MarkerSet(space, x._2).fixMarkers)))
+      ((new MarkerSet(space, x._1.toList).fixMarkers,
+          new MarkerSet(space, x._2.toList).fixMarkers)))
     val posAsMs = positiveSuccessors4.map(x =>
-      ((new MarkerSet(space, x._1).fixMarkers, new MarkerSet(space, x._2).fixMarkers)))
+      ((new MarkerSet(space, x._1.toList).fixMarkers,
+          new MarkerSet(space, x._2.toList).fixMarkers)))
 
     val allMarkerSets = (negAsMs ++ posAsMs).
       flatMap(x => Seq(x._1, x._2))

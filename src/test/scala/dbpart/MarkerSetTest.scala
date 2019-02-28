@@ -11,7 +11,8 @@ class MarkerSetTest extends FunSuite with Matchers {
 
   def neg(ms1: Seq[Marker], ms2: Seq[Marker], n: Int) = {
     println(s"Test: $ms1 < $ms2 == false")
-    new MarkerSet(space, ms1).fixMarkers.precedes(new MarkerSet(space, ms2).fixMarkers, n) should equal(false)
+    new MarkerSet(space, ms1.toList).fixMarkers.precedes(
+      new MarkerSet(space, ms2.toList).fixMarkers, n) should equal(false)
   }
 
   def neg4(ms1: Seq[Marker], ms2: Seq[Marker]) = neg(ms1, ms2, 4)
@@ -19,7 +20,8 @@ class MarkerSetTest extends FunSuite with Matchers {
 
   def pos(ms1: Seq[Marker], ms2: Seq[Marker], n: Int) = {
     println(s"Test: $ms1 < $ms2 == true")
-    new MarkerSet(space, ms1).fixMarkers.precedes(new MarkerSet(space, ms2).fixMarkers, n) should equal(true)
+    new MarkerSet(space, ms1.toList).fixMarkers.precedes(
+      new MarkerSet(space, ms2.toList).fixMarkers, n) should equal(true)
   }
 
   def pos3(ms1:Seq[Marker], ms2: Seq[Marker]) = pos(ms1, ms2, 3)

@@ -28,7 +28,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
    val n = numMarkers
 
-  def markerSetFromUnsorted(ms: Seq[Marker]) =
+  def markerSetFromUnsorted(ms: List[Marker]) =
     new MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
 
   /**

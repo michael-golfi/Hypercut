@@ -1,6 +1,7 @@
 package dbpart
 
 import scala.collection.Seq
+import scala.annotation.tailrec
 
 object Marker {
   val PackedMarker = "([ACTGUN]+)(\\d+)"r
@@ -89,9 +90,9 @@ object MarkerSet {
     if (key == "") {
       //Temporary solution while we think about how to handle the no-markers case
       Console.err.println("Warning: constructed MarkerSet with no markers")
-      new MarkerSet(space, Vector())
+      new MarkerSet(space, List())
     } else {
-      new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toVector)
+      new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toList)
     }
   }
 
@@ -100,7 +101,7 @@ object MarkerSet {
    */
   def apply(space: MarkerSpace, tags: Seq[String], positions: Seq[Int]) = {
     val ms = (tags zip positions).map(x => space.get(x._1, x._2))
-    new MarkerSet(space, ms)
+    new MarkerSet(space, ms.toList)
   }
 
   final def addToFirst(s: Seq[Marker], n: Int) = {
@@ -123,18 +124,28 @@ object MarkerSet {
     }
   }
 
-  final def dropHeadMarker(s: Seq[Marker]) =
+  final def dropHeadMarker(s: List[Marker]) =
     if (s.size > 1) {
       setFirstToZero(s.drop(1))
     } else {
       Seq()
     }
 
-  final def setFirstToZero(s: Seq[Marker]) = {
+  final def setFirstToZero(s: List[Marker]) = {
     if (!s.isEmpty) {
-      s.head.copy(pos = 0) +: s.tail
+      s.head.copy(pos = 0) :: s.tail
     } else {
-      Seq()
+      List()
+    }
+  }
+
+  @tailrec
+  def relativePositions(space: MarkerSpace, ms: List[Marker],
+                        acc: List[Marker]): List[Marker] = {
+    ms match {
+      case m :: n :: ns => relativePositions(space, n :: ns,
+        space.get(n.tag, n.pos - m.pos) :: acc)
+      case _ => acc.reverse
     }
   }
 
@@ -142,24 +153,12 @@ object MarkerSet {
    * Sort markers by position (should be absolute) and change to relative positions
    * (marker intervals)
    */
-  def relativePositions(space: MarkerSpace, ms: Seq[Marker]): Seq[Marker] = {
-    val bp = ms.sortBy(_.pos)
-    if (bp.size == 0) {
-      return bp
-    }
-    val first = bp.head
-    if (bp.size == 1) {
-      bp
-    } else {
-      val n = bp.size
-      val r = Array.fill[Marker](n)(null)
-      r(0) = first
-      var i = 1
-      while(i < n) {
-        r(i) = space.get(bp(i).tag, bp(i).pos - bp(i-1).pos)
-        i += 1
-      }
-      r
+  def relativePositions(space: MarkerSpace, ms: List[Marker]): List[Marker] = {
+    ms match {
+      case Nil => ms
+      case _ =>
+        val bp = ms.sortBy(_.pos)
+        bp.head :: relativePositions(space, bp, Nil)
     }
   }
 
@@ -171,7 +170,7 @@ object MarkerSet {
 /*
  * Markers, with relative positions, sorted by absolute position
  */
-final class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
+final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
   import MarkerSet._
 
   var inPartition: Boolean = false
@@ -190,7 +189,7 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
     }
   }
 
-  def fromZeroAsArray = new MarkerSet(space, Array() ++ setFirstToZero(relativeMarkers))
+  def fromZeroAsArray = new MarkerSet(space, setFirstToZero(relativeMarkers))
 
   def fromZero = new MarkerSet(space, setFirstToZero(relativeMarkers))
 
@@ -230,7 +229,8 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: Seq[Marker]) {
         (s1.size >= n - 1) &&
         removedLeftPos &&
         s2.head.sortValue > s1.head.sortValue &&
-        canPrecede(setFirstToZero(s1), dropHeadMarker(s2), n - 1, mayRemoveLeftRank, false, removedLeftPos)) {
+        canPrecede(setFirstToZero(s1.toList),
+          dropHeadMarker(s2.toList), n - 1, mayRemoveLeftRank, false, removedLeftPos)) {
 //        println("Right rank")
        //a new item may be inserted once on the right by rank.
        //Its rank must be lower than the corresponding item on the left.

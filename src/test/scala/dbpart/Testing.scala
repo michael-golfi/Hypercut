@@ -9,10 +9,10 @@ object Testing {
   def ms(markers: Seq[(String, Int)]) = markers.map(x => m(x._1, x._2))
 
   def fixedMarkerSet1(markers: Seq[(String, Int)]) =
-    new MarkerSet(space, ms(markers)).fixMarkers
+    new MarkerSet(space, ms(markers).toList).fixMarkers
 
   def fixedMarkerSet2(markers: Seq[Marker]) =
-    new MarkerSet(space, markers).fixMarkers
+    new MarkerSet(space, markers.toList).fixMarkers
 
   def GT(p: Int) = m("GT", p)
   def AT(p: Int) = m("AT", p)
