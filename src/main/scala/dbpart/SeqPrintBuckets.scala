@@ -132,7 +132,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   }
 
   def stats() {
-    var hist = db.bucketSizeHistogram()
+    var hist = db.bucketSizeHistogram(Some(200L))
     hist.print("Bucket size (sequences)")
     //hist = spb.db.kmerHistogram
     //hist.print("Bucket size (kmers)")

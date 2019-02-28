@@ -195,9 +195,9 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     r
   }
 
-  def bucketSizeHistogram() = {
+  def bucketSizeHistogram(limitMax: Option[Long] = None) = {
     val ss = buckets.map(_._2.size)
-    new Histogram(ss.toSeq)
+    new Histogram(ss.toSeq, 10, limitMax)
   }
 
 }

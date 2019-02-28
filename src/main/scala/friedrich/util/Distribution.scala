@@ -12,11 +12,11 @@ object Distribution {
  * Track some properties of a distribution of integers.
  */
 class Distribution(format: String = "%.2f") {
-  var max = 0
-  var count = 0
+  var max = 0L
+  var count = 0L
   var avg = 0.0
-  var sum = 0
-  var min = 1000
+  var sum = 0L
+  var min = 1000L
 
   def observe(v: Int) {
     if (v < min) {
@@ -47,15 +47,18 @@ class Distribution(format: String = "%.2f") {
  * Note: might be useful to display certain histograms on a log scale
  * instead of linear
  */
-class Histogram(values: Seq[Int], bnum: Int = 10) {
+class Histogram(values: Seq[Int], bnum: Int = 10,
+  limitMax: Option[Long] = None) {
   val dist = new Distribution()
   dist.observe(values)
 
-  var bs = (dist.max - dist.min)/bnum
+  val useMax = limitMax.getOrElse(dist.max)
+
+  var bs = (useMax - dist.min)/bnum
   if (bs < 1) {
     bs = 1
   }
-  val buckets = dist.min.to(dist.max, bs)
+  val buckets = dist.min.to(useMax, bs)
   var counts = Array.fill(bnum)(0)
 
   val mpos = values.size/2
