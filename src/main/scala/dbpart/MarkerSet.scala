@@ -144,7 +144,7 @@ object MarkerSet {
                         acc: List[Marker]): List[Marker] = {
     ms match {
       case m :: n :: ns => relativePositionsSorted(space, n :: ns,
-        space.get(n.tag, n.pos - m.pos) :: acc)
+        n.copy(pos = n.pos - m.pos) :: acc)
       case _ => acc.reverse
     }
   }
