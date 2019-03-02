@@ -1,18 +1,12 @@
 package dbpart
+import scala.concurrent.Await
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+
 import dbpart.ubucket._
-import scala.collection.JavaConversions._
-import friedrich.util.formats.GraphViz
 import friedrich.util.Distribution
 import friedrich.util.Histogram
-import scala.concurrent.Future
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
-import dbpart.graph.PathGraphBuilder
-import dbpart.graph.PathPrinter
-import friedrich.graph.Graph
 import miniasm.genome.util.DNAHelpers
-import friedrich.util.IO
-import dbpart.graph.PathNode
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
   dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {

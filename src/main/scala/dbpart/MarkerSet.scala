@@ -140,10 +140,10 @@ object MarkerSet {
   }
 
   @tailrec
-  def relativePositions(space: MarkerSpace, ms: List[Marker],
+  def relativePositionsSorted(space: MarkerSpace, ms: List[Marker],
                         acc: List[Marker]): List[Marker] = {
     ms match {
-      case m :: n :: ns => relativePositions(space, n :: ns,
+      case m :: n :: ns => relativePositionsSorted(space, n :: ns,
         space.get(n.tag, n.pos - m.pos) :: acc)
       case _ => acc.reverse
     }
@@ -158,7 +158,7 @@ object MarkerSet {
       case Nil => ms
       case _ =>
         val bp = ms.sortBy(_.pos)
-        bp.head :: relativePositions(space, bp, Nil)
+        bp.head :: relativePositionsSorted(space, bp, Nil)
     }
   }
 
