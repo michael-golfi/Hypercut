@@ -35,6 +35,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
     var scannedToPos: Int = space.maxMotifLength - 2
     var markersByPos: List[Marker] = List()
 
+    //Remove markers of a specific rank.
     //Final position with the rank has the lowest priority.
     //Reverses the list.
     @tailrec
@@ -93,9 +94,10 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
             markersByPos :+= m
             markersByPos = removeOverlaps(markersByPos)
             while (markersByPos.length > n) {
-              val minRank = markersByPos.map(_.features.tagRank).min
+              //highest tagRank index is lowest priority
+              val maxRank = markersByPos.map(_.features.tagRank).max
               markersByPos =
-                rankRemove(markersByPos.reverse, minRank, markersByPos.length - n)
+                rankRemove(markersByPos.reverse, maxRank, markersByPos.length - n)
             }
           case None =>
         }
@@ -115,69 +117,15 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       ext.scanTo(k - 2)
       var p = k - 1
 
-      while (p <= read.length - space.maxMotifLength) {
+      while (p <= read.length - 1) {
         kmerCount += 1
-        r ::= new MarkerSet(space, MarkerSet.relativePositionsSorted(space, ext.scanTo(p), Nil)).fromZero
+        r ::= new MarkerSet(space, MarkerSet.relativePositionsSorted(space, ext.scanTo(p))).fromZero
         p += 1
       }
 //      println(s"Extracted $r")
       r.reverse
     }
 
-  /**
-   * Extract the markers in a given read. Marker sets will be repeated according to how many
-   * times they appeared in the input, so that for a given read length, the return list
-   * will always have the same length.
-   */
-//  def markerSetsInRead(read: String): List[MarkerSet] = {
-////    println(s"\nRead $read")
-//    var r = List[MarkerSet]()
-//    readCount += 1
-//
-//    val markers = space.allMarkers(read)
-//    var start = 0
-//    val motifLength = space.maxMotifLength
-//    var (currentMarkers, remainingMarkers) = markers.
-//      dropWhile(_.pos < motifLength - 1).
-//      span(_.pos <= k - motifLength)
-//
-//    var byRank = topRanked(removeOverlaps(currentMarkers), n)
-//    var last = markerSetFromUnsorted(byRank)
-//    r ::= last
-////    println(s"${last.packedString} for ${read.substring(start, k + start)}")
-//
-//     while (start < read.size - k) {
-//      start += 1
-//      var (newPart, rem) = remainingMarkers.span(_.pos <= start + k - motifLength)
-//      if (!newPart.isEmpty ||
-//          (!currentMarkers.isEmpty && currentMarkers.head.pos < start + motifLength - 1)
-//          ) {
-//
-//        remainingMarkers = rem
-//        currentMarkers = currentMarkers.dropWhile(_.pos < start + motifLength - 1) ++ newPart
-//
-//        byRank = topRanked(removeOverlaps(currentMarkers), n)
-//
-//        val current = markerSetFromUnsorted(byRank)
-//
-//        //TODO this is currently always true, equality not implemented
-//        if (last != current) {
-//          r ::= current
-//          last = current
-//        } else {
-//          r ::= last
-//        }
-//      } else {
-//        r ::= last
-//      }
-////      println(s"${last.packedString} for ${read.substring(start, k + start)}")
-//      kmerCount += 1
-//    }
-//
-//    val res = r.reverse
-////    println(s"Markers ${res.distinct.map(_.packedString)}")
-//    res
-//  }
 
     //TODO make tailrec
     //Assumes markers are sorted by position.

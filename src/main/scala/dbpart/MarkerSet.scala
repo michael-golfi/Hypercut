@@ -149,6 +149,13 @@ object MarkerSet {
     }
   }
 
+  def relativePositionsSorted(space: MarkerSpace, ms: List[Marker]): List[Marker] = {
+      ms match {
+      case Nil => ms
+      case _ => ms.head :: relativePositionsSorted(space, ms, Nil)
+    }
+  }
+
   /**
    * Sort markers by position (should be absolute) and change to relative positions
    * (marker intervals)
