@@ -59,12 +59,16 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
       data = segment.flatMap(_._1)
       edges = segment.map(_._2).seq
     } {
+      val st = Stats.beginNew
       db.addBulk(data.seq)
+      st.end("Write data chunk")
       for (es <- edges) {
         edgeSet.add(es)
       }
     }
+    val st = Stats.beginNew
     edgeSet.writeTo(edgeDb)
+    st.end("Write edges")
   }
 
   def checkConsistency() {
