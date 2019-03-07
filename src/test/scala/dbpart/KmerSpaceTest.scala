@@ -1,12 +1,10 @@
 package dbpart
 
-import org.scalatest.junit.JUnitRunner
 import org.scalatest.Matchers
 import org.scalatest.FunSuite
 import org.scalactic.source.Position.apply
 import scala.collection.Seq
 
-//@RunWith(classOf[JUnitRunner])
 class KmerSpaceTest extends FunSuite with Matchers {
   import Testing._
 
