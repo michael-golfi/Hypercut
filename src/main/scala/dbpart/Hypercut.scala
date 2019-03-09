@@ -39,12 +39,13 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       banner("Hash reads and append them to a bucket database.")
       val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
       val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
+      val index = toggle("index", default = Some(true), descrNo = "Do not index sequences in database")
 
       def run() {
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
           numMarkers.toOption.get, dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
 
-        spb.build(input.toOption.get, mates.toOption)
+        spb.build(input.toOption.get, mates.toOption, index.toOption.get)
         spb.stats
       }
     }
