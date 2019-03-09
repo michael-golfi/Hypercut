@@ -36,12 +36,16 @@ final case class Marker(pos: Int, features: Features) {
   //Note: implicit assumption that pos < 100 when we use this
   lazy val packedString = {
     val r = new StringBuilder
+    packInto(r)
+    r.toString()
+  }
+
+  def packInto(r: StringBuilder) {
     r.append(tag)
     if (pos < 10) {
       r.append("0")
     }
     r.append(pos)
-    r.toString()
   }
 
   override def toString = "[%s,%02d%s]".format(tag, pos, lrs)
@@ -175,7 +179,17 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
 
   var inPartition: Boolean = false
 
-  lazy val packedString = relativeMarkers.map(_.packedString).mkString(".")
+  lazy val packedString = {
+    val r = new StringBuilder
+    val it = relativeMarkers.iterator
+    while (it.hasNext) {
+      it.next.packInto(r)
+      if (it.hasNext) {
+        r.append(".")
+      }
+    }
+    r.toString
+  }
 
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"
 
