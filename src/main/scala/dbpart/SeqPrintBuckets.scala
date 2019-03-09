@@ -1,4 +1,9 @@
 package dbpart
+import scala.concurrent.Await
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.blocking
+
 import dbpart.ubucket._
 import scala.collection.JavaConversions._
 import friedrich.util.formats.GraphViz
@@ -41,11 +46,25 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def packEdge(e: MacroEdge) = (e._1.packedString, e._2.packedString)
 
+  def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[(String, String)]]) {
+    blocking {
+      for (es <- edges) {
+        edgeSet.add(es)
+      }
+    }
+  }
 
   def handle(reads: Iterator[String], index: Boolean) {
     val edgeSet = new EdgeSet
+    var edgesFuture: Future[Unit] = Future.successful(())
+
+    /**
+     * A larger buffer size costs memory and GC activity,
+     * but helps optimise disk access
+     */
+    val bufferSize = if (index) 50000 else 5000
     val handledReads =
-      reads.grouped(50000).map(group =>
+      reads.grouped(bufferSize).map(group =>
       { group.par.map(r => {
         val forward = extractor.handle(r)
         val rev = extractor.handle(DNAHelpers.reverseComplement(r))
@@ -63,20 +82,18 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         val st = Stats.beginNew
         db.addBulk(data.seq)
         st.end("Write data chunk")
-        for (es <- edges) {
-          edgeSet.add(es)
-        }
+        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
       }
     } else {
       for {
         segment <- handledReads
         edges = segment.map(_._2).seq
-        es <- edges
       } {
-        edgeSet.add(es)
+        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
       }
     }
 
+    Await.result(edgesFuture, Duration.Inf)
     val st = Stats.beginNew
     edgeSet.writeTo(edgeDb)
     st.end("Write edges")
