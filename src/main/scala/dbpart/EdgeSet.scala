@@ -2,18 +2,25 @@ package dbpart
 
 import scala.collection.mutable.HashMap
 import dbpart.ubucket.EdgeDB
+import scala.collection.mutable.{HashSet => MSet}
 
 /**
  * Tracks discovered edges in memory.
  */
 final class EdgeSet {
-  var data: HashMap[String,List[String]] = new HashMap[String, List[String]]
+  var data: HashMap[String,MSet[String]] = new HashMap[String, MSet[String]]
 
   def add(edges: TraversableOnce[(String, String)]) {
     synchronized {
       for ((e, f) <- edges) {
-        val old = data.getOrElse(e, List())
-        data += e -> (f :: old).distinct
+        data.get(e: String) match {
+          case Some(old) => old += f
+          case None =>
+          data += (e -> MSet[String](f))
+          //Added unit value to workaround compiler bug.
+          //See https://github.com/scala/bug/issues/10151
+          ()
+        }
       }
     }
   }
