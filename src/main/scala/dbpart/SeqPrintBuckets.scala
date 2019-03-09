@@ -42,7 +42,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
   def packEdge(e: MacroEdge) = (e._1.packedString, e._2.packedString)
 
 
-  def handle(reads: Iterator[String]) {
+  def handle(reads: Iterator[String], index: Boolean) {
     val edgeSet = new EdgeSet
     val handledReads =
       reads.grouped(50000).map(group =>
@@ -54,18 +54,29 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
       })
       })
 
-    for {
-      segment <- handledReads
-      data = segment.flatMap(_._1)
-      edges = segment.map(_._2).seq
-    } {
-      val st = Stats.beginNew
-      db.addBulk(data.seq)
-      st.end("Write data chunk")
-      for (es <- edges) {
+    if (index) {
+      for {
+        segment <- handledReads
+        data = segment.flatMap(_._1)
+        edges = segment.map(_._2).seq
+      } {
+        val st = Stats.beginNew
+        db.addBulk(data.seq)
+        st.end("Write data chunk")
+        for (es <- edges) {
+          edgeSet.add(es)
+        }
+      }
+    } else {
+      for {
+        segment <- handledReads
+        edges = segment.map(_._2).seq
+        es <- edges
+      } {
         edgeSet.add(es)
       }
     }
+
     val st = Stats.beginNew
     edgeSet.writeTo(edgeDb)
     st.end("Write edges")
@@ -128,9 +139,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
-  def build(inputFile: String, matesFile: Option[String]) {
+  def build(inputFile: String, matesFile: Option[String], index: Boolean) {
     Stats.begin()
-    handle(FastQ.iterator(inputFile))
+    handle(FastQ.iterator(inputFile), index)
     Stats.end("Build buckets")
     println("")
   }
