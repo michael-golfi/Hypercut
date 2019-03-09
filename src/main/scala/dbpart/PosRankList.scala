@@ -72,30 +72,6 @@ object PosRankList {
     below.higherRank = middle
   }
 
-  @tailrec
-  def takeByRankRec(from: DLNode, n: Int, acc: List[Marker]): List[Marker] = {
-    if (n == 0) {
-      acc.reverse
-    } else {
-      from match {
-        case End() => acc.reverse
-        case m: MarkerNode =>
-          acc match {
-            case a :: as =>
-              if (a.overlaps(m.m)) {
-                if (a.rankSort <= m.m.rankSort) {
-                  takeByRankRec(m.lowerRank, n, acc)
-                } else {
-                  takeByRankRec(m.lowerRank, n, m.m :: as)
-                }
-              } else {
-                takeByRankRec(m.lowerRank, n - 1, m.m :: acc)
-              }
-            case _ => takeByRankRec(m.lowerRank, n - 1, m.m :: acc)
-          }
-      }
-    }
-  }
 
   @tailrec
   def dropUntilPositionRec(from: MarkerNode, pos: Int, space: MarkerSpace) {
@@ -198,9 +174,10 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * Does not alter the list.
    */
   def takeByRank(n: Int): List[Marker] = {
-    highestRankOption.map(mn =>
-      takeByRank(mn, n)
-    ).getOrElse(List())
+    highestRankOption match {
+      case Some(highest) => takeByRank(highest, n)
+      case None => List()
+    }
   }
 
   /**
@@ -215,7 +192,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
         (List(b), 0)
       }
     } else {
-      (List(a, b), 1)
+      (a :: b :: Nil, 1)
     }
   }
 
@@ -230,7 +207,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
       if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
         (List(x), -1)
       } else {
-        (List(before, after), 0)
+        (before :: after :: Nil, 0)
       }
     } else if (x.overlaps(after)) {
       val r = resolveOverlap(x, after)
