@@ -6,12 +6,15 @@ import scala.collection.Seq
 
 object MarkerSpace {
   val simple = new MarkerSpace(Seq(
+        "TTA",
         "AT", "AC",
-        "GT", "GC"))
+        "GT", "GC",
+        "CTT"))
 
   val default = new MarkerSpace(Seq(
     "ATA", "CCT", "AGG",
     "GT", "AC", "GC", "CC", "GG", "AT"))
+
 }
 
 final class MarkerSpace(byPriority: Seq[String]) {
@@ -19,6 +22,9 @@ final class MarkerSpace(byPriority: Seq[String]) {
   val minMotifLength = byPriority.map(_.length()).min
 
   val byFirstChar = Map() ++ byPriority.groupBy(_.charAt(0))
+
+  def minPermittedStartOffset(motif: String) =
+    maxMotifLength - motif.length()
 
   @volatile
   private var lookup = Map[(String, Boolean, Int), Features]()

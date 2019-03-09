@@ -75,6 +75,8 @@ final case class Marker(pos: Int, features: Features) {
     ms.get(tag, pos, lowestRank, sortValue)
   }
 
+  lazy val rankSort = features.tagRank * 1000 + pos
+
   //NB this limits the maximum k-mer size (1000)
   /**
    * A metric for sorting by rank.
@@ -83,6 +85,14 @@ final case class Marker(pos: Int, features: Features) {
    */
   def withSortValue(space: MarkerSpace, posInSet: Int) =
     copy(features = features.withSortValue(space, 1000 * features.tagRank + posInSet))
+
+  /**
+   * Whether the two markers overlap when absolute positions are used.
+   */
+  def overlaps(other: Marker) = {
+    //this.pos should be < other.pos
+    (this.pos + this.features.tag.length() > other.pos)
+  }
 }
 
 object MarkerSet {

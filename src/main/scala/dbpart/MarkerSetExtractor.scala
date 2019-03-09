@@ -3,6 +3,7 @@ package dbpart
 import friedrich.util.IO
 import scala.annotation.tailrec
 
+
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
    def topNByRankAndPos(ms: List[Marker], n: Int, fromRank: Int = 0) = {
@@ -31,26 +32,14 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
   def markerSetFromUnsorted(ms: List[Marker]) =
     new MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
 
+    /**
+     * Scans a single read, using mutable state to track the current marker set
+     * in a window.
+     */
   final class MarkerExtractor(read: String) {
     var scannedToPos: Int = space.maxMotifLength - 2
-    var markersByPos: List[Marker] = List()
 
-    //Remove markers of a specific rank.
-    //Final position with the rank has the lowest priority.
-    //Reverses the list.
-    @tailrec
-    def rankRemove(markers: List[Marker], rank: Int, amt: Int, build: List[Marker] = Nil): List[Marker] = {
-      if (amt == 0) {
-        markers.reverse ::: build
-      } else {
-        val h = markers.head
-        if (h.features.tagRank == rank) {
-          rankRemove(markers.tail, rank, amt - 1, build)
-        } else {
-          rankRemove(markers.tail, rank, amt, h :: build)
-        }
-      }
-    }
+    var windowMarkers = PosRankList()
 
     def markerAt(pos: Int): Option[Marker] = {
       //rely on these also being rank sorted
@@ -73,36 +62,28 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       }
       if (pos < scannedToPos) {
         throw new Exception("Invalid parameter, please supply increasing values of pos only")
-      } else if (pos == scannedToPos) {
-        markersByPos
-      } else {
+      } else if (pos > scannedToPos) {
         //pos == scannedToPos + 1
         scannedToPos = pos
         if (pos >= read.length()) {
           throw new Exception("Already reached end of read")
         }
         val start = pos - k + 1
-        if (!markersByPos.isEmpty && markersByPos.head.pos < start) {
-          markersByPos = markersByPos.tail
-        }
+
+        //Position insert
         val consider = pos - space.maxMotifLength
-        if (consider < 0) {
-          return markersByPos
+
+        if (consider >= 0) {
+          markerAt(consider) match {
+            case Some(m) =>
+              windowMarkers :+= m
+            case None =>
+          }
         }
-        markerAt(consider) match {
-          case Some(m) =>
-            markersByPos :+= m
-            markersByPos = removeOverlaps(markersByPos)
-            while (markersByPos.length > n) {
-              //highest tagRank index is lowest priority
-              val maxRank = markersByPos.map(_.features.tagRank).max
-              markersByPos =
-                rankRemove(markersByPos.reverse, maxRank, markersByPos.length - n)
-            }
-          case None =>
-        }
-        markersByPos
+        windowMarkers.dropUntilPosition(start, space)
       }
+//      println(windowMarkers)
+      windowMarkers.takeByRank(n)
     }
   }
 
@@ -124,29 +105,6 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       }
 //      println(s"Extracted $r")
       r.reverse
-    }
-
-
-    //TODO make tailrec
-    //Assumes markers are sorted by position.
-    def removeOverlaps(markers: List[Marker]): List[Marker] = {
-      markers match {
-        case m1 :: m2 :: ms => {
-          if (m1.pos + m1.tag.length <= m2.pos) {
-            m1 :: removeOverlaps(m2 :: ms)
-          } else {
-            val p1 = m1.features.tagRank
-            val p2 = m2.features.tagRank
-            if (p1 <= p2) {
-              removeOverlaps(m1 :: ms)
-            } else {
-              removeOverlaps(m2 :: ms)
-            }
-          }
-
-        }
-        case _ => markers
-      }
     }
 
  /**
