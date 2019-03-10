@@ -1,8 +1,9 @@
 package dbpart
 import scala.concurrent.Await
 import scala.concurrent.Future
-import scala.concurrent.duration.Duration
 import scala.concurrent.blocking
+import scala.concurrent.duration.Duration
+
 import dbpart.ubucket._
 import friedrich.util.Distribution
 import friedrich.util.Histogram

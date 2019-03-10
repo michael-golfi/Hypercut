@@ -3,34 +3,13 @@ package dbpart
 import friedrich.util.IO
 import scala.annotation.tailrec
 
-
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
-
-   def topNByRankAndPos(ms: List[Marker], n: Int, fromRank: Int = 0) = {
-     var useRank = fromRank
-     var (atRank, others) = ms.partition(_.features.tagRank == useRank)
-     var r = atRank.sortBy(_.pos)
-     while (r.size < n && !others.isEmpty) {
-       useRank += 1
-       var (nAtRank, nOthers) = others.partition(_.features.tagRank == useRank)
-       r ++= nAtRank.sortBy(_.pos)
-       others = nOthers
-     }
-     r.take(n)
-   }
-
-   def topRanked(ms: List[Marker], n: Int) =
-     topNByRankAndPos(ms, n)
-
    @volatile
    var readCount = 0
    @volatile
    var kmerCount = 0
 
    val n = numMarkers
-
-  def markerSetFromUnsorted(ms: List[Marker]) =
-    new MarkerSet(space, MarkerSet.relativePositions(space, ms)).fromZero
 
     /**
      * Scans a single read, using mutable state to track the current marker set
