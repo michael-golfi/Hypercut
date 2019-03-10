@@ -39,7 +39,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
   final class MarkerExtractor(read: String) {
     var scannedToPos: Int = space.maxMotifLength - 2
 
-    var windowMarkers = PosRankList()
+    var windowMarkers = new TopRankCache(PosRankList(), n)
 
     def markerAt(pos: Int): Option[Marker] = {
       //rely on these also being rank sorted
@@ -83,7 +83,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
         windowMarkers.dropUntilPosition(start, space)
       }
 //      println(windowMarkers)
-      windowMarkers.takeByRank(n)
+      windowMarkers.takeByRank
     }
   }
 

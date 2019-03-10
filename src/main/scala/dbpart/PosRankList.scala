@@ -341,3 +341,45 @@ final case class MarkerNode(pos: Int, m: Marker) extends DLNode {
     lowerRank.higherRank = higherRank
   }
 }
+
+/**
+ * Avoid recomputing takeByRank(n) by using a smart cache.
+ */
+final class TopRankCache(list: PosRankList, n: Int) {
+  var cache: Option[List[Marker]] = None
+  var firstByPos: Marker = _
+  var lowestRank: Int = _
+  var cacheLength: Int = 0
+
+  def :+= (m: Marker) {
+    list :+= m
+    if (m.rankSort < lowestRank || cacheLength < n) {
+      //Force recompute
+      cache = None
+    }
+  }
+
+  def dropUntilPosition(pos: Int, space: MarkerSpace) {
+    list.dropUntilPosition(pos, space)
+    if (firstByPos != null &&
+        pos + space.minPermittedStartOffset(firstByPos.tag) > firstByPos.pos) {
+      //Force recompute
+      cache = None
+    }
+  }
+
+  def takeByRank() = {
+    cache match {
+      case Some(c) => c
+      case _ =>
+        val r = list.takeByRank(n)
+        if (!r.isEmpty) {
+          cache = Some(r)
+          cacheLength = r.length
+          firstByPos = r.head
+          lowestRank = r.map(_.rankSort).max
+        }
+        r
+    }
+  }
+}
