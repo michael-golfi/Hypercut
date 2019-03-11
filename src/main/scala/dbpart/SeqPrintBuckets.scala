@@ -42,6 +42,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         edgeSet.add(es)
       }
     }
+    println(edgeSet.data.size + " nodes found")
   }
 
   def handle(reads: Iterator[String], index: Boolean) {
@@ -148,7 +149,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
   def build(inputFile: String, matesFile: Option[String], index: Boolean) {
     Stats.begin()
-    handle(FastQ.iterator(inputFile), index)
+    handle(ReadFiles.iterator(inputFile), index)
     Stats.end("Build buckets")
     println("")
   }

@@ -121,7 +121,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
   }
 
   def prettyPrintMarkers(input: String) = {
-   val data = FastQ.iterator(input)
+   val data = ReadFiles.iterator(input)
    for (read <- data) {
      print(s"Read: $read")
      val analysed = handle(read)

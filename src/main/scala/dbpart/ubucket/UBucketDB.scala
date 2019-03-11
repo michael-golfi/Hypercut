@@ -4,7 +4,7 @@ import kyotocabinet._
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import scala.collection.mutable.ArrayBuffer
-import dbpart.FastQ
+import dbpart.ReadFiles
 import scala.collection.{ Map => CMap }
 import scala.collection.mutable.{ Map => MMap }
 import scala.annotation.tailrec
