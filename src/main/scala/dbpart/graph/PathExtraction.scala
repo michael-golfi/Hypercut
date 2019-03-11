@@ -1,6 +1,5 @@
 package dbpart.graph
 
-import dbpart.KmerSpace
 import dbpart.MarkerSet
 import friedrich.util.formats.GraphViz
 import dbpart.PartitionBuilder
