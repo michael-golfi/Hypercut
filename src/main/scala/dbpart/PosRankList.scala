@@ -7,16 +7,24 @@ import scala.annotation.tailrec
  * One sorted by rank, one sorted by position.
  */
 sealed trait DLNode {
-  var prevPos: DLNode = _
-  var nextPos: DLNode = _
-  var higherRank: DLNode = _
-  var lowerRank: DLNode = _
+  type Backward = Either[PosRankList, MarkerNode]
+  type Forward = Either[End, MarkerNode]
+  var prevPos: Backward = _
+  var nextPos: Forward = _
+  var higherRank: Backward = _
+  var lowerRank: Forward = _
+
+  def asForwardLink: Forward
+  def asBackwardLink: Backward
 }
 
 /**
  * End marker for both lists
  */
-final case class End() extends DLNode
+final case class End() extends DLNode {
+  def asForwardLink = Left(this)
+  def asBackwardLink = ???
+}
 
 object PosRankList {
 
@@ -36,40 +44,40 @@ object PosRankList {
     var prior: DLNode = r
     if (nodes.size > 0) {
       //position order
-      r.nextPos = nodes.head
-      nodes.head.prevPos = r
+      r.nextPos = Right(nodes.head)
+      nodes.head.prevPos = Left(r)
 
       val byRank = nodes.sortBy(_.rankSort)
-      r.lowerRank = byRank.head
-      byRank.head.higherRank = r
+      r.lowerRank = Right(byRank.head)
+      byRank.head.higherRank = Left(r)
 
       while (i < nodes.size - 1) {
-        nodes(i).nextPos = nodes(i + 1)
-        nodes(i + 1).prevPos = nodes(i)
-        byRank(i).lowerRank = byRank(i + 1)
-        byRank(i + 1).higherRank = byRank(i)
+        nodes(i).nextPos = Right(nodes(i + 1))
+        nodes(i + 1).prevPos = Right(nodes(i))
+        byRank(i).lowerRank = Right(byRank(i + 1))
+        byRank(i + 1).higherRank = Right(byRank(i))
         i += 1
       }
-      nodes(i).nextPos = r.end
-      r.end.prevPos = nodes(i)
-      byRank(i).lowerRank = r.end
-      r.end.higherRank = nodes(i)
+      nodes(i).nextPos = Left(r.end)
+      r.end.prevPos = Right(nodes(i))
+      byRank(i).lowerRank = Left(r.end)
+      r.end.higherRank = Right(nodes(i))
     }
     r
   }
 
-  def linkPos(front: DLNode, middle: DLNode, end: DLNode) {
-    front.nextPos = middle
-    middle.prevPos = front
-    middle.nextPos = end
-    end.prevPos = middle
+  def linkPos(before: DLNode, middle: MarkerNode, after: DLNode) {
+    before.nextPos = Right(middle)
+    middle.prevPos = before.asBackwardLink
+    middle.nextPos = after.asForwardLink
+    after.prevPos = Right(middle)
   }
 
-  def linkRank(above: DLNode, middle: DLNode, below: DLNode) {
-    above.lowerRank = middle
-    middle.higherRank = above
-    middle.lowerRank = below
-    below.higherRank = middle
+  def linkRank(above: DLNode, middle: MarkerNode, below: DLNode) {
+    above.lowerRank = Right(middle)
+    middle.higherRank = above.asBackwardLink
+    middle.lowerRank = below.asForwardLink
+    below.higherRank = Right(middle)
   }
 
 
@@ -78,8 +86,8 @@ object PosRankList {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
       from.remove()
       from.nextPos match {
-        case End() =>
-        case m: MarkerNode =>
+        case Left(_) =>
+        case Right(m) =>
           dropUntilPositionRec(m, pos, space)
       }
     }
@@ -88,13 +96,11 @@ object PosRankList {
   @tailrec
   def rankInsertRec(from: MarkerNode, insert: MarkerNode) {
     if (insert.rankSort < from.rankSort) {
-      linkRank(from.higherRank, insert, from)
+      linkRank(from.higherRank.merge, insert, from)
     } else {
       from.lowerRank match {
-        case End() =>
-          linkRank(from, insert, from.lowerRank)
-        case m: MarkerNode =>
-          rankInsertRec(m, insert)
+        case Left(e) => linkRank(from, insert, e)
+        case Right(m) => rankInsertRec(m, insert)
       }
     }
   }
@@ -110,39 +116,40 @@ object PosRankList {
 final case class PosRankList() extends DLNode with Iterable[Marker] {
   import PosRankList._
 
-  nextPos = End()
-  lowerRank = End()
-  nextPos.prevPos = this
-  lowerRank.higherRank = this
+  nextPos = Left(End())
+  lowerRank = Left(End())
+  nextPos.left.get.prevPos = Left(this)
+  lowerRank.left.get.higherRank = Left(this)
+
+  def asForwardLink: Either[End, MarkerNode] = ???
+  def asBackwardLink = Left(this)
 
   def iterator = new Iterator[Marker] {
     var current = nextPos
-    def hasNext = (current != End())
+    def hasNext = current.isRight
     def next = {
-      val r = current.asInstanceOf[MarkerNode]
-      current = current.nextPos
+      val r = current.right.get
+      current = current.right.flatMap(_.nextPos)
       r.m
     }
   }
 
   def rankIterator = new Iterator[Marker] {
     var current = lowerRank
-    def hasNext = (current != End())
+    def hasNext = current.isRight
     def next = {
-      val r = current.asInstanceOf[MarkerNode]
-      current = current.lowerRank
+      val r = current.right.get
+      current = current.right.flatMap(_.lowerRank)
       r.m
     }
   }
 
-  var end: dbpart.End = nextPos.asInstanceOf[End]
+  val end: dbpart.End = nextPos.left.get
 
   def rankInsert(insert: MarkerNode) {
     lowerRank match {
-      case e: End =>
-        linkRank(this, insert, e)
-      case mn: MarkerNode =>
-        rankInsertRec(mn, insert)
+      case Left(e)   => linkRank(this, insert, e)
+      case Right(mn) => rankInsertRec(mn, insert)
     }
   }
 
@@ -152,11 +159,11 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * inserting at the correct place in rank ordering.
    */
   def :+= (mn: MarkerNode) {
-    lastPosOption match {
-      case Some(last) =>
+    end.prevPos match {
+      case Right(last) =>
         linkPos(last, mn, end)
         rankInsert(mn)
-      case _ =>
+      case Left(_) =>
         linkPos(this, mn, end)
         linkRank(this, mn, end)
     }
@@ -174,9 +181,9 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * Does not alter the list.
    */
   def takeByRank(n: Int): List[Marker] = {
-    highestRankOption match {
-      case Some(highest) => takeByRank(highest, n)
-      case None => List()
+    lowerRank match {
+      case Right(highest) => takeByRank(highest, n)
+      case _ => List()
     }
   }
 
@@ -255,8 +262,8 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
     var cur = from
     var r = List(cur.m)
     var rem = n - 1
-    while (cur.lowerRank != End() && rem > 0) {
-      cur = cur.lowerRank.asInstanceOf[MarkerNode]
+    while (cur.lowerRank.isRight && rem > 0) {
+      cur = cur.lowerRank.right.get
       val (nr, delta) = insertPosNoOverlap(r, cur.m)
 //      println(this)
 //      println(nr)
@@ -275,41 +282,9 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * Removes items before the given position.
    */
   def dropUntilPosition(pos: Int, space: MarkerSpace) {
-    for (mn <- firstPosOption) {
+    for (mn <- nextPos) {
       dropUntilPositionRec(mn, pos, space)
     }
-  }
-
-  /**
-   * Does not alter the list
-   */
-  def firstPosOption: Option[MarkerNode] = nextPos match {
-    case End() => None
-    case mn: MarkerNode => Some(mn)
-  }
-
-  /**
-   * Does not alter the list
-   */
-  def lastPosOption: Option[MarkerNode] = end.prevPos match {
-    case PosRankList() => None
-    case mn: MarkerNode => Some(mn)
-  }
-
-  /**
-   * Does not alter the list
-   */
-  def highestRankOption: Option[MarkerNode] = lowerRank match {
-    case End() => None
-    case mn: MarkerNode => Some(mn)
-  }
-
-  /**
-   * Does not alter the list
-   */
-  def lowestRankOption: Option[MarkerNode] = end.higherRank match {
-    case PosRankList() => None
-    case mn: MarkerNode => Some(mn)
   }
 
   override def toString = {
@@ -327,6 +302,8 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
 final case class MarkerNode(pos: Int, m: Marker) extends DLNode {
   import PosRankList._
 
+  def asForwardLink = Right(this)
+  def asBackwardLink = Right(this)
 
   //NB this imposes a maximum length on analysed sequences for now
   lazy val rankSort = m.rankSort
@@ -335,10 +312,10 @@ final case class MarkerNode(pos: Int, m: Marker) extends DLNode {
    * Remove this node from both of the two lists.
    */
   def remove() {
-    prevPos.nextPos = nextPos
-    nextPos.prevPos = prevPos
-    higherRank.lowerRank = lowerRank
-    lowerRank.higherRank = higherRank
+    prevPos.merge.nextPos = nextPos
+    nextPos.merge.prevPos = prevPos
+    higherRank.merge.lowerRank = lowerRank
+    lowerRank.merge.higherRank = higherRank
   }
 }
 
