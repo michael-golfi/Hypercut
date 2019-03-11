@@ -17,7 +17,7 @@ object ReadFiles {
     r.getLines.grouped(2).map(_(1))
 
   def iterator(file: String): Iterator[String] = {
-    if (file.endsWith(".fq") || file.endsWith(".fastq")) {
+    if (file.endsWith(".fq") || file.endsWith(".fastq") || file == "-") {
      println("Assuming fastq format")
      fastq(file)
    } else if (file.endsWith(".fa") || file.endsWith(".fasta")) {
