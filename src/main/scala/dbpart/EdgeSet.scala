@@ -8,15 +8,15 @@ import scala.collection.mutable.{HashSet => MSet}
  * Tracks discovered edges in memory.
  */
 final class EdgeSet {
-  var data: HashMap[String,MSet[String]] = new HashMap[String, MSet[String]]
+  var data: HashMap[Seq[Byte],MSet[Seq[Byte]]] = new HashMap[Seq[Byte],MSet[Seq[Byte]]]
 
-  def add(edges: TraversableOnce[(String, String)]) {
+  def add(edges: TraversableOnce[CompactEdge]) {
     synchronized {
       for ((e, f) <- edges) {
-        data.get(e: String) match {
-          case Some(old) => old += f
+        data.get(e.toSeq) match {
+          case Some(old) => old += f.toSeq
           case None =>
-          data += (e -> MSet[String](f))
+          data += (e.toSeq -> MSet[Seq[Byte]](f.toSeq))
           //Added unit value to workaround compiler bug.
           //See https://github.com/scala/bug/issues/10151
           ()
@@ -28,7 +28,11 @@ final class EdgeSet {
   /**
    * Writes (appends) the edges to the provided EdgeDB.
    */
-  def writeTo(db: EdgeDB) {
-    db.addBulk(data)
+  def writeTo(db: EdgeDB, space: MarkerSpace) {
+    def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
+
+    for (g <- data.grouped(100000)) {
+      db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
+    }
   }
 }

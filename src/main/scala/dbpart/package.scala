@@ -8,4 +8,6 @@ package object dbpart {
    * Type of edges between buckets in the macro graph.
    */
   type MacroEdge = (MarkerSet, MarkerSet)
+  
+  type CompactEdge = (Array[Byte], Array[Byte])
 }

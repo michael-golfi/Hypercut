@@ -1,7 +1,8 @@
 package dbpart
 
-import scala.collection.Seq
 import scala.annotation.tailrec
+import scala.collection.Seq
+import java.nio.ByteBuffer
 
 object Marker {
   val PackedMarker = "([ACTGUN]+)(\\d+)"r
@@ -18,6 +19,8 @@ object Marker {
  */
 final class Features(val tag: String, val tagRank: Int, val lowestRank: Boolean = false,
   val sortValue: Int = 0) {
+
+  def tagIndex(space: MarkerSpace) = space.byIndex(tag)
 
   def strongEquivalent(other: Features) = {
     tag == other.tag && lowestRank == other.lowestRank
@@ -108,6 +111,26 @@ object MarkerSet {
     } else {
       new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toList)
     }
+  }
+
+  def uncompactToString(data: Array[Byte], space: MarkerSpace): String = {
+    val b = ByteBuffer.wrap(data)
+    val r = new StringBuilder
+    val n = b.capacity() / 3
+    var i = 0
+    while (i < n) {
+      r.append(space.byPriority(b.get))
+      val pos = b.getShort
+      if (pos < 10) {
+        r.append("0")
+      }
+      r.append(pos)
+      i += 1
+      if (i < n) {
+        r.append(".")
+      }
+    }
+    r.toString()
   }
 
   /**
@@ -206,6 +229,17 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
       }
     }
     r.toString
+  }
+
+  lazy val compact = {
+    val r = ByteBuffer.allocate(3 * relativeMarkers.size)
+    val it = relativeMarkers.iterator
+    while (it.hasNext) {
+      val m = it.next
+      r.put(m.features.tagIndex(space).toByte)
+      r.putShort(m.pos.toShort)
+    }
+    r.array()
   }
 
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"

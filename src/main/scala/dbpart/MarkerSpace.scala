@@ -17,11 +17,12 @@ object MarkerSpace {
 
 }
 
-final class MarkerSpace(byPriority: Seq[String]) {
+final class MarkerSpace(val byPriority: Seq[String]) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
   val byFirstChar = Map() ++ byPriority.groupBy(_.charAt(0))
+  val byIndex = Map() ++ byPriority.zipWithIndex
 
   def minPermittedStartOffset(motif: String) =
     maxMotifLength - motif.length()

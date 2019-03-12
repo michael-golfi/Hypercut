@@ -94,7 +94,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
                   acc: List[MacroEdge] = Nil): List[MacroEdge] = {
     data match {
       case x :: y :: xs =>
-        if (x.packedString == y.packedString) {
+        if (x.compact.toSeq == y.compact.toSeq) {
           transitions(y :: xs, acc)
         } else {
           transitions(y :: xs, (x, y) :: acc)

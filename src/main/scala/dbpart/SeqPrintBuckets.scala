@@ -34,9 +34,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
-  def packEdge(e: MacroEdge) = (e._1.packedString, e._2.packedString)
+  def packEdge(e: MacroEdge) = (e._1.compact, e._2.compact)
 
-  def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[(String, String)]]) {
+  def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[CompactEdge]]) {
     blocking {
       for (es <- edges) {
         edgeSet.add(es)
@@ -86,7 +86,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
 
     Await.result(edgesFuture, Duration.Inf)
     val st = Stats.beginNew
-    edgeSet.writeTo(edgeDb)
+    edgeSet.writeTo(edgeDb, space)
     st.end("Write edges")
   }
 
