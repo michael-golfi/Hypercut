@@ -308,9 +308,9 @@ final class CountingSeqBucket(sequences: Iterable[String],
    * @return true iff the sequence was found.
    */
   def findAndIncrement(data: String, inSeq: Seq[String],
-                inCov: ArrayBuffer[String]): Boolean = {
+                inCov: ArrayBuffer[String], numSequences: Int): Boolean = {
     var i = 0
-    while (i < inSeq.size) {
+    while (i < numSequences) {
       val s = inSeq(i)
       val index = s.indexOf(data)
       if (index != -1) {
@@ -324,37 +324,44 @@ final class CountingSeqBucket(sequences: Iterable[String],
 
   /**
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
+   * Returns true if a new non-merged sequence was added.
    */
-  def insertSequence(data: String, intoSeq: ArrayBuffer[String], intoCov: ArrayBuffer[String]) {
+  def insertSequence(data: String, intoSeq: ArrayBuffer[String],
+                     intoCov: ArrayBuffer[String], numSequences: Int): Boolean = {
     val suffix = data.substring(1)
     val prefix = data.substring(0, k - 1)
     var i = 0
-    while (i < intoSeq.size) {
+    while (i < numSequences) {
       val existingSeq = intoSeq(i)
       if (existingSeq.startsWith(suffix)) {
         intoSeq(i) = (data.charAt(0) + existingSeq)
         intoCov(i) = asCoverage(1) + intoCov(i)
-        return
+        return false
       }
       if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
         intoCov(i) = intoCov(i) + asCoverage(1)
-        return
+        return false
       }
       i += 1
     }
     intoSeq += data
     intoCov += asCoverage(1).toString()
+    true
   }
 
   override def insertBulk(values: Iterable[String]): Option[CountingSeqBucket] = {
     var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
     var covR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+
+    var n = sequences.size
     r ++= sequences
     covR ++= coverage.coverages
 
-    for (v <- values; if !findAndIncrement(v, r, covR)) {
-      insertSequence(v, r, covR)
+    for (v <- values; if !findAndIncrement(v, r, covR, n)) {
+      if (insertSequence(v, r, covR, n)) {
+        n += 1
+      }
       sequencesUpdated = true
     }
 
