@@ -1,6 +1,9 @@
 package dbpart
 
 object Read {
+  /**
+   * Extract all k-mers from a read.
+   */
   def kmers(data: String, k: Int): Iterator[String] = {
     new Iterator[String] {
       val len = data.length()

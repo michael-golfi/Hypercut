@@ -45,8 +45,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     println(edgeSet.data.size + " nodes found")
   }
 
-  def handle(reads: Iterator[String], index: Boolean) {
-    val edgeSet = new EdgeSet
+  def handle(reads: Iterator[String], index: Boolean, flushEdges: Boolean) {
+    val edgeFlushInt = if (flushEdges) Some(5000000) else None
+    val edgeSet = new EdgeSet(edgeDb, edgeFlushInt, space)
     var edgesFuture: Future[Unit] = Future.successful(())
 
     /**
@@ -73,14 +74,18 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         val st = Stats.beginNew
         db.addBulk(data.seq)
         st.end("Write data chunk")
-        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+        if (edgeSet.canReceiveData) {
+          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+        }
       }
     } else {
       for {
         segment <- handledReads
         edges = segment.map(_._2).seq
       } {
-        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+        if (edgeSet.canReceiveData) {
+          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+        }
       }
     }
 
@@ -147,9 +152,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
-  def build(inputFile: String, matesFile: Option[String], index: Boolean) {
+  def build(inputFile: String, matesFile: Option[String], index: Boolean,
+            flushEdges: Boolean) {
     Stats.begin()
-    handle(ReadFiles.iterator(inputFile), index)
+    handle(ReadFiles.iterator(inputFile), index, flushEdges)
     Stats.end("Build buckets")
     println("")
   }

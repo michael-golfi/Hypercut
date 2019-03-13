@@ -7,12 +7,20 @@ import scala.collection.mutable.{HashSet => MSet}
 /**
  * Tracks discovered edges in memory.
  */
-final class EdgeSet {
+final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
   var data: HashMap[Seq[Byte],MSet[Seq[Byte]]] = new HashMap[Seq[Byte],MSet[Seq[Byte]]]
 
+  val writeLock = new Object
+
+  def canReceiveData = writeLock.synchronized {
+    true
+  }
+
+  var edgeCount: Int = 0
   def add(edges: TraversableOnce[CompactEdge]) {
     synchronized {
       for ((e, f) <- edges) {
+        edgeCount += 1
         data.get(e.toSeq) match {
           case Some(old) => old += f.toSeq
           case None =>
@@ -21,6 +29,17 @@ final class EdgeSet {
           //See https://github.com/scala/bug/issues/10151
           ()
         }
+
+        writeInterval match {
+          case Some(int) =>
+            //Avoid frequent size check
+            if ((edgeCount % 10000 == 0) &&
+              data.size > int) {
+              writeTo(db, space)
+              data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
+            }
+          case _ =>
+        }
       }
     }
   }
@@ -28,10 +47,10 @@ final class EdgeSet {
   /**
    * Writes (appends) the edges to the provided EdgeDB.
    */
-  def writeTo(db: EdgeDB, space: MarkerSpace) {
+  def writeTo(db: EdgeDB, space: MarkerSpace) = writeLock.synchronized {
     def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
 
-    for (g <- data.grouped(100000)) {
+    for (g <- data.grouped(1000000)) {
       db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
     }
   }

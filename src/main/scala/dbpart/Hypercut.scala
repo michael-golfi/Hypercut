@@ -40,12 +40,13 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
       val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
       val index = toggle("index", default = Some(true), descrNo = "Do not index sequences in database")
+      val edgeFlush = toggle("edgeFlush", default = Some(false), descrYes = "Flush macro edges to database periodically")
 
       def run() {
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
           numMarkers.toOption.get, dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
 
-        spb.build(input.toOption.get, mates.toOption, index.toOption.get)
+        spb.build(input.toOption.get, mates.toOption, index.toOption.get, edgeFlush.toOption.get)
         spb.stats
       }
     }
