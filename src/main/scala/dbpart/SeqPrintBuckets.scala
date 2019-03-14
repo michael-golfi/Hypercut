@@ -98,32 +98,47 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     st.end("Write edges")
   }
 
-  def checkConsistency() {
+  def checkConsistency(kmerCheck: Boolean) {
     import scala.collection.mutable.HashMap
 
     var errors = 0
     var count = 0
     /*
-       * Check that each k-mer appears in only one bucket.
-       * Expensive, memory intensive operation. Intended for debug purposes.
-       */
+     * Check that each k-mer appears in only one bucket.
+     * Expensive, memory intensive operation. Intended for debug purposes.
+     */
     var map = new HashMap[String, String]()
-    for ((key, bucket) <- db.buckets; kmer <- bucket.kmers) {
-      count += 1
-      if (map.contains(kmer)) {
-        Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
+    for ((key, bucket) <- db.buckets) {
+
+      if (bucket.sequences.size > 100) {
+        println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
+      }
+      if (bucket.coverage.coverages.size != bucket.sequences.size) {
+        Console.err.println(s"Error: bucket $key has ${bucket.sequences.size} sequences but ${bucket.coverage.coverages.size} coverages")
         errors += 1
       }
+
       /*
-         * Also check the validity of each key
-         */
+       * Also check the validity of each key
+       */
       if (!checkKey(key)) {
         Console.err.println(s"Error: key $key is incorrect")
         errors += 1
       }
-      map += (kmer -> key)
-      if (count % 10000 == 0) {
-        print(".")
+
+      if (kmerCheck) {
+        for (kmer <- bucket.kmers) {
+          count += 1
+          if (map.contains(kmer)) {
+            Console.err.println(s"Error: $kmer is contained in two buckets: $key, ${map(kmer)}")
+            errors += 1
+          }
+
+          map += (kmer -> key)
+          if (count % 10000 == 0) {
+            print(".")
+          }
+        }
       }
     }
 

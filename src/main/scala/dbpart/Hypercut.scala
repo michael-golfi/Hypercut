@@ -90,9 +90,14 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     })
     addSubcommand(stats)
 
-    val check = new HCCommand("check")({
-      defaultBuckets.checkConsistency()
-    })
+    val check = new Subcommand("check") with RunnableCommand {
+      val kmerCheck = toggle("kmerDuplicates", default = Some(false),
+        descrYes = "Check for kmer duplicates (memory intensive)")
+
+      def run() {
+        defaultBuckets.checkConsistency(kmerCheck.toOption.get)
+      }
+    }
     addSubcommand(check)
   }
   addSubcommand(buckets)
