@@ -9,8 +9,9 @@ import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 
-final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: Int, dbfile: String,
-  dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
+final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
+  dbfile: String, dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
+
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
   lazy val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"))
@@ -34,7 +35,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
-  def packEdge(e: MacroEdge) = (e._1.compact, e._2.compact)
+  def packEdge(e: MacroEdge) = {
+    (e._1.compact, e._2.compact)
+  }
 
   def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[CompactEdge]]) {
     blocking {
@@ -42,11 +45,11 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
         edgeSet.add(es)
       }
     }
-    println(edgeSet.data.size + " nodes found")
+    println(edgeSet.seenNodes + " nodes found")
   }
 
-  def handle(reads: Iterator[String], index: Boolean, flushEdges: Boolean) {
-    val edgeFlushInt = if (flushEdges) Some(5000000) else None
+  def handle(reads: Iterator[String], index: Boolean) {
+    val edgeFlushInt = Some(5000000)
     val edgeSet = new EdgeSet(edgeDb, edgeFlushInt, space)
     var edgesFuture: Future[Unit] = Future.successful(())
 
@@ -152,10 +155,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     }
   }
 
-  def build(inputFile: String, matesFile: Option[String], index: Boolean,
-            flushEdges: Boolean) {
+  def build(inputFile: String, matesFile: Option[String], index: Boolean) {
     Stats.begin()
-    handle(ReadFiles.iterator(inputFile), index, flushEdges)
+    handle(ReadFiles.iterator(inputFile), index)
     Stats.end("Build buckets")
     println("")
   }
@@ -169,6 +171,21 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, val numMarkers: 
     dist.print("Kmer coverage")
     hist = edgeDb.bucketSizeHistogram()
     hist.print("Macro graph node degree (no coverage threshold)")
+  }
+
+  def collapse() {
+    Stats.begin()
+    val collapseMap = new EdgeSet(null, None, space)
+    for {
+      g <- edgeDb.bucketKeys.take(8000000).grouped(100000)
+    } {
+      val coll = g.par.map(n => {
+        val ms = asMarkerSet(n)
+        (ms.compact -> ms.collapse.compact)
+      }).seq
+      collapseMap.add(coll)
+    }
+    Stats.end("Collapse nodes")
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical

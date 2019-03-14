@@ -16,7 +16,10 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
     true
   }
 
+  var flushedNodeCount: Int = 0
   var edgeCount: Int = 0
+  def seenNodes = data.size + flushedNodeCount
+
   def add(edges: TraversableOnce[CompactEdge]) {
     synchronized {
       for ((e, f) <- edges) {
@@ -50,6 +53,7 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
   def writeTo(db: EdgeDB, space: MarkerSpace) = writeLock.synchronized {
     def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
 
+    flushedNodeCount += data.size
     for (g <- data.grouped(1000000)) {
       db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
     }

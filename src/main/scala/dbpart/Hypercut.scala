@@ -40,13 +40,13 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
       val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
       val index = toggle("index", default = Some(true), descrNo = "Do not index sequences in database")
-      val edgeFlush = toggle("edgeFlush", default = Some(false), descrYes = "Flush macro edges to database periodically")
 
       def run() {
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
-          numMarkers.toOption.get, dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
+          numMarkers.toOption.get,
+          dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
 
-        spb.build(input.toOption.get, mates.toOption, index.toOption.get, edgeFlush.toOption.get)
+        spb.build(input.toOption.get, mates.toOption, index.toOption.get)
         spb.stats
       }
     }
@@ -71,12 +71,19 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       banner("Copy a bucket database into another one (appending), optionally applying coverage filtering. Edges are not coverage filtered.")
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
-        //TODO: not copying edges yet
+        //TODO: not copying edges yet, only sequences and coverages
         val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options, k.toOption.get, None)
         out.copyAllFrom(defaultBuckets.db)
       }
     }
     addSubcommand(copy)
+
+    val collapse = new Subcommand("collapse") with RunnableCommand {
+      def run() {
+        defaultBuckets.collapse()
+      }
+    }
+    addSubcommand(collapse)
 
     val stats = new HCCommand("stats")({
       defaultBuckets.stats

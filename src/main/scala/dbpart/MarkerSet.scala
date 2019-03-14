@@ -342,6 +342,34 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
     }
   }
 
+  def removeMarker(pos: Int,  ms: List[Marker]): List[Marker] = {
+    if (pos == 0) {
+      ms match {
+        case a :: b :: xs =>
+          b.copy(pos = a.pos + b.pos) :: xs
+        case a :: xs =>
+          xs
+        case _ => ???
+      }
+    } else {
+      ms match {
+        case a :: xs =>
+          a :: removeMarker(pos - 1, xs)
+        case _ => ???
+      }
+    }
+  }
+
+  lazy val collapse = {
+    if (!relativeMarkers.isEmpty) {
+      val lowest = relativeMarkers.sortBy(_.rankSort).last
+      val i = relativeMarkers.indexOf(lowest)
+      new MarkerSet(space, removeMarker(i, relativeMarkers))
+    } else {
+      new MarkerSet(space, List())
+    }
+  }
+
   /**
    * Produces a copy where lowestRank values have all been set to false.
    */

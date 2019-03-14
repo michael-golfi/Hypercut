@@ -237,8 +237,8 @@ object SeqBucketDB {
   val c20g = 20L * c1g
   val c40g = 40L * c1g
 
-  val buckets = 20000000
-  //20M buckets
+  val buckets = 40000000
+  //40M buckets
   //256 byte alignment
   //40G mmap
   val options = s"#bnum=$buckets#apow=8#opts=l"
