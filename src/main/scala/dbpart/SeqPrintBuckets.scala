@@ -113,8 +113,12 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
       if (bucket.sequences.size > 100) {
         println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
       }
-      if (bucket.coverage.coverages.size != bucket.sequences.size) {
-        Console.err.println(s"Error: bucket $key has ${bucket.sequences.size} sequences but ${bucket.coverage.coverages.size} coverages")
+
+      val numCoverages = bucket.coverage.coverages.size
+      val numSeqs = bucket.sequences.size
+
+      if (numCoverages != numSeqs) {
+        Console.err.println(s"Error: bucket $key has $numSeqs sequences but $numCoverages coverages")
         errors += 1
       }
 
@@ -138,6 +142,11 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
           if (count % 10000 == 0) {
             print(".")
           }
+        }
+        val numKmers = bucket.kmers.size
+        val numCoverages = bucket.coverage.coverages.map(_.length).sum
+        if (numKmers != numCoverages) {
+          Console.err.println(s"Error: bucket $key has $numKmers kmers but $numCoverages coverage positions")
         }
       }
     }

@@ -337,8 +337,7 @@ final class CountingSeqBucket(sequences: Iterable[String],
         intoSeq(i) = (data.charAt(0) + existingSeq)
         intoCov(i) = asCoverage(1) + intoCov(i)
         return false
-      }
-      if (existingSeq.endsWith(prefix)) {
+      } else if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
         intoCov(i) = intoCov(i) + asCoverage(1)
         return false
