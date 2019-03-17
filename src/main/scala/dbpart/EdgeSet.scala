@@ -6,19 +6,16 @@ import scala.collection.mutable.{HashSet => MSet}
 
 /**
  * Tracks discovered edges in memory.
+ * This class is not thread safe, and users must synchronise appropriately.
  */
 final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
   var data: HashMap[Seq[Byte],MSet[Seq[Byte]]] = new HashMap[Seq[Byte],MSet[Seq[Byte]]]
 
-  val writeLock = new Object
-
-  def canReceiveData = writeLock.synchronized {
-    true
-  }
-
   var flushedNodeCount: Int = 0
   var edgeCount: Int = 0
   def seenNodes = data.size + flushedNodeCount
+
+  val writeLock = new Object
 
   def add(edges: TraversableOnce[CompactEdge]) {
     synchronized {
@@ -39,7 +36,6 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
             if ((edgeCount % 10000 == 0) &&
               data.size > int) {
               writeTo(db, space)
-              data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
             }
           case _ =>
         }
@@ -51,11 +47,15 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
    * Writes (appends) the edges to the provided EdgeDB.
    */
   def writeTo(db: EdgeDB, space: MarkerSpace) = writeLock.synchronized {
-    def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
+    this.synchronized {
+      def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
 
-    flushedNodeCount += data.size
-    for (g <- data.grouped(1000000)) {
-      db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
+      val groups = data.grouped(1000000)
+      flushedNodeCount += data.size
+      data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
+      for (g <- groups) {
+        db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
+      }
     }
   }
 }

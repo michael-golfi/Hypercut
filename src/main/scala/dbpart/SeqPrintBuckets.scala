@@ -45,7 +45,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
         edgeSet.add(es)
       }
     }
-    println(edgeSet.seenNodes + " nodes found")
+    println("Up to " + edgeSet.seenNodes + " nodes found")
   }
 
   def handle(reads: Iterator[String], index: Boolean) {
@@ -68,27 +68,20 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
       })
       })
 
-    if (index) {
-      for {
-        segment <- handledReads
-        data = segment.flatMap(_._1)
-        edges = segment.map(_._2).seq
-      } {
+    for {
+      segment <- handledReads
+      edges = segment.map(_._2).seq
+    } {
+      if (index) {
         val st = Stats.beginNew
-        db.addBulk(data.seq)
+        blocking {
+          db.addBulk(segment.flatMap(_._1).seq)
+        }
         st.end("Write data chunk")
-        if (edgeSet.canReceiveData) {
-          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
-        }
       }
-    } else {
-      for {
-        segment <- handledReads
-        edges = segment.map(_._2).seq
-      } {
-        if (edgeSet.canReceiveData) {
-          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
-        }
+      //Synchronize here to ensure we don't proceed if the edge set is currently writing
+      edgeSet.writeLock.synchronized {
+        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
       }
     }
 

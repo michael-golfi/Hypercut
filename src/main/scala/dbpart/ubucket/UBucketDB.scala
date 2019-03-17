@@ -141,14 +141,14 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
   def addBulk(insert: CMap[String, Iterable[String]]) {
     val stats = new InsertStats
     for (insertGr <- insert.grouped(10000).toSeq.par) {
-      val existing = blocking { getBulk(insertGr.keys) }
+      val existing = getBulk(insertGr.keys)
       val merged = merge(existing, insertGr)
-      blocking { afterBulkWrite(merged) }
+      afterBulkWrite(merged)
       val forWrite = merged.filter(x => shouldWriteBack(x._1, x._2)).map(
         x => (x._1 -> x._2.pack))
 
       stats.add(forWrite.size, merged.size)
-      blocking { setBulk(forWrite) }
+      setBulk(forWrite)
     }
     stats.print()
   }
