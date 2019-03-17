@@ -234,7 +234,7 @@ final class CountingSeqBucket(sequences: Iterable[String],
     sequences zip coverage.sequenceAvgCoverages
 
   def kmersWithCoverage =
-    kmers zip coverage.kmerCoverages
+    kmers.iterator zip coverage.kmerCoverages
 
   def kmersBySequenceWithCoverage =
     kmersBySequence zip coverage.sequenceCoverages
@@ -298,7 +298,7 @@ final class CountingSeqBucket(sequences: Iterable[String],
     }
   }
 
-  def kmerCoverages: Iterable[Int] = coverage.kmerCoverages
+  def kmerCoverages: Iterator[Int] = coverage.kmerCoverages
 
   override def insertSingle(value: String): Option[CountingSeqBucket] =
     insertBulk(Seq(value))

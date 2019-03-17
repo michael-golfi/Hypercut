@@ -11,7 +11,7 @@ import scala.collection.{Map => CMap}
 final class CoverageBucket(val coverages: Iterable[String]) {
   import CountingSeqBucket._
 
-  def kmerCoverages: Iterable[Int] = coverages.flatMap(_.map(covToInt))
+  def kmerCoverages: Iterator[Int] = coverages.iterator.flatMap(_.map(covToInt))
 
   def sequenceCoverages: Iterable[Iterable[Int]] = coverages.map(_.map(covToInt))
 
@@ -56,5 +56,7 @@ final class CoverageDB(val dbLocation: String) extends KyotoDB {
   def setBulk(data: CMap[String, CoverageBucket]) {
     db.set_bulk(data.map(x => (x._1 -> x._2.pack)).asJava, false)
   }
+
+  def buckets = bucketsRaw.map(x => (x._1, unpack(x._2)))
 
 }

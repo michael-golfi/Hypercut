@@ -46,6 +46,32 @@ trait KyotoDB {
     }
     db.set_bulk(recary, false)
   }
+
+  protected def bucketsRaw: Iterator[(String, String)] = {
+    new Iterator[(String, String)] {
+      val cur = db.cursor()
+      cur.jump()
+      var nextVal: Array[String] = cur.get_str(true)
+
+      override def next() = {
+        val r = (nextVal(0), nextVal(1))
+        nextVal = cur.get_str(true)
+        r
+      }
+
+      override def hasNext() = {
+        if (nextVal != null) {
+          true
+        } else {
+          cur.disable()
+          false
+        }
+      }
+    }
+  }
+
+  def bucketKeys: Iterator[String] =
+    bucketsRaw.map(_._1)
 }
 
 /**
@@ -159,32 +185,6 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
   }
 
-  private def bucketsRaw: Iterator[(String, String)] = {
-    new Iterator[(String, String)] {
-      val cur = db.cursor()
-      cur.jump()
-      var nextVal: Array[String] = cur.get_str(true)
-
-      override def next() = {
-        val r = (nextVal(0), nextVal(1))
-        nextVal = cur.get_str(true)
-        r
-      }
-
-      override def hasNext() = {
-        if (nextVal != null) {
-          true
-        } else {
-          cur.disable()
-          false
-        }
-      }
-    }
-  }
-
-  def bucketKeys: Iterator[String] =
-    bucketsRaw.map(_._1)
-
   def buckets: Iterator[(String, B)] =
     bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
 
@@ -260,6 +260,13 @@ extends BucketDB[CountingSeqBucket](location, options,
 
   def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
 
+  //Traversing the coverages should be cheaper than traversing the full buckets
+  //for counting the number of sequences
+  override def bucketSizeHistogram(limitMax: Option[Long] = None) = {
+    val ss = covDB.buckets.map(_._2.coverages.size)
+    new Histogram(ss.toSeq, 10, limitMax)
+  }
+
   def newBucket(values: Iterable[String]) =
     new CountingSeqBucket(Iterable.empty, new CoverageBucket(Iterable.empty), k).insertBulk(values).get
 
@@ -296,7 +303,7 @@ extends BucketDB[CountingSeqBucket](location, options,
 
   def kmerCoverageStats = {
     val d = new Distribution
-    for ((k, b) <- buckets) {
+    for ((k, b) <- covDB.buckets) {
       d.observe(b.kmerCoverages)
     }
     d
