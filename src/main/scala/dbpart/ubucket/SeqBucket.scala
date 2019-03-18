@@ -27,33 +27,6 @@ trait Bucket[+B <: Bucket[_]] {
 }
 
 /**
- * Simple bucket implementation that stores k-mers in a list.
- * No sorting or deduplication is performed.
- */
-object KmerBucket extends Unpacker[KmerBucket] {
-  val separator: String = "\n"
-
-  def unpack(key: String, set: String, k: Int): KmerBucket =
-    new KmerBucket(set, set.split(separator, -1).toList, k)
-}
-
-final class KmerBucket(oldSet: String, val kmers: List[String], k: Int) extends Bucket[KmerBucket] {
-  import KmerBucket._
-  def size: Int = kmers.size
-  def items = kmers
-
-  def insertSingle(value: String): Option[KmerBucket] =
-    Some(new KmerBucket(s"$oldSet$separator$value", value :: kmers, k))
-
-  def insertBulk(values: Iterable[String]): Option[KmerBucket] = {
-    val newVals = values.mkString(separator)
-    Some(new KmerBucket(s"oldSet$separator$newVals", values.toList ::: kmers, k))
-  }
-
-  def pack: String = oldSet
-}
-
-/**
  * Stores distinct strings (not necessarily NT sequences).
  * The value of k has no meaning for this implementation.
  */
@@ -225,6 +198,9 @@ class CountingUnpacker(dbLocation: String, minCoverage: Option[Int]) extends Unp
   }
 }
 
+/**
+ * A bucket the counts the coverage of each k-mer, encoding it as a single char.
+ */
 final class CountingSeqBucket(sequences: Iterable[String],
   val coverage: CoverageBucket, k: Int,
   var sequencesUpdated: Boolean = false) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {

@@ -10,6 +10,9 @@ import scala.collection.mutable.{ Map => MMap }
 import scala.annotation.tailrec
 import scala.concurrent.blocking
 
+/**
+ * A Kyoto cabinet-based database.
+ */
 trait KyotoDB {
   def dbLocation: String
   def dbOptions: String
@@ -75,8 +78,8 @@ trait KyotoDB {
 }
 
 /**
- * Database of unique buckets for k-mers.
- * k-mers with identical sequence data are stored together.
+ * A database that stores keyed buckets of some type B, which can be serialised
+ * to strings. Efficient bulk insertion is supported.
  */
 abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: String,
     val unpacker: Unpacker[B],
@@ -213,6 +216,10 @@ object EdgeDB {
   def dbOptions: String = s"#bnum=$buckets#apow=7#mmap=$c8g#opts=l"
 }
 
+/**
+ * Database of nodes and edges in the macro graph. Buckets here simply store
+ * unique strings.
+ */
 final class EdgeDB(location: String)
   extends BucketDB[DistinctBucket](location, EdgeDB.dbOptions, DistinctBucket, 0) {
 
@@ -250,6 +257,8 @@ object SeqBucketDB {
  * Buckets will contain lists of paths, not KMers.
  * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
  * can be used.
+ *
+ * The coverage of each k-mer is also tracked in an auxiliary database (covDB).
  *
  * The coverage filter, if present, affects extractor methods such as kmerBuckets, buckets,
  * getBulk, bucketKeys.
