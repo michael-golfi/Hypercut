@@ -273,10 +273,15 @@ extends BucketDB[CountingSeqBucket](location, options,
   override def buckets =
     super.buckets.filter(! _._2.sequences.isEmpty)
 
-  //Note: this is less efficient than the supertype operation since we have to unpack every bucket
-  //and filter by coverage
-  override def bucketKeys =
-    buckets.map(_._1)
+  /*
+   * Going purely through the coverage DB is cheaper than unpacking all sequences
+   */
+  override def bucketKeys = {
+    minCoverage match {
+      case Some(m) => covDB.buckets.filter(_._2.hasMinCoverage(m)).map(_._1)
+      case None => super.bucketKeys
+    }
+  }
 
   /**
    * Only write back sequences if they did actually change

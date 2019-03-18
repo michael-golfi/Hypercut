@@ -20,6 +20,8 @@ final class CoverageBucket(val coverages: Iterable[String]) {
   def sequenceAvgCoverages: Iterable[Double] =
     sequenceCoverages.map(sc => average(sc.map(_.toDouble)))
 
+  def hasMinCoverage(min: Int) = kmerCoverages.exists(_ >= min)
+
   def pack: String = coverages.mkString(separator)
 }
 
