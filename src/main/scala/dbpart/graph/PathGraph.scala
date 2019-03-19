@@ -51,18 +51,8 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
     val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.takeRight(k - 1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
-    var hypotheticalEdges = 0
-
-    // Counting hypothetical edges (between buckets) for testing/evaluation purposes
-    for {
-      subpart <- part
-      toInside = macroGraph.edgesFrom(subpart).iterator.filter(partSet.contains)
-    } {
-      hypotheticalEdges += toInside.size
-    }
-
-    //Tracking bucket pairs with actual edges being constructed
-    var realEdges = Set[MacroEdge]()
+    //Tracking bucket pairs with actual k-mer edges being constructed
+    var foundEdges = Set[MacroEdge]()
 
     for {
       fromBucket <- part
@@ -77,12 +67,12 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
       } {
         result.addEdge(fromKmer, toKmer)
         if (!added) {
-          realEdges += ((fromBucket, toBucket))
+          foundEdges += ((fromBucket, toBucket))
           added = true
         }
       }
     }
-    println(s"Real/hypothetical edges ${realEdges.size}/$hypotheticalEdges")
+    println(s"${foundEdges.size} edges")
   }
 }
 

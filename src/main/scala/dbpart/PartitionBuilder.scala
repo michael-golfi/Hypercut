@@ -16,7 +16,6 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
     val totalCount = graph.numNodes
 
     def partitions: List[Partition] = {
-      //tag1 will indicate whether the node is in a partition
       for (n <- graph.nodes) {
         n.inPartition = false
       }

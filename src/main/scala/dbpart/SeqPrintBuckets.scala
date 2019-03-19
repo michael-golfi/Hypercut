@@ -207,10 +207,11 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
+  def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
 
   def makeGraph() = {
     val graph = new DoublyLinkedGraph[MacroNode]
-    var nodeLookup = new scala.collection.mutable.HashMap[Array[Byte], MacroNode]
+    var nodeLookup = new scala.collection.mutable.HashMap[MacroNode, MacroNode]
 
     //This will produce the coverage filtered set of nodes
     for (key <- db.bucketKeys) {
@@ -218,7 +219,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
         val ms = asMarkerSet(key)
         val n = new dbpart.graph.MacroNode(ms.compact)
         graph.addNode(n)
-        nodeLookup += (n.data -> n)
+        nodeLookup += (n -> n)
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
@@ -232,11 +233,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 //    val edges = validateEdges(kmerSpace.completeEdges(space, numMarkers))
 
     /*
-     * Note: marker sets currently use reference equality only (no deep structural equality)
-     * so it is necessary to reuse the same objects.
+     * Reusing the same node objects for efficiency
      */
     var count = 0
-    val edges = edgeDb.allEdges(n => nodeLookup.get(MarkerSet.unpack(space, n).compact))
+    val edges = edgeDb.allEdges(n => nodeLookup.get(asMacroNode(n)))
     for {
       (from, to) <- edges
       filtFrom <- from

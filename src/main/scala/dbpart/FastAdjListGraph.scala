@@ -20,7 +20,8 @@ class FastAdjListGraph[N <: AnyRef] extends SetBackedGraph[N] {
 
   protected final val adjList = Map[N, EdgeList]()
 
-  override def numEdges: Int = nodes.foldLeft(0)(_ + edgesFrom(_).size)
+  override def numEdges: Int = adjList.valuesIterator.
+    map(_.size).sum
 
   def emptyEdgeList: EdgeList = ArrayBuffer()
 
