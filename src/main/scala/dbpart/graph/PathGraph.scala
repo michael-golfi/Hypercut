@@ -4,7 +4,6 @@ import dbpart._
 import dbpart.ubucket.SeqBucketDB
 import dbpart.MarkerSet
 import friedrich.graph.Graph
-import dbpart.FastAdjListGraph
 import scala.annotation.tailrec
 import friedrich.util.formats.GraphViz
 
@@ -17,7 +16,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
     macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) {
 
   val k: Int = pathdb.k
-  val result: Graph[KmerNode] = new DoublyLinkedGraph[KmerNode]
+  val result: Graph[KmerNode] = new DoubleMapListGraph[KmerNode]
 
   for (p <- partitions) {
     addPartition(p)
@@ -57,12 +56,13 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
     for {
       fromBucket <- part
       (overlap, fromSeqs) <- byEnd(fromBucket.uncompact)
-      toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
-      toBucket <- toInside ++ Iterator(fromBucket)
+      toInside = macroGraph.edgesFrom(fromBucket).filter(partSet.contains)
+      toBucket <- fromBucket :: toInside.toList
     } {
       var added = false
       for {
-        toKmer <- kmers(toBucket.uncompact).flatten.iterator.filter(_.seq.startsWith(overlap))
+        sequence <- kmers(toBucket.uncompact)
+        toKmer <- sequence.filter(_.seq.startsWith(overlap))
         fromKmer <- fromSeqs
       } {
         result.addEdge(fromKmer, toKmer)

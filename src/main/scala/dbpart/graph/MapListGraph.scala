@@ -1,39 +1,43 @@
-package dbpart
+package dbpart.graph
 
+import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Map
 
-import friedrich.graph.SetBackedGraph
-import scala.collection.mutable.ArrayBuffer
+import friedrich.graph.Graph
 
 /**
- * A fast graph builder.
- * It is assumed that each edge is added only once, so no
- * deduplication is performed.
+ * A graph builder based on maps, which also stores all nodes in a set.
+ * It is assumed that each edge is added only once, so no deduplication is performed.
  * The underlying implementation is based on mutable data structures for fast construction.
  *
  * This implementation stores only forward edges.
  */
-class FastAdjListGraph[N <: AnyRef] extends SetBackedGraph[N] {
-  //If the type of EdgeList is changed, addForward and addBackward may also need to be
-  //updated accordingly for efficiency. e.g. prepend is inefficient for ArrayBuffer
-  type EdgeList = ArrayBuffer[N]
+class MapListGraph[N <: AnyRef] extends Graph[N] {
+
+  type EdgeList = List[N]
 
   protected final val adjList = Map[N, EdgeList]()
 
-  override def numEdges: Int = adjList.valuesIterator.
-    map(_.size).sum
+  var nodeList = List[N]()
+  def nodes = nodeList.iterator
 
-  def emptyEdgeList: EdgeList = ArrayBuffer()
+  override def numEdges: Int = nodes.foldLeft(0)(_ + edgesFrom(_).size)
+
+  def emptyEdgeList: EdgeList = Nil
 
   def edgesFrom(from: N): Seq[N] = adjList.getOrElse(from, emptyEdgeList)
 
   def edgesTo(from: N): Seq[N] = ???
-  
+
   def edges: Iterator[(N, N)] = nodes.flatMap(n => {
     edgesFrom(n).map(x => (n, x)) ++ edgesTo(n).map(x => (x, n))
   })
 
-  override def implAddEdge(from: N, to: N) {
+  def addNode(n: N) {
+    nodeList ::= n
+  }
+
+  override def addEdge(from: N, to: N) {
     addForward(from, to)
 //    addBackward(to, from)
   }
@@ -45,19 +49,18 @@ class FastAdjListGraph[N <: AnyRef] extends SetBackedGraph[N] {
         adjList += (from -> emptyEdgeList)
         adjList(from)
     }
-    ol += to
+    adjList += (from -> (to :: ol))
   }
-
 }
 
 /**
- * A fast graph builder that also stores reverse edges.
+ * A graph builder based on maps that stores both forward and reverse edges.
  */
-class DoublyLinkedGraph[N <: AnyRef] extends FastAdjListGraph[N] {
+class DoubleMapListGraph[N <: AnyRef] extends MapListGraph[N] {
   protected final val revAdjList = Map[N, EdgeList]()
 
-  override def implAddEdge(from: N, to: N) {
-    super.implAddEdge(from, to)
+  override def addEdge(from: N, to: N) {
+    super.addEdge(from, to)
     addBackward(to, from)
   }
 
@@ -70,6 +73,6 @@ class DoublyLinkedGraph[N <: AnyRef] extends FastAdjListGraph[N] {
         revAdjList += (from -> emptyEdgeList)
         revAdjList(from)
     }
-    ol += to
+    revAdjList += (from -> (to :: ol))
   }
 }

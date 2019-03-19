@@ -1,14 +1,15 @@
 package dbpart.graph
 
-import dbpart.MarkerSpace
 import dbpart.MarkerSet
+import dbpart.MarkerSpace
+import dbpart.HasID
 
-final class MacroNode(val data: Array[Byte]) {
+final class MacroNode(val data: Array[Byte]) extends HasID {
   var inPartition: Boolean = false
 
   def uncompact(implicit space: MarkerSpace): String = MarkerSet.uncompactToString(data, space)
 
-  import java.util.{Arrays => JArrays}
+  import java.util.{ Arrays => JArrays }
 
   override def hashCode: Int = JArrays.hashCode(data)
 

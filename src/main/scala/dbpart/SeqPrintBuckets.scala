@@ -9,6 +9,7 @@ import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 import dbpart.graph.MacroNode
+import dbpart.graph.DoubleArrayListGraph
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   dbfile: String, dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
@@ -210,7 +211,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
 
   def makeGraph() = {
-    val graph = new DoublyLinkedGraph[MacroNode]
     var nodeLookup = new scala.collection.mutable.HashMap[MacroNode, MacroNode]
 
     //This will produce the coverage filtered set of nodes
@@ -218,7 +218,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
       try {
         val ms = asMarkerSet(key)
         val n = new dbpart.graph.MacroNode(ms.compact)
-        graph.addNode(n)
         nodeLookup += (n -> n)
       } catch {
         case e: Exception =>
@@ -226,6 +225,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
           e.printStackTrace()
       }
     }
+    val graph = new DoubleArrayListGraph[MacroNode](nodeLookup.keySet.toArray)
     println(graph.numNodes + " nodes")
 
 //    val allPossibleEdges = (for (a <- graph.nodes; b <- graph.nodes; if a != b) yield (a,b))
@@ -242,9 +242,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
       filtFrom <- from
       filtTo <- to
     } {
-      graph.uncheckedAddEdge(filtFrom, filtTo)
+      graph.addEdge(filtFrom, filtTo)
       count += 1
-      if (count % 100000 == 0) {
+      if (count % 1000000 == 0) {
         println(s"${graph.numNodes} nodes ${graph.numEdges} edges")
       }
     }
