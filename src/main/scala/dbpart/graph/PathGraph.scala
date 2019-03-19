@@ -12,8 +12,9 @@ import friedrich.util.formats.GraphViz
  * Builds a graph that contains both inter-bucket and intra-bucket edges
  * between k-mers in a partition.
  */
-class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[MarkerSet]],
-                       macroGraph: Graph[MarkerSet]) {
+class PathGraphBuilder(pathdb: SeqBucketDB,
+    partitions: Iterable[Iterable[MacroNode]],
+    macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) {
 
   val k: Int = pathdb.k
   val result: Graph[KmerNode] = new DoublyLinkedGraph[KmerNode]
@@ -30,19 +31,19 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
    * Add marker set buckets to the path graph, constructing all edges between k-mers
    * in the buckets of this partition.
    */
-  def addPartition(part: Iterable[MarkerSet]) {
+  def addPartition(part: Iterable[MacroNode]) {
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
     val partSet = part.toSet
-    val bulkData =  pathdb.getBulk(part.map(_.packedString))
+    val bulkData = pathdb.getBulk(part.map(_.uncompact))
     val kmers = Map() ++ bulkData.
       map(x => (x._1 -> x._2.kmersBySequenceWithCoverage.map(x =>
         sequenceToKmerNodes(x._1, x._2.iterator))))
 
     for {
       subpart <- part
-      sequence <-  kmers(subpart.packedString)
+      sequence <-  kmers(subpart.uncompact)
     } {
       for { n <- sequence } { result.addNode(n) }
     }
@@ -61,17 +62,17 @@ class PathGraphBuilder(pathdb: SeqBucketDB, partitions: Iterable[Iterable[Marker
     }
 
     //Tracking bucket pairs with actual edges being constructed
-    var realEdges = Set[(MarkerSet, MarkerSet)]()
+    var realEdges = Set[MacroEdge]()
 
     for {
       fromBucket <- part
-      (overlap, fromSeqs) <- byEnd(fromBucket.packedString)
+      (overlap, fromSeqs) <- byEnd(fromBucket.uncompact)
       toInside = macroGraph.edgesFrom(fromBucket).iterator.filter(partSet.contains)
       toBucket <- toInside ++ Iterator(fromBucket)
     } {
       var added = false
       for {
-        toKmer <- kmers(toBucket.packedString).flatten.iterator.filter(_.seq.startsWith(overlap))
+        toKmer <- kmers(toBucket.uncompact).flatten.iterator.filter(_.seq.startsWith(overlap))
         fromKmer <- fromSeqs
       } {
         result.addEdge(fromKmer, toKmer)

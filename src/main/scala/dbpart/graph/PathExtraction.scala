@@ -40,7 +40,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
     printPaths(graph, parts)
   }
 
-  def printPaths(graph: Graph[MarkerSet], parts: List[List[MarkerSet]]) {
+  def printPaths(graph: Graph[MacroNode], parts: List[List[MacroNode]]) {
     val pp = new PathPrinter("hypercut.fasta", k, printReasons)
 
     var lengths = List[Int]()
@@ -48,7 +48,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
     Stats.begin()
     for ((p, pcount) <- parts.zipWithIndex) {
 
-      val pathGraph = new PathGraphBuilder(db, List(p), graph).result
+      val pathGraph = new PathGraphBuilder(db, List(p), graph)(buckets.space).result
       println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
 
 //      val analyzer = new PathGraphAnalyzer(pathGraph, k)

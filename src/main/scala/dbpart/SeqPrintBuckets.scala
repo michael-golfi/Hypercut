@@ -8,6 +8,7 @@ import dbpart.ubucket._
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
+import dbpart.graph.MacroNode
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   dbfile: String, dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
@@ -35,7 +36,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     }
   }
 
-  def packEdge(e: MacroEdge) = {
+  def packEdge(e: ExpandedEdge) = {
     (e._1.compact, e._2.compact)
   }
 
@@ -208,15 +209,16 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
 
   def makeGraph() = {
-    val graph = new DoublyLinkedGraph[MarkerSet]
-    var nodeLookup = new scala.collection.mutable.HashMap[String, MarkerSet]
+    val graph = new DoublyLinkedGraph[MacroNode]
+    var nodeLookup = new scala.collection.mutable.HashMap[Array[Byte], MacroNode]
 
     //This will produce the coverage filtered set of nodes
     for (key <- db.bucketKeys) {
       try {
-        val n = asMarkerSet(key)
+        val ms = asMarkerSet(key)
+        val n = new dbpart.graph.MacroNode(ms.compact)
         graph.addNode(n)
-        nodeLookup += (n.packedString -> n)
+        nodeLookup += (n.data -> n)
       } catch {
         case e: Exception =>
           Console.err.println(s"Warning: error while handling key '$key'")
@@ -234,7 +236,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
      * so it is necessary to reuse the same objects.
      */
     var count = 0
-    val edges = edgeDb.allEdges(nodeLookup.get)
+    val edges = edgeDb.allEdges(n => nodeLookup.get(MarkerSet.unpack(space, n).compact))
     for {
       (from, to) <- edges
       filtFrom <- from
@@ -264,12 +266,12 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
    * correspond to overlapping k-mers in the actual de Bruijn graph.
    * Slow and memory intensive.
    */
-  def validateEdges(edges: Iterator[(MarkerSet, MarkerSet)]) = {
+  def validateEdges(edges: Iterator[MacroEdge]) = {
     val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(0, k - 1))))
     val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(1)).toSet))
     edges.filter(e => {
-      val ts = allTails(e._1.packedString)
-      val hs = allHeads(e._2.packedString)
+      val ts = allTails(e._1.uncompact(space))
+      val hs = allHeads(e._2.uncompact(space))
       val pass = (e._1 != e._2) && hs.exists(ts.contains)
       if (!pass) {
         filteredOutEdges += 1

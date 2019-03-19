@@ -91,7 +91,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
   */
   @tailrec
   def transitions(data: List[MarkerSet],
-                  acc: List[MacroEdge] = Nil): List[MacroEdge] = {
+                  acc: List[ExpandedEdge] = Nil): List[ExpandedEdge] = {
     data match {
       case x :: y :: xs =>
         if (x.compact.toSeq == y.compact.toSeq) {
@@ -107,7 +107,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
    * Ingest a read.
    * Returns pairs of buckets and their k-mers, as well as bucket transitions.
    */
-  def handle(read: String): (Iterator[(String, String)], List[MacroEdge]) = {
+  def handle(read: String): (Iterator[(String, String)], List[ExpandedEdge]) = {
     val kmers = Read.kmers(read, k)
 
     val mss = markerSetsInRead(read)
