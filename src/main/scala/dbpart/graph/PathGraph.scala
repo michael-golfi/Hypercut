@@ -43,9 +43,8 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
     for {
       subpart <- part
       sequence <-  kmers(subpart.uncompact)
-    } {
-      for { n <- sequence } { result.addNode(n) }
-    }
+      n <- sequence
+    } { result.addNode(n) }
 
     val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(1, k))))
     val byStart = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(0, k-1))))

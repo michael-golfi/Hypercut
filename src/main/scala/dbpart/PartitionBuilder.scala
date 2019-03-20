@@ -42,7 +42,7 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
           val next = nextLevel.flatMap(n =>
             (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(a => !a.inPartition))
           val need = groupSize - soFarSize
-          val useNext = (next take need)
+          val useNext = (next.distinct take need)
           for (un <- useNext) {
             un.inPartition = true
             assignCount += 1
