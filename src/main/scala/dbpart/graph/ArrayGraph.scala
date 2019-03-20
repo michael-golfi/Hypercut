@@ -26,7 +26,7 @@ trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
  *
  * This implementation stores only forward edges.
  */
-class ArrayListGraph[N <: HasID with AnyRef](val nodesArr: Array[N])(implicit val classTag: ClassTag[N])
+class ArrayListGraph[N <: HasID](val nodesArr: Array[N])(implicit val classTag: ClassTag[N])
   extends ArrayBackedGraph[N] {
 
   type EdgeList = List[N]
@@ -37,9 +37,9 @@ class ArrayListGraph[N <: HasID with AnyRef](val nodesArr: Array[N])(implicit va
 
   def emptyEdgeList: EdgeList = Nil
 
-  def edgesFrom(from: N): Seq[N] = adjList(from.id)
+  def edgesFrom(from: N): List[N] = adjList(from.id)
 
-  def edgesTo(from: N): Seq[N] = ???
+  def edgesTo(from: N): List[N] = ???
 
   def edges: Iterator[(N, N)] = nodes.flatMap(n => {
     edgesFrom(n).map(x => (n, x)) ++ edgesTo(n).map(x => (x, n))
@@ -59,7 +59,7 @@ class ArrayListGraph[N <: HasID with AnyRef](val nodesArr: Array[N])(implicit va
 /**
  * An array-based graph builder that stores both forward and reverse edges.
  */
-class DoubleArrayListGraph[N <: AnyRef with HasID](nodesArr: Array[N])(implicit tag: ClassTag[N])
+class DoubleArrayListGraph[N <: HasID](nodesArr: Array[N])(implicit tag: ClassTag[N])
   extends ArrayListGraph[N](nodesArr) {
   protected final val revAdjList = Array.fill(nodesArr.length)(emptyEdgeList)
 
@@ -68,7 +68,7 @@ class DoubleArrayListGraph[N <: AnyRef with HasID](nodesArr: Array[N])(implicit 
     addBackward(to, from)
   }
 
-  override def edgesTo(from: N): Seq[N] = revAdjList(from.id)
+  override def edgesTo(from: N): List[N] = revAdjList(from.id)
 
   protected def addBackward(from: N, to: N) {
     revAdjList(from.id) ::= to

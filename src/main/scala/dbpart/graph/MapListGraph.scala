@@ -25,9 +25,9 @@ class MapListGraph[N <: AnyRef] extends Graph[N] {
 
   def emptyEdgeList: EdgeList = Nil
 
-  def edgesFrom(from: N): Seq[N] = adjList.getOrElse(from, emptyEdgeList)
+  def edgesFrom(from: N): List[N] = adjList.getOrElse(from, emptyEdgeList)
 
-  def edgesTo(from: N): Seq[N] = ???
+  def edgesTo(from: N): List[N] = ???
 
   def edges: Iterator[(N, N)] = nodes.flatMap(n => {
     edgesFrom(n).map(x => (n, x)) ++ edgesTo(n).map(x => (x, n))
@@ -64,7 +64,7 @@ class DoubleMapListGraph[N <: AnyRef] extends MapListGraph[N] {
     addBackward(to, from)
   }
 
-  override def edgesTo(from: N): Seq[N] = revAdjList.getOrElse(from, emptyEdgeList)
+  override def edgesTo(from: N): List[N] = revAdjList.getOrElse(from, emptyEdgeList)
 
   protected def addBackward(from: N, to: N) {
      val ol = revAdjList.get(from) match {

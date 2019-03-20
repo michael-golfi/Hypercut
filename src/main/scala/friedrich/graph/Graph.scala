@@ -20,17 +20,19 @@ trait Graph[N] {
   def numEdges: Int = edges.size
   def numNodes: Int = nodes.size
 
-  def edgesFrom(from: N): Iterable[N]
-  def edgesTo(to: N): Iterable[N]
+  def edgesFrom(from: N): List[N]
+  def edgesTo(to: N): List[N]
 
-  def degree(from: N) = fromDegree(from)
-  def fromDegree(from: N) = edgesFrom(from).size
-  def toDegree(to: N) = edgesTo(to).size
+  def degree(from: N): Int = fromDegree(from)
+  def fromDegree(from: N): Int = edgesFrom(from).size
+  def toDegree(to: N): Int = edgesTo(to).size
+
 
   /**
    * Both to- and from-nodes of the given node
    */
-  def edges(node: N): Iterable[N] = edgesFrom(node) ++ edgesTo(node)
+  def edges(node: N): Iterator[N] = edgesFrom(node).iterator ++ edgesTo(node).iterator
+
   /**
    * All edges in the graph
    */
@@ -53,19 +55,17 @@ trait Graph[N] {
    * Print a textual representation of the graph.
    * For debug purposes.
    */
-  def printBare() = {
-    for (n <- nodes) {
-      println(n)
-      print(n + " to: ")
-      for (e <- edgesFrom(n)) {
-        print(e + ", ")
-      }
-      print(" from: ")
-      for (e <- edgesTo(n)) {
-        print(e + ", ")
-      }
-      println("")
+  def printBare: Unit = for (n <- nodes) {
+    println(n)
+    print(n + " to: ")
+    for (e <- edgesFrom(n)) {
+      print(e + ", ")
     }
+    print(" from: ")
+    for (e <- edgesTo(n)) {
+      print(e + ", ")
+    }
+    println("")
   }
 
   def stats() {

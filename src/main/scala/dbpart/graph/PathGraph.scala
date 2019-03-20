@@ -47,7 +47,8 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
       for { n <- sequence } { result.addNode(n) }
     }
 
-    val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.takeRight(k - 1))))
+    val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(1, k))))
+    val byStart = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(0, k-1))))
 //    val sorted = sequences.mapValues(_.toSeq.sorted)
 
     //Tracking bucket pairs with actual k-mer edges being constructed
@@ -57,12 +58,11 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
       fromBucket <- part
       (overlap, fromSeqs) <- byEnd(fromBucket.uncompact)
       toInside = macroGraph.edgesFrom(fromBucket).filter(partSet.contains)
-      toBucket <- fromBucket :: toInside.toList
+      toBucket <- fromBucket :: toInside //Always add an edge to the same bucket
     } {
       var added = false
       for {
-        sequence <- kmers(toBucket.uncompact)
-        toKmer <- sequence.filter(_.seq.startsWith(overlap))
+        toKmer <- byStart(toBucket.uncompact).getOrElse(overlap, List())
         fromKmer <- fromSeqs
       } {
         result.addEdge(fromKmer, toKmer)
@@ -72,7 +72,7 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
         }
       }
     }
-    println(s"${foundEdges.size} edges")
+    println(s"${foundEdges.size} k-mer edges between buckets")
   }
 }
 
