@@ -6,18 +6,20 @@ import dbpart.MarkerSet
 import friedrich.graph.Graph
 import scala.annotation.tailrec
 import friedrich.util.formats.GraphViz
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Builds a graph that contains both inter-bucket and intra-bucket edges
  * between k-mers in a partition.
  */
-class PathGraphBuilder(pathdb: SeqBucketDB,
+final class PathGraphBuilder(pathdb: SeqBucketDB,
     partitions: Iterable[Iterable[MacroNode]],
     macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) {
 
   val k: Int = pathdb.k
-  val result: Graph[KmerNode] = new DoubleMapListGraph[KmerNode]
+  var result: Graph[KmerNode] = _
 
+  println(s"Construct path graph from ${partitions.map(_.size).sum} macro nodes")
   for (p <- partitions) {
     addPartition(p)
   }
@@ -25,6 +27,35 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
   def sequenceToKmerNodes(seqs: Iterator[String], covs: Iterator[Int]) =
     (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
 
+  /**
+   * Find edges by traversing two k-mer lists, one sorted by the first
+   * k-1 bases and the other sorted by the final k-1.
+   */
+  @tailrec
+  def findEdges(byBeginning: List[KmerNode], byEnd: List[KmerNode], gotEdges: Boolean = false): Boolean = {
+    byBeginning match {
+      case b :: bs =>
+        byEnd match {
+          case e :: es =>
+            val overlap = e.end
+            val cmp = overlap.compareTo(b.begin)
+            if (cmp < 0) {
+              findEdges(byBeginning, es, gotEdges)
+            } else if (cmp > 0) {
+              findEdges(bs, byEnd, gotEdges)
+            } else {
+              val ns = byEnd.takeWhile(_.end == overlap)
+              for (n <- ns) {
+                result.addEdge(n, b)
+              }
+              //All possible edges for b have been constructed
+              findEdges(bs, byEnd, true)
+            }
+          case _ => gotEdges
+        }
+      case _ => gotEdges
+    }
+  }
 
   /**
    * Add marker set buckets to the path graph, constructing all edges between k-mers
@@ -34,44 +65,33 @@ class PathGraphBuilder(pathdb: SeqBucketDB,
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
+
+    val partMap = Map() ++ part.map(x => x.uncompact -> x.id)
     val partSet = part.toSet
     val bulkData = pathdb.getBulk(part.map(_.uncompact))
-    val kmers = Map() ++ bulkData.
-      map(x => (x._1 -> x._2.kmersBySequenceWithCoverage.map(x =>
+    val kmers = bulkData.
+      map(x => (partMap(x._1) -> x._2.kmersBySequenceWithCoverage.toList.flatMap(x =>
         sequenceToKmerNodes(x._1, x._2.iterator))))
 
-    for {
-      subpart <- part
-      sequence <-  kmers(subpart.uncompact)
-      n <- sequence
-    } { result.addNode(n) }
+    result = new DoubleArrayListGraph[KmerNode](kmers.values.toList.flatten.toArray)
 
-    val byEnd = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(1, k))))
-    val byStart = kmers.map(x => (x._1 -> x._2.flatten.groupBy(_.seq.substring(0, k-1))))
-//    val sorted = sequences.mapValues(_.toSeq.sorted)
+    val byStart = kmers.map(x => (x._1 -> x._2.sortBy(_.seq)))
 
     //Tracking bucket pairs with actual k-mer edges being constructed
-    var foundEdges = Set[MacroEdge]()
+    var foundEdges = 0
 
     for {
       fromBucket <- part
-      (overlap, fromSeqs) <- byEnd(fromBucket.uncompact)
-      toInside = macroGraph.edgesFrom(fromBucket).filter(partSet.contains)
-      toBucket <- fromBucket :: toInside //Always add an edge to the same bucket
+      byEnd = kmers(fromBucket.id).sortBy(_.end)
+      toBuckets = macroGraph.edgesFrom(fromBucket).filter(partSet.contains)
+      toBucket <- fromBucket :: toBuckets //Always add an edge back to the same bucket
     } {
-      var added = false
-      for {
-        toKmer <- byStart(toBucket.uncompact).getOrElse(overlap, List())
-        fromKmer <- fromSeqs
-      } {
-        result.addEdge(fromKmer, toKmer)
-        if (!added) {
-          foundEdges += ((fromBucket, toBucket))
-          added = true
-        }
+      val added = findEdges(byStart(toBucket.id), byEnd)
+      if (added) {
+        foundEdges += 1
       }
     }
-    println(s"${foundEdges.size} k-mer edges between buckets")
+    println(s"$foundEdges bucket pairs have k-mer edges")
   }
 }
 

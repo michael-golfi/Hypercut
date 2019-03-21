@@ -13,8 +13,10 @@ trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
 
   def nodes = nodesArr.iterator
 
-  //Do not use - TODO
-  def addNode(node: N) = ???
+  def addNode(node: N) {
+    throw new Exception("Adding nodes to the array backed graph is not allowed")
+  }
+  
 }
 
 /**
