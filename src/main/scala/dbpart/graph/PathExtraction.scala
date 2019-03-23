@@ -49,7 +49,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
     for ((p, pcount) <- parts.zipWithIndex) {
       println(s"Process partition $pcount/${parts.size}")
 
-      val pathGraph = new PathGraphBuilder(db, List(p), graph)(buckets.space).result
+      val pathGraph = new PathGraphBuilder(db, p, graph)(buckets.space).result
       println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
 
 //      val analyzer = new PathGraphAnalyzer(pathGraph, k)

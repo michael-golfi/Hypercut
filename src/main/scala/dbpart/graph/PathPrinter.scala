@@ -51,7 +51,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
         w.println(idLine)
         w.println(r)
       case _ =>
-    }    
+    }
   }
 
   def findSequences(graph: Graph[N]) = {
@@ -85,6 +85,10 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   @tailrec
   def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
+    if (from.boundary) {
+      //Boundaries may have branches that we don't know about
+      return (from :: acc, "Boundary")
+    }
     val ef = graph.edgesFrom(from).filter(! _.noise)
     if (ef.size > 1 || ef.size == 0) {
       (from :: acc, edgeStopReason(ef))
@@ -103,6 +107,10 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   @tailrec
   def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
+    if (from.boundary) {
+      //Boundaries may have branches that we don't know about
+      return (from :: acc, "Boundary")
+    }
     val et = graph.edgesTo(from).filter(! _.noise)
     if (et.size > 1 || et.size == 0) {
       (from :: acc, edgeStopReason(et))

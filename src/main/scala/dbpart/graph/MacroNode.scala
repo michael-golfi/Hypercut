@@ -4,8 +4,15 @@ import dbpart.MarkerSet
 import dbpart.MarkerSpace
 import dbpart.HasID
 
+/**
+ * A node in the macro graph. Corresponds to a bucket in the edge database.
+ */
 final class MacroNode(val data: Array[Byte]) extends HasID {
-  var inPartition: Boolean = false
+  /**
+   * Whether this node is part of the partition boundary (outer edge)
+   * and potentially has unknown edges into other partitions.
+   */
+  var isBoundary: Boolean = true
 
   def uncompact(implicit space: MarkerSpace): String = MarkerSet.uncompactToString(data, space)
 

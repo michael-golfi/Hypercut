@@ -12,69 +12,76 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
 
   final class Partitioner(groupSize: Int) {
 
+    val partitionIds = Array.fill(graph.numNodes)(-1)
+    def inPartition(n: MacroNode) = partitionIds(n.id) != -1
+
+    var buildingID = 0
     var assignCount = 0
     val totalCount = graph.numNodes
 
     def partitions: List[Partition] = {
-      for (n <- graph.nodes) {
-        n.inPartition = false
-      }
-
       var r = List[Partition]()
-      for (n <- graph.nodes; if ! n.inPartition) {
+      for (n <- graph.nodes; if ! inPartition(n)) {
         r ::= BFSfrom(n)
+        buildingID += 1
       }
       r
     }
 
-    def BFSfrom(n: Node): List[Node] = {
-      n.inPartition = true
+    def assignToCurrent(n: Node) {
       assignCount += 1
+      partitionIds(n.id) = buildingID
+    }
+
+    def BFSfrom(n: Node): List[Node] = {
+      assignToCurrent(n)
       BFSfrom(List(n), 1, List(n))
     }
 
     @tailrec
-    final def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
+    def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
       if (soFarSize >= groupSize || (assignCount == totalCount)) {
+        refineBoundary(soFar)
         soFar
       } else {
         if (!nextLevel.isEmpty) {
-          val next = nextLevel.flatMap(n =>
-            (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(a => !a.inPartition))
+          var next: List[Node] = Nil
           val need = groupSize - soFarSize
-          val useNext = (next.distinct take need)
+          for {
+            n <- nextLevel
+            if (next.size < need)
+            edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
+            newEdges = edges.filter(a => !inPartition(a))
+          } {
+            next :::= newEdges
+          }
+          val useNext = next.distinct
           for (un <- useNext) {
-            un.inPartition = true
-            assignCount += 1
+            assignToCurrent(un)
           }
           BFSfrom(useNext.toList ::: soFar, soFarSize + useNext.size, useNext)
         } else {
+          refineBoundary(soFar)
           soFar
+        }
+      }
+    }
+
+    def refineBoundary(partition: List[Node]) {
+      for {
+        n <- partition
+        if n.isBoundary
+        edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
+        toOther = edges.filter(a => partitionIds(a.id) != buildingID)
+      } {
+        if (toOther.isEmpty) {
+          n.isBoundary = false
         }
       }
     }
 
     def degree(n: Node): Int = graph.fromDegree(n) + graph.toDegree(n)
 
-    def DFSfrom(n: Node): List[Node] = {
-      var soFarSize = 1
-      var r: List[Node] = List(n)
-      n.inPartition = true
-      var stack: List[Node] = graph.edges(n).toList
-      while (!stack.isEmpty && soFarSize < groupSize) {
-        val o = stack.head
-        stack = stack.tail
-        if (!o.inPartition) {
-          r ::= o
-          o.inPartition = true
-          soFarSize += 1
-          //favour low-degree nodes in an effort to avoid branches
-          //expensive.
-          stack :::= graph.edges(o).toList.sortBy(degree)
-        }
-      }
-      r
-    }
   }
 
   /**
@@ -108,8 +115,6 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
    */
   def partition(groupSize: Int): List[Partition] =
     new Partitioner(groupSize).partitions
-
-
 
 }
 

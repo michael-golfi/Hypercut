@@ -13,7 +13,12 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
   override def toString: String = s"$seq($avgCoverage)"
 }
 
-final class KmerNode(val seq: NTSeq, val coverage: Double) extends HasID {
+/**
+ * @param boundary Whether this node is part of the partition boundary (outer edge)
+ * and potentially has unknown edges into other partitions.
+ * See MacroNode.boundary.
+ */
+final class KmerNode(val seq: NTSeq, val coverage: Double, val boundary: Boolean) extends HasID {
   @volatile
   var seen: Boolean = false
 

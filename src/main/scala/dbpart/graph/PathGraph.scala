@@ -9,23 +9,20 @@ import friedrich.util.formats.GraphViz
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * Builds a graph that contains both inter-bucket and intra-bucket edges
- * between k-mers in a partition.
+ * Builds a graph that contains edges between k-mers in a partition.
  */
 final class PathGraphBuilder(pathdb: SeqBucketDB,
-    partitions: Iterable[Iterable[MacroNode]],
+    nodes: Iterable[MacroNode],
     macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) {
 
   val k: Int = pathdb.k
   var result: Graph[KmerNode] = _
 
-  println(s"Construct path graph from ${partitions.map(_.size).sum} macro nodes")
-  for (p <- partitions) {
-    addPartition(p)
-  }
+  println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
+  addNodes(nodes)
 
-  def sequenceToKmerNodes(seqs: Iterator[String], covs: Iterator[Int]) =
-    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
+  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], covs: Iterator[Int]) =
+    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2, macroNode.isBoundary))
 
   /**
    * Find edges by traversing two k-mer lists, one sorted by the first
@@ -57,21 +54,31 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
     }
   }
 
+  def loadKmers(part: Iterable[MacroNode]) = {
+    val partMap = Map() ++ part.map(x => x.uncompact -> (x.id, x))
+    val bulkData = pathdb.getBulk(part.map(_.uncompact))
+
+    Map() ++ (for {
+      (key, bucket) <- bulkData
+      macroNode = partMap(key)._2
+      id = partMap(key)._1
+      kmers = bucket.kmersBySequenceWithCoverage.toList.flatMap(x =>
+        sequenceToKmerNodes(macroNode, x._1, x._2.iterator))
+    } yield (id, kmers))
+  }
+
   /**
    * Add marker set buckets to the path graph, constructing all edges between k-mers
    * in the buckets of this partition.
    */
-  def addPartition(part: Iterable[MacroNode]) {
+  def addNodes(part: Iterable[MacroNode]) {
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
 
     val partMap = Map() ++ part.map(x => x.uncompact -> x.id)
     val partSet = part.toSet
-    val bulkData = pathdb.getBulk(part.map(_.uncompact))
-    val kmers = bulkData.
-      map(x => (partMap(x._1) -> x._2.kmersBySequenceWithCoverage.toList.flatMap(x =>
-        sequenceToKmerNodes(x._1, x._2.iterator))))
+    val kmers = loadKmers(part)
 
     result = new DoubleArrayListGraph[KmerNode](kmers.values.toList.flatten.toArray)
 
