@@ -17,6 +17,9 @@ trait KyotoDB {
   def dbLocation: String
   def dbOptions: String
 
+  @volatile
+  var shouldQuit = false
+
   val db = new DB()
   if (!db.open(s"$dbLocation$dbOptions", DB.OWRITER | DB.OCREATE)) {
     throw new Exception("Unable to open db")
@@ -32,6 +35,7 @@ trait KyotoDB {
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run() {
+        shouldQuit = true
         println(s"Close $dbLocation")
         db.close()
       }
@@ -50,31 +54,34 @@ trait KyotoDB {
     db.set_bulk(recary, false)
   }
 
-  protected def bucketsRaw: Iterator[(String, String)] = {
-    new Iterator[(String, String)] {
-      val cur = db.cursor()
-      cur.jump()
-      var nextVal: Array[String] = cur.get_str(true)
-
-      override def next() = {
-        val r = (nextVal(0), nextVal(1))
-        nextVal = cur.get_str(true)
-        r
-      }
-
-      override def hasNext() = {
-        if (nextVal != null) {
-          true
-        } else {
-          cur.disable()
-          false
-        }
-      }
-    }
+  protected def bucketsRaw: Vector[(String, String)] = {
+    var r = Vector[(String, String)]()
+    visitReadonly((key, value) => r :+= (key, value))
+    r
   }
 
-  def bucketKeys: Iterator[String] =
-    bucketsRaw.map(_._1)
+  def visitReadonly(f: (String, String) => Unit) {
+     db.iterate(new Visitor {
+      def visit_full(key: Array[Byte], value: Array[Byte]) = {
+        if (!shouldQuit) {
+          f(new String(key), new String(value))
+        }
+        Visitor.NOP
+      }
+
+      def visit_empty(key: Array[Byte]) = Visitor.NOP
+    }, false)
+  }
+}
+
+trait UnpackingDB[B] extends KyotoDB {
+  def unpack(key: String, bucket: String): B
+
+  def visitBucketsReadonly(f: (String, B) => Unit) {
+    visitReadonly((key, value) => {
+      f(key, unpack(key, value))
+    })
+  }
 }
 
 /**
@@ -83,7 +90,7 @@ trait KyotoDB {
  */
 abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: String,
     val unpacker: Unpacker[B],
-    k: Int) extends KyotoDB {
+    k: Int) extends UnpackingDB[B] {
 
   def newBucket(values: Iterable[String]): B
 
@@ -188,22 +195,19 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
     db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
   }
 
-  def buckets: Iterator[(String, B)] =
+  def buckets: Vector[(String, B)] =
     bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
 
   def bucketSizeStats() = {
     val r = new Distribution
-    for ((b, vs) <- buckets) {
-      r.observe(vs.size)
-    }
+    visitBucketsReadonly((key, value) => r.observe(value.size))
     r
   }
 
   def bucketSizeHistogram(limitMax: Option[Long] = None) = {
     val ss = buckets.map(_._2.size)
-    new Histogram(ss.toSeq, 10, limitMax)
+    new Histogram(ss, 10, limitMax)
   }
-
 }
 
 object EdgeDB {
@@ -229,12 +233,19 @@ final class EdgeDB(location: String)
     b.insertBulk(values.tail).getOrElse(b)
   }
 
-  def allEdges: Iterator[(String, String)] = buckets.flatMap(b => b._2.items.map(to => (b._1, to)))
+  def allEdges: Iterator[(String, String)] =
+    buckets.iterator.flatMap(b => b._2.items.map(to => (b._1, to)))
 
   def allEdges[A](f: String => A): Iterator[(A, A)] =
-    buckets.flatMap(b => b._2.items.map(to =>
+    buckets.iterator.flatMap(b => b._2.items.map(to =>
       (f(b._1), f(to))
     ))
+
+  def visitEdges(f: List[(String, String)] => Unit) {
+    visitBucketsReadonly((key, value) => {
+      f(value.items.map(to => (key, to)))
+    })
+  }
 }
 
 object SeqBucketDB {
@@ -285,10 +296,16 @@ extends BucketDB[CountingSeqBucket](location, options,
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences
    */
-  override def bucketKeys = {
+  def visitKeysReadonly(f: (String) => Unit) {
     minCoverage match {
-      case Some(m) => covDB.buckets.filter(_._2.hasMinCoverage(m)).map(_._1)
-      case None => super.bucketKeys
+      case Some(m) =>
+        covDB.visitBucketsReadonly((key, b) => {
+          if (b.hasMinCoverage(m)) {
+            f(key)
+          }
+        })
+      case None =>
+        covDB.visitBucketsReadonly((key, b) => f(key))
     }
   }
 
@@ -309,31 +326,19 @@ extends BucketDB[CountingSeqBucket](location, options,
     covDB.setBulk(merged.map(x => (x._1 -> x._2.coverage.pack)))
   }
 
-  def kmerBuckets = {
-    buckets.map((kv) => (kv._1, kv._2.sequences.flatMap(s => {
-      s.sliding(k)
-    })))
-  }
-
   def kmerCoverageStats = {
     val d = new Distribution
-    for ((k, b) <- covDB.buckets) {
+    covDB.visitBucketsReadonly((key, b) => {
       d.observe(b.kmerCoverages)
-    }
+    })
     d
   }
 
   def kmerStats = {
     val r = new Distribution
-    for ((b, vs) <- kmerBuckets) {
-      r.observe(vs.size)
-    }
+    covDB.visitBucketsReadonly((key, bucket) => {
+      r.observe(bucket.coverages.map(_.length).sum)
+    })
     r
   }
-
-  def kmerHistogram = {
-    val ss = kmerBuckets.map(_._2.size)
-    new Histogram(ss.toSeq)
-  }
-
 }

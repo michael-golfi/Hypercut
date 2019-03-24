@@ -1,6 +1,6 @@
 package dbpart.ubucket
 import scala.collection.JavaConverters._
-import scala.collection.{Map => CMap}
+import scala.collection.{ Map => CMap }
 
 /**
  * For use together with the CountingSeqBucket.
@@ -25,11 +25,11 @@ final class CoverageBucket(val coverages: Iterable[String]) {
   def pack: String = coverages.mkString(separator)
 }
 
-final class CoverageDB(val dbLocation: String) extends KyotoDB {
-  import SeqBucketDB._
+final class CoverageDB(val dbLocation: String) extends UnpackingDB[CoverageBucket] {
   import CountingSeqBucket._
+  import SeqBucketDB._
 
-  def unpack(value: String): CoverageBucket = {
+  def unpack(key: String, value: String): CoverageBucket = {
     new CoverageBucket(value.split(separator, -1))
   }
 
@@ -45,7 +45,7 @@ final class CoverageDB(val dbLocation: String) extends KyotoDB {
   }
 
   def get(key: String): dbpart.ubucket.CoverageBucket = {
-    bulkData.getOrElse(key, unpack(db.get(key)))
+    bulkData.getOrElse(key, unpack(key, db.get(key)))
   }
 
   def set(key: String, bucket: CoverageBucket) {
@@ -53,12 +53,12 @@ final class CoverageDB(val dbLocation: String) extends KyotoDB {
   }
 
   def getBulk(keys: Iterable[String]): CMap[String,CoverageBucket] =
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._2)))
+    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
 
   def setBulk(data: CMap[String, CoverageBucket]) {
     db.set_bulk(data.map(x => (x._1 -> x._2.pack)).asJava, false)
   }
 
-  def buckets = bucketsRaw.map(x => (x._1, unpack(x._2)))
+  def buckets = bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
 
 }

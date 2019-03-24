@@ -78,13 +78,6 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     }
     addSubcommand(copy)
 
-    val collapse = new Subcommand("collapse") with RunnableCommand {
-      def run() {
-        defaultBuckets.collapse()
-      }
-    }
-    addSubcommand(collapse)
-
     val stats = new HCCommand("stats")({
       defaultBuckets.stats
     })
@@ -141,6 +134,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 }
 
 object Hypercut {
+
   def main(args: Array[String]) {
     val conf = new Conf(args)
 

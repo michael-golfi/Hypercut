@@ -192,29 +192,13 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     hist.print("Macro graph node degree (no coverage threshold)")
   }
 
-  def collapse() {
-    Stats.begin()
-    val collapseMap = new EdgeSet(null, None, space)
-    for {
-      g <- edgeDb.bucketKeys.take(8000000).grouped(100000)
-    } {
-      val coll = g.par.map(n => {
-        val ms = asMarkerSet(n)
-        (ms.compact -> ms.collapse.compact)
-      }).seq
-      collapseMap.add(coll)
-    }
-    Stats.end("Collapse nodes")
-  }
-
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
   def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
 
   def makeGraph() = {
     var nodeLookup = new scala.collection.mutable.HashMap[MacroNode, MacroNode]
 
-    //This will produce the coverage filtered set of nodes
-    for (key <- db.bucketKeys) {
+    db.visitKeysReadonly(key => {
       try {
         val ms = asMarkerSet(key)
         val n = new dbpart.graph.MacroNode(ms.compact)
@@ -224,7 +208,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
           Console.err.println(s"Warning: error while handling key '$key'")
           e.printStackTrace()
       }
-    }
+    })
+
     val graph = new DoubleArrayListGraph[MacroNode](nodeLookup.keySet.toArray)
     println(graph.numNodes + " nodes")
 
@@ -236,18 +221,20 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
      * Reusing the same node objects for efficiency
      */
     var count = 0
-    val edges = edgeDb.allEdges(n => nodeLookup.get(asMacroNode(n)))
-    for {
-      (from, to) <- edges
-      filtFrom <- from
-      filtTo <- to
-    } {
-      graph.addEdge(filtFrom, filtTo)
-      count += 1
-      if (count % 1000000 == 0) {
-        println(s"${graph.numNodes} nodes ${graph.numEdges} edges")
+    edgeDb.visitEdges(edges => {
+      val es = edges.map(x => (nodeLookup.get(asMacroNode(x._1)), nodeLookup.get(asMacroNode(x._2))))
+      for {
+        (from, to) <- es
+        filtFrom <- from
+        filtTo <- to
+      } {
+        graph.addEdge(filtFrom, filtTo)
+        count += 1
+        if (count % 1000000 == 0) {
+          println(s"${graph.numNodes} nodes ${graph.numEdges} edges")
+        }
       }
-    }
+    })
     nodeLookup = null
 
     println(s"${graph.numEdges} edges (filtered out $filteredOutEdges)")
@@ -281,7 +268,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def list() {
-    for (b <- db.bucketKeys) println(b)
+    db.visitKeysReadonly(key => println(key))
   }
 
   def show(buckets: Iterable[String]) {
