@@ -90,8 +90,9 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
     for {
       fromBucket <- part
       byEnd = kmers(fromBucket.id).sortBy(_.end)
-      toBuckets = macroGraph.edgesFrom(fromBucket).filter(partSet.contains)
+      toBuckets = macroGraph.edgesFrom(fromBucket)
       toBucket <- fromBucket :: toBuckets //Always add an edge back to the same bucket
+      if partSet.contains(toBucket)
     } {
       val added = findEdges(byStart(toBucket.id), byEnd)
       if (added) {
