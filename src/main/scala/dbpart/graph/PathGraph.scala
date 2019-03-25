@@ -22,14 +22,16 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
   addNodes(nodes)
 
   def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], covs: Iterator[Int]) =
-    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2, macroNode.isBoundary))
+    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
 
   /**
    * Find edges by traversing two k-mer lists, one sorted by the first
    * k-1 bases and the other sorted by the final k-1.
+   * Applies the given function to each edge that was found.
    */
   @tailrec
-  def findEdges(byBeginning: List[KmerNode], byEnd: List[KmerNode], gotEdges: Boolean = false): Boolean = {
+  def findEdges(byBeginning: List[KmerNode], byEnd: List[KmerNode],
+                gotEdges: Boolean, f: (KmerNode, KmerNode) => Unit): Boolean = {
     byBeginning match {
       case b :: bs =>
         byEnd match {
@@ -37,16 +39,14 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
             val overlap = e.end
             val cmp = overlap.compareTo(b.begin)
             if (cmp < 0) {
-              findEdges(byBeginning, es, gotEdges)
+              findEdges(byBeginning, es, gotEdges, f)
             } else if (cmp > 0) {
-              findEdges(bs, byEnd, gotEdges)
+              findEdges(bs, byEnd, gotEdges, f)
             } else {
               val ns = byEnd.takeWhile(_.end == overlap)
-              for (n <- ns) {
-                result.addEdge(n, b)
-              }
+              for (n <- ns) { f(n, b) }
               //All possible edges for b have been constructed
-              findEdges(bs, byEnd, true)
+              findEdges(bs, byEnd, true, f)
             }
           case _ => gotEdges
         }
@@ -75,12 +75,16 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
+    val partSet = part.map(_.id).toSet
 
-    val partMap = Map() ++ part.map(x => x.uncompact -> x.id)
-    val partSet = part.toSet
-    val kmers = loadKmers(part)
+    //Load buckets potentially outside the partition, to allow us to handle the boundary
+    //correctly
+    val partAndBoundary = (part.toSeq ++ 
+        part.flatMap(n => macroGraph.edges(n))).distinct
+    val kmers = loadKmers(partAndBoundary)
 
-    result = new DoubleArrayListGraph[KmerNode](kmers.values.toList.flatten.toArray)
+    result = new DoubleArrayListGraph[KmerNode](
+        kmers.filter(n => partSet.contains(n._1)).values.toList.flatten.toArray)
 
     val byStart = kmers.map(x => (x._1 -> x._2.sortBy(_.seq)))
 
@@ -92,13 +96,32 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
       byEnd = kmers(fromBucket.id).sortBy(_.end)
       toBuckets = macroGraph.edgesFrom(fromBucket)
       toBucket <- fromBucket :: toBuckets //Always add an edge back to the same bucket
-      if partSet.contains(toBucket)
     } {
-      val added = findEdges(byStart(toBucket.id), byEnd)
-      if (added) {
-        foundEdges += 1
+      if (partSet.contains(toBucket.id)) {
+        val gotEdges = findEdges(byStart(toBucket.id), byEnd, false,
+          (f, t) => result.addEdge(f,t))
+        if (gotEdges) {
+          foundEdges += 1
+        }
+      } else {
+        //Edge into other partition - set the boundary flag
+        findEdges(byStart(toBucket.id), byEnd, false,
+          (f, t) => f.boundary = true)
       }
     }
+    
+    for {
+      toBucket <- part      
+      fromBuckets = macroGraph.edgesTo(toBucket)
+      fromBucket <- fromBuckets
+      if ! partSet.contains(fromBucket.id)
+      byEnd = kmers(fromBucket.id).sortBy(_.end)
+    } {
+      //Edge from other partition - set boundary flag
+      findEdges(byStart(toBucket.id), byEnd, false,
+        (f, t) => t.boundary = true)
+    }
+    
     println(s"$foundEdges bucket pairs have k-mer edges")
   }
 }

@@ -86,7 +86,8 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     if (from.boundary) {
-      //Boundaries may have branches that we don't know about
+      //Boundaries have hidden branches
+      //TODO distinguish the different boundary cases here?
       return (from :: acc, "Boundary")
     }
     val ef = graph.edgesFrom(from).filter(! _.noise)
@@ -108,7 +109,8 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     if (from.boundary) {
-      //Boundaries may have branches that we don't know about
+      //Boundaries have hidden branches
+      //TODO distinguish the different boundary cases here?
       return (from :: acc, "Boundary")
     }
     val et = graph.edgesTo(from).filter(! _.noise)

@@ -45,7 +45,7 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
         soFar
       } else {
         if (!nextLevel.isEmpty) {
-          var next: List[Node] = Nil
+          var next = MSet[Node]()
           val need = groupSize - soFarSize
           for {
             n <- nextLevel
@@ -53,13 +53,13 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
             edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
             newEdges = edges.filter(a => !inPartition(a))
           } {
-            next :::= newEdges
+            next ++= newEdges
           }
-          val useNext = next.distinct
-          for (un <- useNext) {
+          for (un <- next) {
             assignToCurrent(un)
           }
-          BFSfrom(useNext.toList ::: soFar, soFarSize + useNext.size, useNext)
+          val useNext = next.toList
+          BFSfrom(useNext ::: soFar, soFarSize + useNext.size, useNext)
         } else {
           refineBoundary(soFar)
           soFar
@@ -70,7 +70,6 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
     def refineBoundary(partition: List[Node]) {
       for {
         n <- partition
-        if n.isBoundary
         edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
         toOther = edges.filter(a => partitionIds(a.id) != buildingID)
       } {

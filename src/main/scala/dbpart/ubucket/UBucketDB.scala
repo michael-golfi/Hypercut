@@ -60,17 +60,29 @@ trait KyotoDB {
     r
   }
 
-  def visitReadonly(f: (String, String) => Unit) {
-     db.iterate(new Visitor {
-      def visit_full(key: Array[Byte], value: Array[Byte]) = {
-        if (!shouldQuit) {
-          f(new String(key), new String(value))
-        }
-        Visitor.NOP
+  def readonlyVisitor(f: (String, String) => Unit) = new Visitor {
+    def visit_full(key: Array[Byte], value: Array[Byte]) = {
+      if (!shouldQuit) {
+        f(new String(key), new String(value))
       }
+      Visitor.NOP
+    }
 
-      def visit_empty(key: Array[Byte]) = Visitor.NOP
-    }, false)
+    def visit_empty(key: Array[Byte]) = Visitor.NOP
+  }
+
+  def visitReadonly(f: (String, String) => Unit) {
+     db.iterate(readonlyVisitor(f), false)
+  }
+
+  def visitReadonly(keys: Iterable[String], f: (String, String) => Unit) {
+    val keyArray = Array.ofDim[Array[Byte]](keys.size)
+    var ridx = 0
+    for (key <- keys) {
+      keyArray(ridx) = key.getBytes
+      ridx += 1
+    }
+    db.accept_bulk(keyArray, readonlyVisitor(f), false)
   }
 }
 
@@ -81,6 +93,10 @@ trait UnpackingDB[B] extends KyotoDB {
     visitReadonly((key, value) => {
       f(key, unpack(key, value))
     })
+  }
+
+  def visitBucketsReadonly(keys: Iterable[String], f: (String, B) => Unit) {
+    visitReadonly(keys, (key, value) => f(key, unpack(key, value)))
   }
 }
 
@@ -192,7 +208,9 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
   def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
     beforeBulkLoad(keys)
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
+    var r = Map[String,B]()
+    visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
+    r
   }
 
   def buckets: Vector[(String, B)] =

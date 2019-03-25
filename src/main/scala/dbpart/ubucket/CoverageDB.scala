@@ -52,9 +52,12 @@ final class CoverageDB(val dbLocation: String) extends UnpackingDB[CoverageBucke
     db.set(key, bucket.pack)
   }
 
-  def getBulk(keys: Iterable[String]): CMap[String,CoverageBucket] =
-    db.get_bulk(seqAsJavaList(keys.toSeq), false).asScala.map(x => (x._1 -> unpack(x._1, x._2)))
-
+  def getBulk(keys: Iterable[String]): CMap[String,CoverageBucket] = {
+    var r = Map[String,CoverageBucket]()
+    visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
+    r
+  }
+  
   def setBulk(data: CMap[String, CoverageBucket]) {
     db.set_bulk(data.map(x => (x._1 -> x._2.pack)).asJava, false)
   }

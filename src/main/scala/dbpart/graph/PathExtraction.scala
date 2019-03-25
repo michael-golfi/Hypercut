@@ -50,7 +50,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
       println(s"Process partition $pcount/${parts.size}")
 
       val pathGraph = new PathGraphBuilder(db, p, graph)(buckets.space).result
-      println(s"Path graph ${pathGraph.numNodes} nodes ${pathGraph.numEdges} edges")
+      println(s"Path graph ${pathGraph.numNodes} nodes (${pathGraph.nodes.filter(_.boundary).size} boundary) ${pathGraph.numEdges} edges")
 
 //      val analyzer = new PathGraphAnalyzer(pathGraph, k)
 //      analyzer.findBubbles()

@@ -18,16 +18,15 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
  * and potentially has unknown edges into other partitions.
  * See MacroNode.boundary.
  */
-final class KmerNode(val seq: NTSeq, val coverage: Double, val boundary: Boolean) extends HasID {
-  @volatile
+final class KmerNode(val seq: NTSeq, val coverage: Double) extends HasID {
   var seen: Boolean = false
-
-  @volatile
   var noise: Boolean = false
+  var boundary: Boolean = false
+
   override def toString: String = s"$seq($coverage)"
 
   def k: Int = seq.length()
 
   def begin: String = seq.substring(0, k - 1)
-  lazy val end: String = seq.substring(1, k)
+  def end: String = seq.substring(1, k)
 }
