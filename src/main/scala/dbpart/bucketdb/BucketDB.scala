@@ -1,4 +1,4 @@
-package dbpart.ubucket
+package dbpart.bucketdb
 import scala.collection.JavaConverters._
 import kyotocabinet._
 import friedrich.util.Distribution
@@ -208,7 +208,7 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
 
   def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
     beforeBulkLoad(keys)
-    var r = Map[String,B]()
+    var r = MMap[String,B]()
     visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
     r
   }

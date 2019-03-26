@@ -1,6 +1,6 @@
 package dbpart.graph
 import dbpart._
-import dbpart.ubucket.SeqBucketDB
+import dbpart.bucketdb.SeqBucketDB
 
 final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
   def numKmers(k: Int): Int = seq.length() - (k-1)

@@ -1,12 +1,11 @@
 package dbpart.graph
 
-import dbpart.MarkerSet
-import friedrich.util.formats.GraphViz
 import dbpart.PartitionBuilder
-import friedrich.util.Histogram
-import friedrich.graph.Graph
-import dbpart.Stats
 import dbpart.SeqPrintBuckets
+import dbpart.Stats
+import friedrich.graph.Graph
+import friedrich.util.Histogram
+import friedrich.util.formats.GraphViz
 
 /**
  * Encapsulates the operations of building a macro graph, partitioning it
@@ -17,7 +16,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
   partitionSize: Int, minPrintLength: Int, outputPartitionGraphs: Boolean,
   printReasons: Boolean) {
   val k: Int = buckets.k
-  val db: dbpart.ubucket.SeqBucketDB = buckets.db
+  val db = buckets.db
 
   def printPathsByPartition() {
     Stats.begin()

@@ -1,7 +1,7 @@
 package dbpart.graph
 
 import dbpart._
-import dbpart.ubucket.SeqBucketDB
+import dbpart.bucketdb.SeqBucketDB
 import dbpart.MarkerSet
 import friedrich.graph.Graph
 import scala.annotation.tailrec

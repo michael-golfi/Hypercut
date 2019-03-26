@@ -1,4 +1,4 @@
-package dbpart.ubucket
+package dbpart.bucketdb
 
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec

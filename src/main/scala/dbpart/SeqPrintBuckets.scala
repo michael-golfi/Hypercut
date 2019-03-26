@@ -4,12 +4,12 @@ import scala.concurrent.Future
 import scala.concurrent.blocking
 import scala.concurrent.duration.Duration
 
-import dbpart.ubucket._
+import dbpart.graph.DoubleArrayListGraph
+import dbpart.graph.MacroNode
+import dbpart.bucketdb._
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
-import dbpart.graph.MacroNode
-import dbpart.graph.DoubleArrayListGraph
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   dbfile: String, dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {

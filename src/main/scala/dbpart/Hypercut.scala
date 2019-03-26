@@ -2,9 +2,9 @@ package dbpart
 
 import org.rogach.scallop.ScallopConf
 import org.rogach.scallop.Subcommand
-import dbpart.ubucket.BucketDB
-import dbpart.ubucket.SeqBucketDB
+
 import dbpart.graph.PathExtraction
+import dbpart.bucketdb.SeqBucketDB
 
 trait RunnableCommand {
   this: Subcommand =>

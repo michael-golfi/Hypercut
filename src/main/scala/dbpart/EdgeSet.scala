@@ -1,8 +1,9 @@
 package dbpart
 
 import scala.collection.mutable.HashMap
-import dbpart.ubucket.EdgeDB
-import scala.collection.mutable.{HashSet => MSet}
+import scala.collection.mutable.{ HashSet => MSet }
+
+import dbpart.bucketdb.EdgeDB
 
 /**
  * Tracks discovered edges in memory.

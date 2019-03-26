@@ -1,10 +1,10 @@
 package dbpart
 
-import friedrich.graph.Graph
-import scala.collection.mutable.{ Set => MSet, Map => MMap }
 import scala.annotation.tailrec
-import dbpart.ubucket.BucketDB
+import scala.collection.mutable.{ Set => MSet }
+
 import dbpart.graph.MacroNode
+import friedrich.graph.Graph
 
 final class PartitionBuilder(graph: Graph[MacroNode]) {
   type Node = MacroNode

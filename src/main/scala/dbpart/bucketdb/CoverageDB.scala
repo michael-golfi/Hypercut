@@ -1,6 +1,7 @@
-package dbpart.ubucket
+package dbpart.bucketdb
 import scala.collection.JavaConverters._
 import scala.collection.{ Map => CMap }
+import scala.collection.mutable.{ Map => MMap }
 
 /**
  * For use together with the CountingSeqBucket.
@@ -44,7 +45,7 @@ final class CoverageDB(val dbLocation: String) extends UnpackingDB[CoverageBucke
     bulkData = getBulk(keys)
   }
 
-  def get(key: String): dbpart.ubucket.CoverageBucket = {
+  def get(key: String): CoverageBucket = {
     bulkData.getOrElse(key, unpack(key, db.get(key)))
   }
 
@@ -53,11 +54,11 @@ final class CoverageDB(val dbLocation: String) extends UnpackingDB[CoverageBucke
   }
 
   def getBulk(keys: Iterable[String]): CMap[String,CoverageBucket] = {
-    var r = Map[String,CoverageBucket]()
+    var r = MMap[String,CoverageBucket]()
     visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
     r
   }
-  
+
   def setBulk(data: CMap[String, CoverageBucket]) {
     db.set_bulk(data.map(x => (x._1 -> x._2.pack)).asJava, false)
   }
