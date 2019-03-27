@@ -25,7 +25,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       val candidates = space.byFirstChar.get(read.charAt(pos))
       candidates match {
         case Some(map) =>
-          map.find(m => read.substring(pos, pos + m.length()) == m).map(m => space.get(m, pos))
+          map.find(m => read.regionMatches(pos + 1, m, 1, m.length() - 1)).map(m => space.get(m, pos))
         case None => None
       }
     }
@@ -77,9 +77,17 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       ext.scanTo(k - 2)
       var p = k - 1
 
+      var lastMarkers: List[Marker] = null
+      var lastMarkerSet: MarkerSet = null
+
       while (p <= read.length - 1) {
         kmerCount += 1
-        r ::= new MarkerSet(space, MarkerSet.relativePositionsSorted(space, ext.scanTo(p))).fromZero
+        val scan = ext.scanTo(p)
+        if (! (scan eq lastMarkers)) {
+          lastMarkerSet = new MarkerSet(space, MarkerSet.relativePositionsSorted(space, scan)).fromZero
+          lastMarkers = scan
+        }
+        r ::= lastMarkerSet
         p += 1
       }
 //      println(s"Extracted $r")
@@ -94,7 +102,7 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
                   acc: List[ExpandedEdge] = Nil): List[ExpandedEdge] = {
     data match {
       case x :: y :: xs =>
-        if (x.compact.toSeq == y.compact.toSeq) {
+        if ((x eq y) || (x.compact.toSeq == y.compact.toSeq)) {
           transitions(y :: xs, acc)
         } else {
           transitions(y :: xs, (x, y) :: acc)
@@ -111,11 +119,6 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
     val kmers = Read.kmers(read, k)
 
     val mss = markerSetsInRead(read)
-    if (readCount % 10000 == 0) {
-      synchronized {
-        print(".")
-      }
-    }
     (mss.map(_.packedString).iterator zip kmers,
         transitions(mss))
   }
