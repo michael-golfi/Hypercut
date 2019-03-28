@@ -38,7 +38,7 @@ final class CoverageDB(val dbLocation: String) extends UnpackingDB[CoverageBucke
    * 32 byte alignment
    * 8 GB mmap
    */
-  def dbOptions: String = s"#bnum=$buckets#apow=5#mmap=$c8g#opts=l"
+  def dbOptions: String = s"#bnum=${SeqBucketDB.buckets}#apow=5#mmap=$c8g#opts=l"
 
   var bulkData: CMap[String, CoverageBucket] = Map()
   def bulkLoad(keys: Iterable[String]) {
