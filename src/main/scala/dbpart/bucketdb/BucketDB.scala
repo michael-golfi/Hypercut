@@ -251,14 +251,6 @@ final class EdgeDB(location: String)
     b.insertBulk(values.tail).getOrElse(b)
   }
 
-  def allEdges: Iterator[(String, String)] =
-    buckets.iterator.flatMap(b => b._2.items.map(to => (b._1, to)))
-
-  def allEdges[A](f: String => A): Iterator[(A, A)] =
-    buckets.iterator.flatMap(b => b._2.items.map(to =>
-      (f(b._1), f(to))
-    ))
-
   def visitEdges(f: List[(String, String)] => Unit) {
     visitBucketsReadonly((key, value) => {
       f(value.items.map(to => (key, to)))
