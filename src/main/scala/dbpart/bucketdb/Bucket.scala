@@ -112,6 +112,8 @@ class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucke
 
   /**
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
+   * (Note: depending on the order that sequences are seen, not every possible merge
+   * will be carried out).
    */
   def insertSequence(data: String, into: ArrayBuffer[String]) {
     val suffix = data.substring(1)
@@ -185,6 +187,8 @@ object CountingSeqBucket {
     pre + nc + post
   }
 
+  @volatile
+  var mergeCount = 0
 }
 
 class CountingUnpacker(dbLocation: String, minCoverage: Option[Int]) extends Unpacker[CountingSeqBucket] {
@@ -299,11 +303,39 @@ final class CountingSeqBucket(sequences: Iterable[String],
   }
 
   /**
+   * Try to merge a pair of sequences that have a k-1 overlap.
+   * @param atOffset use the prefix of this sequence as the basis for the merge.
+   * @return
+   */
+  def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[String],
+                     intoCov: ArrayBuffer[String], numSequences: Int): Int = {
+    val prefix = intoSeq(atOffset).substring(0, k - 1)
+    var i = 0
+    while (i < numSequences) {
+      val existingSeq = intoSeq(i)
+      if (existingSeq.endsWith(prefix)) {
+        intoSeq(i) = intoSeq(i).substring(0, intoSeq(i).length - (k - 1)) ++ intoSeq(atOffset)
+        intoCov(i) = intoCov(i) ++ intoCov(atOffset)
+        intoSeq.remove(atOffset)
+        intoCov.remove(atOffset)
+        mergeCount += 1
+        if (mergeCount % 1000 == 0) {
+          println(s"$mergeCount merged sequences")
+        }
+        return numSequences - 1
+      }
+      i += 1
+    }
+    //No merge
+    numSequences
+  }
+
+  /**
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
-   * Returns true if a new non-merged sequence was added.
+   * Returns the new updated sequence count (may decrease due to merging).
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[String],
-                     intoCov: ArrayBuffer[String], numSequences: Int): Boolean = {
+                     intoCov: ArrayBuffer[String], numSequences: Int): Int = {
     val suffix = data.substring(1)
     val prefix = data.substring(0, k - 1)
     var i = 0
@@ -312,17 +344,21 @@ final class CountingSeqBucket(sequences: Iterable[String],
       if (existingSeq.startsWith(suffix)) {
         intoSeq(i) = (data.charAt(0) + existingSeq)
         intoCov(i) = asCoverage(1) + intoCov(i)
-        return false
+
+        //A merge is possible if a k-mer has both a prefix and a suffix match.
+        //So it is sufficient to check for it here, as it would never hit the
+        //append case below.
+        return tryMerge(i, intoSeq, intoCov, numSequences)
       } else if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
         intoCov(i) = intoCov(i) + asCoverage(1)
-        return false
+        return numSequences
       }
       i += 1
     }
     intoSeq += data
     intoCov += asCoverage(1).toString()
-    true
+    numSequences + 1
   }
 
   override def insertBulk(values: Iterable[String]): Option[CountingSeqBucket] = {
@@ -334,9 +370,7 @@ final class CountingSeqBucket(sequences: Iterable[String],
     covR ++= coverage.coverages
 
     for (v <- values; if !findAndIncrement(v, r, covR, n)) {
-      if (insertSequence(v, r, covR, n)) {
-        n += 1
-      }
+      n = insertSequence(v, r, covR, n)
       sequencesUpdated = true
     }
 

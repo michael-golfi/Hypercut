@@ -93,7 +93,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     st.end("Write edges")
   }
 
-  def checkConsistency(kmerCheck: Boolean) {
+  def checkConsistency(kmerCheck: Boolean, seqCheck: Boolean) {
     import scala.collection.mutable.HashMap
 
     var errors = 0
@@ -142,6 +142,20 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
         val numCoverages = bucket.coverage.coverages.map(_.length).sum
         if (numKmers != numCoverages) {
           Console.err.println(s"Error: bucket $key has $numKmers kmers but $numCoverages coverage positions")
+          errors += 1
+        }
+      }
+
+      if(seqCheck) {
+        val endings = bucket.sequences.groupBy(s => s.substring(s.length() - (k - 1), s.length))
+        for (s <- bucket.sequences) {
+          val overlap = s.substring(0, k - 1)
+           endings.get(overlap) match {
+            case Some(ss) =>
+              Console.err.println(s"Error: in bucket $key, sequence $s could be appended to: $ss")
+              errors += 1
+            case None =>
+          }
         }
       }
     }

@@ -87,8 +87,11 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       val kmerCheck = toggle("kmers", default = Some(false),
         descrYes = "Check individual k-mers (memory intensive, slow)")
 
+      val seqCheck = toggle("sequences", default = Some(false),
+        descrYes = "Check sequence structure (slow)")
+
       def run() {
-        defaultBuckets.checkConsistency(kmerCheck.toOption.get)
+        defaultBuckets.checkConsistency(kmerCheck.toOption.get, seqCheck.toOption.get)
       }
     }
     addSubcommand(check)
