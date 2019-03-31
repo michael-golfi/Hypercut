@@ -28,11 +28,13 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       descr = "Number of markers to extract from each k-mer", default = Some(4))
   val dbfile = opt[String](required = false,
       descr = "Path to database file (.kch) where sequences are stored")
-  val minCov = opt[Int](descr = "Minimum coverage cutoff (does not affect the 'buckets build' command)")
+  val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
+  val minCov = opt[Int](descr = "Minimum coverage cutoff when reading databases")
 
+  lazy val defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
   lazy val defaultBuckets = new SeqPrintBuckets(
     SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
-    dbfile.toOption.get, SeqBucketDB.options, minCov.toOption)
+    defaultSettings, SeqBucketDB.options(bnum.toOption.get), minCov.toOption)
 
   val buckets = new Subcommand("buckets") {
     val build = new Subcommand("build") with RunnableCommand {
@@ -42,9 +44,16 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       val index = toggle("index", default = Some(true), descrNo = "Do not index sequences in database")
 
       def run() {
+        val settings = if (index.toOption.get) {
+          Settings.settings(dbfile.toOption.get, bnum.toOption.get)
+        } else {
+          Settings.noindexSettings(dbfile.toOption.get, bnum.toOption.get)
+        }
+
         val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
           numMarkers.toOption.get,
-          dbfile.toOption.get, SeqBucketDB.mmapOptions, None)
+          settings, SeqBucketDB.mmapOptions(bnum.toOption.get),
+          None)
 
         spb.build(input.toOption.get, mates.toOption, index.toOption.get)
         spb.stats
@@ -72,7 +81,9 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
         //TODO: not copying edges yet, only sequences and coverages
-        val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options, k.toOption.get, None)
+        val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options(bnum.toOption.get),
+          bnum.toOption.get,
+          k.toOption.get, None)
         out.copyAllFrom(defaultBuckets.db)
       }
     }

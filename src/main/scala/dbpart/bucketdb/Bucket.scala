@@ -191,10 +191,10 @@ object CountingSeqBucket {
   var mergeCount = 0
 }
 
-class CountingUnpacker(dbLocation: String, minCoverage: Option[Int]) extends Unpacker[CountingSeqBucket] {
+class CountingUnpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int) extends Unpacker[CountingSeqBucket] {
   import CountingSeqBucket._
 
-  val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"))
+  val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
 
   def unpack(key: String, value: String, k: Int): CountingSeqBucket = {
     val cov = covDB.get(key)

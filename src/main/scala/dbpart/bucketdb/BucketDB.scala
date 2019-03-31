@@ -223,8 +223,11 @@ abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: S
   }
 
   def bucketSizeHistogram(limitMax: Option[Long] = None) = {
-    val ss = buckets.map(_._2.size)
-    new Histogram(ss, 10, limitMax)
+    var sizes = Vector[Int]()
+    visitBucketsReadonly((key, bucket) => {
+      sizes :+= bucket.size
+    })
+    new Histogram(sizes, 10, limitMax)
   }
 }
 
@@ -235,15 +238,15 @@ object EdgeDB {
    * 128 byte alignment
    * 8 GB mmap
    */
-  def dbOptions: String = s"#bnum=$buckets#apow=7#mmap=$c8g#opts=l"
+  def dbOptions(buckets: Int): String = s"#bnum=$buckets#apow=7#mmap=$c20g"
 }
 
 /**
  * Database of nodes and edges in the macro graph. Buckets here simply store
  * unique strings.
  */
-final class EdgeDB(location: String)
-  extends BucketDB[DistinctBucket](location, EdgeDB.dbOptions, DistinctBucket, 0) {
+final class EdgeDB(location: String, buckets: Int)
+  extends BucketDB[DistinctBucket](location, EdgeDB.dbOptions(buckets), DistinctBucket, 0) {
 
   def newBucket(values: Iterable[String]) = {
     val seed = values.head
@@ -265,12 +268,11 @@ object SeqBucketDB {
   val c20g = 20L * c1g
   val c40g = 40L * c1g
 
-  val buckets = 40000000
-  //40M buckets
   //256 byte alignment
   //40G mmap
-  val options = s"#bnum=$buckets#apow=8#opts=l"
-  val mmapOptions = s"$options#msiz=$c40g"
+  def options(buckets: Int) = s"#bnum=$buckets#apow=8"
+  def mmapOptions(buckets: Int) = s"${options(buckets)}#msiz=$c40g"
+
 }
 
 /**
@@ -284,9 +286,9 @@ object SeqBucketDB {
  * The coverage filter, if present, affects extractor methods such as kmerBuckets, buckets,
  * getBulk, bucketKeys.
  */
-final class SeqBucketDB(location: String, options: String, val k: Int, minCoverage: Option[Int])
+final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Int])
 extends BucketDB[CountingSeqBucket](location, options,
-    new CountingUnpacker(location, minCoverage), k) {
+    new CountingUnpacker(location, minCoverage, buckets), k) {
 
   def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
 

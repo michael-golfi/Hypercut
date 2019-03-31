@@ -12,11 +12,11 @@ import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
-  dbfile: String, dbOptions: String = SeqBucketDB.options, minCov: Option[Int]) {
+  settings: Settings, dbOptions: String, minCov: Option[Int]) {
 
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
-  val db = new SeqBucketDB(dbfile, dbOptions, k, minCov)
-  lazy val edgeDb = new EdgeDB(dbfile.replace(".kch", "_edge.kch"))
+  lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minCov)
+  lazy val edgeDb = settings.edgeDb
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -51,15 +51,14 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def handle(reads: Iterator[String], index: Boolean) {
-    val edgeFlushInt = Some(5000000)
-    val edgeSet = new EdgeSet(edgeDb, edgeFlushInt, space)
+    val edgeSet = new EdgeSet(edgeDb, settings.edgeWriteInterval, space)
     var edgesFuture: Future[Unit] = Future.successful(())
 
     /**
      * A larger buffer size costs memory and GC activity,
      * but helps optimise disk access
      */
-    val bufferSize = if (index) 50000 else 5000
+    val bufferSize = settings.readBufferSize
     val handledReads =
       reads.grouped(bufferSize).map(group =>
       { group.par.map(r => {
