@@ -19,7 +19,7 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
   def partitions: List[Partition] = {
     var r = List[Partition]()
     for (n <- graph.nodes; if !inPartition(n)) {
-      r ::= BFSfrom(n)
+      r ::= DFSfrom(n)
       buildingID += 1
     }
     r
@@ -30,36 +30,31 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
     n.partitionId = buildingID
   }
 
-  def BFSfrom(n: Node): List[Node] = {
+  def DFSfrom(n: Node): List[Node] = {
     assignToCurrent(n)
-    BFSfrom(List(n), 1, List(n))
+    DFSfrom(List(n), 1, (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(_ != n))
   }
 
   @tailrec
-  def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
+  def DFSfrom(soFar: List[Node], soFarSize: Int, searchList: List[Node]): List[Node] = {
     if (soFarSize >= groupSize || (assignCount == totalCount)) {
       refineBoundary(soFar)
       soFar
     } else {
-      if (!nextLevel.isEmpty) {
-        var next = MSet[Node]()
-        val need = groupSize - soFarSize
-        for {
-          n <- nextLevel
-          if (next.size < need)
-          edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
-          newEdges = edges.filter(a => !inPartition(a))
-        } {
-          next ++= newEdges
-        }
-        for (un <- next) {
-          assignToCurrent(un)
-        }
-        val useNext = next.toList
-        BFSfrom(useNext ::: soFar, soFarSize + useNext.size, useNext)
-      } else {
-        refineBoundary(soFar)
-        soFar
+      searchList match {
+        case n :: ns =>
+          val edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
+          val newEdges = edges.filter(a => !inPartition(a))
+          if (!newEdges.isEmpty) {
+            val use = newEdges.head
+            assignToCurrent(use)
+            DFSfrom(use :: soFar, soFarSize + 1, newEdges.tail ::: searchList)
+          } else {
+            DFSfrom(soFar, soFarSize, ns)
+          }
+        case _ =>
+          refineBoundary(soFar)
+          soFar
       }
     }
   }
