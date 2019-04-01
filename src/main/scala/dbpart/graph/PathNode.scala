@@ -21,7 +21,9 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
 final class KmerNode(val seq: NTSeq, val coverage: Double) extends HasID {
   var seen: Boolean = false
   var noise: Boolean = false
-  var boundary: Boolean = false
+
+  def boundary: Boolean = (boundaryPartition != None)
+  var boundaryPartition: Option[Int] = None
 
   override def toString: String = s"$seq($coverage)"
 

@@ -79,7 +79,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
 
     //Load buckets potentially outside the partition, to allow us to handle the boundary
     //correctly
-    val partAndBoundary = (part.toSeq ++ 
+    val partAndBoundary = (part.toSeq ++
         part.flatMap(n => macroGraph.edges(n))).distinct
     val kmers = loadKmers(partAndBoundary)
 
@@ -106,12 +106,12 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
       } else {
         //Edge into other partition - set the boundary flag
         findEdges(byStart(toBucket.id), byEnd, false,
-          (f, t) => f.boundary = true)
+          (f, t) => f.boundaryPartition = Some(toBucket.partitionId))
       }
     }
-    
+
     for {
-      toBucket <- part      
+      toBucket <- part
       fromBuckets = macroGraph.edgesTo(toBucket)
       fromBucket <- fromBuckets
       if ! partSet.contains(fromBucket.id)
@@ -119,9 +119,9 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
     } {
       //Edge from other partition - set boundary flag
       findEdges(byStart(toBucket.id), byEnd, false,
-        (f, t) => t.boundary = true)
+        (f, t) => t.boundaryPartition = Some(fromBucket.partitionId))
     }
-    
+
     println(s"$foundEdges bucket pairs have k-mer edges")
   }
 }

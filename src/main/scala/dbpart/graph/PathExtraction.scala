@@ -24,8 +24,8 @@ class PathExtraction(buckets: SeqPrintBuckets,
     Stats.end("Construct graph")
 
     Stats.begin()
-    val partBuild = new PartitionBuilder(graph)
-    var parts = partBuild.partition(partitionSize)
+    val partBuild = new PartitionBuilder(graph, partitionSize)
+    var parts = partBuild.partitions
     Stats.end("Partition graph")
 
     val hist = new Histogram(parts.map(_.size), 20)
@@ -45,8 +45,13 @@ class PathExtraction(buckets: SeqPrintBuckets,
     var lengths = List[Int]()
     val minLength = k + 10
     Stats.begin()
-    for ((p, pcount) <- parts.zipWithIndex) {
-      println(s"Process partition $pcount/${parts.size}")
+
+    for ((p, pid) <- parts.zipWithIndex; n <- p) {
+      n.partitionId = pid
+    }
+
+    for (p <- parts; pid = p.head.partitionId) {
+      println(s"Process partition $pid/${parts.size}")
 
       val pathGraph = new PathGraphBuilder(db, p, graph)(buckets.space).result
       println(s"Path graph ${pathGraph.numNodes} nodes (${pathGraph.nodes.filter(_.boundary).size} boundary) ${pathGraph.numEdges} edges")
@@ -63,12 +68,12 @@ class PathExtraction(buckets: SeqPrintBuckets,
           }
         }
         if (s.length >= minPrintLength) {
-          pp.printSequence(s"hypercut-part$pcount", s)
+          pp.printSequence(s"hypercut-part$pid", s)
         }
       }
 
       if (outputPartitionGraphs) {
-        GraphViz.writeUndirected(pathGraph, s"part$pcount.dot", (n: KmerNode) => n.seq)
+        GraphViz.writeUndirected(pathGraph, s"part$pid.dot", (n: KmerNode) => n.seq)
       }
     }
     pp.close()

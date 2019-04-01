@@ -6,92 +6,87 @@ import scala.collection.mutable.{ Set => MSet }
 import dbpart.graph.MacroNode
 import friedrich.graph.Graph
 
-final class PartitionBuilder(graph: Graph[MacroNode]) {
+final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
   type Node = MacroNode
   type Partition = List[Node]
 
-  final class Partitioner(groupSize: Int) {
+  def inPartition(n: MacroNode) = n.partitionId != -1
 
-    val partitionIds = Array.fill(graph.numNodes)(-1)
-    def inPartition(n: MacroNode) = partitionIds(n.id) != -1
+  var buildingID = 0
+  var assignCount = 0
+  val totalCount = graph.numNodes
 
-    var buildingID = 0
-    var assignCount = 0
-    val totalCount = graph.numNodes
-
-    def partitions: List[Partition] = {
-      var r = List[Partition]()
-      for (n <- graph.nodes; if ! inPartition(n)) {
-        r ::= BFSfrom(n)
-        buildingID += 1
-      }
-      r
+  def partitions: List[Partition] = {
+    var r = List[Partition]()
+    for (n <- graph.nodes; if !inPartition(n)) {
+      r ::= BFSfrom(n)
+      buildingID += 1
     }
+    r
+  }
 
-    def assignToCurrent(n: Node) {
-      assignCount += 1
-      partitionIds(n.id) = buildingID
-    }
+  def assignToCurrent(n: Node) {
+    assignCount += 1
+    n.partitionId = buildingID
+  }
 
-    def BFSfrom(n: Node): List[Node] = {
-      assignToCurrent(n)
-      BFSfrom(List(n), 1, List(n))
-    }
+  def BFSfrom(n: Node): List[Node] = {
+    assignToCurrent(n)
+    BFSfrom(List(n), 1, List(n))
+  }
 
-    @tailrec
-    def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
-      if (soFarSize >= groupSize || (assignCount == totalCount)) {
+  @tailrec
+  def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
+    if (soFarSize >= groupSize || (assignCount == totalCount)) {
+      refineBoundary(soFar)
+      soFar
+    } else {
+      if (!nextLevel.isEmpty) {
+        var next = MSet[Node]()
+        val need = groupSize - soFarSize
+        for {
+          n <- nextLevel
+          if (next.size < need)
+          edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
+          newEdges = edges.filter(a => !inPartition(a))
+        } {
+          next ++= newEdges
+        }
+        for (un <- next) {
+          assignToCurrent(un)
+        }
+        val useNext = next.toList
+        BFSfrom(useNext ::: soFar, soFarSize + useNext.size, useNext)
+      } else {
         refineBoundary(soFar)
         soFar
-      } else {
-        if (!nextLevel.isEmpty) {
-          var next = MSet[Node]()
-          val need = groupSize - soFarSize
-          for {
-            n <- nextLevel
-            if (next.size < need)
-            edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
-            newEdges = edges.filter(a => !inPartition(a))
-          } {
-            next ++= newEdges
-          }
-          for (un <- next) {
-            assignToCurrent(un)
-          }
-          val useNext = next.toList
-          BFSfrom(useNext ::: soFar, soFarSize + useNext.size, useNext)
-        } else {
-          refineBoundary(soFar)
-          soFar
-        }
       }
     }
-
-    def refineBoundary(partition: List[Node]) {
-      for {
-        n <- partition
-        edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
-        toOther = edges.filter(a => partitionIds(a.id) != buildingID)
-      } {
-        if (toOther.isEmpty) {
-          n.isBoundary = false
-        }
-      }
-    }
-
-    def degree(n: Node): Int = graph.fromDegree(n) + graph.toDegree(n)
-
   }
+
+  def refineBoundary(partition: List[Node]) {
+    for {
+      n <- partition
+      edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
+      toOther = edges.filter(a => a.partitionId != buildingID)
+    } {
+      if (toOther.isEmpty) {
+        n.isBoundary = false
+      }
+    }
+  }
+
+  def degree(n: Node): Int = graph.fromDegree(n) + graph.toDegree(n)
 
   /**
    * Merge adjacent small partitions to increase the average size.
    * Very simple, dumb operation.
    */
   @tailrec
-  final def collapse(groupSize: Int, partitions: List[Partition],
-                     buildSize: Int = 0,
-                     building: Partition = Nil,
-                     acc: List[Partition] = Nil): List[Partition] = {
+  def collapse(groupSize: Int, partitions: List[Partition],
+                     buildSize: Int             = 0,
+                     building:  Partition       = Nil,
+                     acc:       List[Partition] = Nil): List[Partition] = {
     partitions match {
       case p :: ps =>
         if (p.size + buildSize < groupSize) {
@@ -108,12 +103,6 @@ final class PartitionBuilder(graph: Graph[MacroNode]) {
         (building :: acc).filter(!_.isEmpty)
     }
   }
-
-  /**
-   * Group adjacent nodes in the graph.
-   */
-  def partition(groupSize: Int): List[Partition] =
-    new Partitioner(groupSize).partitions
 
 }
 

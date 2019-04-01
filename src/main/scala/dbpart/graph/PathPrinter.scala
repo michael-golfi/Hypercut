@@ -88,7 +88,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
     if (from.boundary) {
       //Boundaries have hidden branches
       //TODO distinguish the different boundary cases here?
-      return (from :: acc, "Boundary")
+      return (from :: acc, s"Boundary_${from.boundaryPartition.get}")
     }
     val ef = graph.edgesFrom(from).filter(! _.noise)
     if (ef.size > 1 || ef.size == 0) {
@@ -111,7 +111,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
     if (from.boundary) {
       //Boundaries have hidden branches
       //TODO distinguish the different boundary cases here?
-      return (from :: acc, "Boundary")
+      return (from :: acc, s"Boundary_${from.boundaryPartition.get}")
     }
     val et = graph.edgesTo(from).filter(! _.noise)
     if (et.size > 1 || et.size == 0) {
