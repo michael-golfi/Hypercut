@@ -23,7 +23,7 @@ trait Graph[N] {
   def edgesFrom(from: N): List[N]
   def edgesTo(to: N): List[N]
 
-  def degree(from: N): Int = fromDegree(from)
+  def degree(from: N): Int = fromDegree(from) + toDegree(from)
   def fromDegree(from: N): Int = edgesFrom(from).size
   def toDegree(to: N): Int = edgesTo(to).size
 
