@@ -26,7 +26,7 @@ final class CoverageBucket(val coverages: Iterable[String]) {
   def pack: String = coverages.mkString(separator)
 }
 
-final class CoverageDB(val dbLocation: String, bnum: Int) extends UnpackingDB[CoverageBucket] {
+final class CoverageDB(val dbLocation: String, bnum: Int) extends StringKyotoDB[CoverageBucket] {
   import CountingSeqBucket._
   import SeqBucketDB._
 

@@ -4,40 +4,41 @@ import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec
 import dbpart.Read
 
-trait Unpacker[B <: Bucket[B]] {
-  def unpack(key: String, value: String, k: Int): B
+trait Unpacker[Packed, B <: Bucket[Packed, B]] {
+  def unpack(key: Packed, value: Packed, k: Int): B
 }
 
-trait Bucket[+B <: Bucket[_]] {
-  def pack: String
+trait Bucket[Packed, +B <: Bucket[Packed, B]] {
+  def pack: Packed
   def size: Int
-  def items: Iterable[String]
+  def items: Iterable[Packed]
 
   /**
-   * Insert a single into the set, returning the updated set if an update was performed
+   * Insert a single into the bucket, returning the updated set if an update was performed
    * Returns None if no update is needed.
    */
-  def insertSingle(value: String): Option[B]
+  def insertSingle(value: Packed): Option[B]
 
   /**
-   * Insert a number of values into the set, returning the updated set if an update was performed
+   * Insert a number of values into the bucket, returning the updated set if an update was performed
    * Returns None if no update is needed.
    */
-  def insertBulk(values: Iterable[String]): Option[B]
+  def insertBulk(values: Iterable[Packed]): Option[B]
 }
 
 /**
  * Stores distinct strings (not necessarily NT sequences).
  * The value of k has no meaning for this implementation.
  */
-object DistinctBucket extends Unpacker[DistinctBucket] {
+object DistinctBucket extends Unpacker[String, DistinctBucket] {
   val separator: String = "\n"
 
   def unpack(key: String, set: String, k: Int): DistinctBucket =
     new DistinctBucket(set, set.split(separator, -1).toList)
 }
 
-final class DistinctBucket(oldSet: String, val items: List[String]) extends Bucket[DistinctBucket] {
+final class DistinctBucket(oldSet: String, val items: List[String])
+  extends Bucket[String, DistinctBucket] {
   import DistinctBucket._
   def size: Int = items.size
 
@@ -65,7 +66,7 @@ final class DistinctBucket(oldSet: String, val items: List[String]) extends Buck
 /**
  * Bucket that merges sequences if possible.
  */
-object SeqBucket extends Unpacker[SeqBucket] {
+object SeqBucket extends Unpacker[String, SeqBucket] {
   val separator: String = "\n"
 
   def unpack(key: String, value: String, k: Int): SeqBucket = {
@@ -73,7 +74,7 @@ object SeqBucket extends Unpacker[SeqBucket] {
   }
 }
 
-class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[SeqBucket] {
+class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[String, SeqBucket] {
   import SeqBucket._
 
   def items = sequences
@@ -191,7 +192,8 @@ object CountingSeqBucket {
   var mergeCount = 0
 }
 
-class CountingUnpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int) extends Unpacker[CountingSeqBucket] {
+class CountingUnpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
+  extends Unpacker[String, CountingSeqBucket] {
   import CountingSeqBucket._
 
   val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
@@ -206,8 +208,9 @@ class CountingUnpacker(dbLocation: String, minCoverage: Option[Int], buckets: In
  * A bucket the counts the coverage of each k-mer, encoding it as a single char.
  */
 final class CountingSeqBucket(sequences: Iterable[String],
-  val coverage: CoverageBucket, k: Int,
-  var sequencesUpdated: Boolean = false) extends SeqBucket(sequences, k) with Bucket[CountingSeqBucket] {
+  val coverage: CoverageBucket, k: Int, var sequencesUpdated: Boolean = false)
+  extends SeqBucket(sequences, k) with Bucket[String, CountingSeqBucket] {
+
   import CountingSeqBucket._
 
   def sequencesWithCoverage =

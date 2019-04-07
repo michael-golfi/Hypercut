@@ -13,7 +13,7 @@ import scala.concurrent.blocking
 /**
  * A Kyoto cabinet-based database.
  */
-trait KyotoDB {
+trait KyotoDB[Packed, B] {
   def dbLocation: String
   def dbOptions: String
 
@@ -28,10 +28,7 @@ trait KyotoDB {
 
   addHook()
 
-
-    /**
-   * Ensure that we close the database on JVM shutdown
-   */
+  //Ensure that we close the database on JVM shutdown
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run() {
@@ -42,6 +39,50 @@ trait KyotoDB {
     })
   }
 
+  type Rec = Array[Byte]
+  def readonlyVisitor(f: (Rec, Rec) => Unit) = new Visitor {
+    def visit_full(key: Rec, value: Rec) = {
+      if (!shouldQuit) {
+        f(key, value)
+      }
+      Visitor.NOP
+    }
+
+    def visit_empty(key: Rec) = Visitor.NOP
+  }
+
+  def unpack(key: Packed, bucket: Packed): B
+  def visitReadonly(keys: Iterable[Packed], f: (Packed, Packed) => Unit)
+  def visitReadonly(f: (Packed, Packed) => Unit)
+
+  def visitBucketsReadonly(f: (Packed, B) => Unit) {
+    visitReadonly((key, value) => {
+      f(key, unpack(key, value))
+    })
+  }
+
+  def visitBucketsReadonly(keys: Iterable[Packed], f: (Packed, B) => Unit) {
+    visitReadonly(keys, (key, value) => f(key, unpack(key, value)))
+  }
+}
+
+/**
+ *  A KyotoDB that stores byte arrays.
+ */
+trait ByteKyotoDB[B] extends KyotoDB[Array[Byte], B] {
+  def visitReadonly(f: (Rec, Rec) => Unit) {
+     db.iterate(readonlyVisitor(f), false)
+  }
+
+  def visitReadonly(keys: Iterable[Rec], f: (Rec, Rec) => Unit) {
+    db.accept_bulk(keys.toArray, readonlyVisitor(f), false)
+  }
+}
+
+/**
+ * A KyotoDB that stores strings.
+ */
+trait StringKyotoDB[B] extends KyotoDB[String, B] {
   def setBulk(kvs: Iterable[(String, String)]) {
     val recary = Array.ofDim[Array[Byte]](kvs.size * 2)
     var ridx = 0
@@ -60,19 +101,12 @@ trait KyotoDB {
     r
   }
 
-  def readonlyVisitor(f: (String, String) => Unit) = new Visitor {
-    def visit_full(key: Array[Byte], value: Array[Byte]) = {
-      if (!shouldQuit) {
-        f(new String(key), new String(value))
-      }
-      Visitor.NOP
-    }
-
-    def visit_empty(key: Array[Byte]) = Visitor.NOP
-  }
+  def stringVisitor(f: (String, String) => Unit) =
+    readonlyVisitor((key, value) =>
+       f(new String(key), new String(value)))
 
   def visitReadonly(f: (String, String) => Unit) {
-     db.iterate(readonlyVisitor(f), false)
+     db.iterate(stringVisitor(f), false)
   }
 
   def visitReadonly(keys: Iterable[String], f: (String, String) => Unit) {
@@ -82,31 +116,19 @@ trait KyotoDB {
       keyArray(ridx) = key.getBytes
       ridx += 1
     }
-    db.accept_bulk(keyArray, readonlyVisitor(f), false)
+    db.accept_bulk(keyArray, stringVisitor(f), false)
   }
-}
 
-trait UnpackingDB[B] extends KyotoDB {
   def unpack(key: String, bucket: String): B
-
-  def visitBucketsReadonly(f: (String, B) => Unit) {
-    visitReadonly((key, value) => {
-      f(key, unpack(key, value))
-    })
-  }
-
-  def visitBucketsReadonly(keys: Iterable[String], f: (String, B) => Unit) {
-    visitReadonly(keys, (key, value) => f(key, unpack(key, value)))
-  }
 }
 
 /**
  * A database that stores keyed buckets of some type B, which can be serialised
  * to strings. Efficient bulk insertion is supported.
  */
-abstract class BucketDB[B <: Bucket[B]](val dbLocation: String, val dbOptions: String,
-    val unpacker: Unpacker[B],
-    k: Int) extends UnpackingDB[B] {
+abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOptions: String,
+    val unpacker: Unpacker[String, B],
+    k: Int) extends StringKyotoDB[B] {
 
   def newBucket(values: Iterable[String]): B
 
