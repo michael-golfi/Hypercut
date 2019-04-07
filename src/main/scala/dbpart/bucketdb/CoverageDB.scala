@@ -62,7 +62,4 @@ final class CoverageDB(val dbLocation: String, bnum: Int) extends StringKyotoDB[
   def setBulk(data: CMap[String, CoverageBucket]) {
     db.set_bulk(data.map(x => (x._1 -> x._2.pack)).asJava, false)
   }
-
-  def buckets = bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
-
 }

@@ -186,20 +186,22 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
    * Testing/validation operation for edges. Verifies that edges in the macro graph
    * correspond to overlapping k-mers in the actual de Bruijn graph.
    * Slow and memory intensive.
+   *
+   * TODO: reimplement in terms of visitors
    */
-  def validateEdges(edges: Iterator[MacroEdge]) = {
-    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(0, k - 1))))
-    val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(1)).toSet))
-    edges.filter(e => {
-      val ts = allTails(e._1.uncompact(space))
-      val hs = allHeads(e._2.uncompact(space))
-      val pass = (e._1 != e._2) && hs.exists(ts.contains)
-      if (!pass) {
-        filteredOutEdges += 1
-      }
-      pass
-    })
-  }
+//  def validateEdges(edges: Iterator[MacroEdge]) = {
+//    val allHeads = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(0, k - 1))))
+//    val allTails = Map() ++ db.buckets.map(x => (x._1, x._2.kmers.map(_.substring(1)).toSet))
+//    edges.filter(e => {
+//      val ts = allTails(e._1.uncompact(space))
+//      val hs = allHeads(e._2.uncompact(space))
+//      val pass = (e._1 != e._2) && hs.exists(ts.contains)
+//      if (!pass) {
+//        filteredOutEdges += 1
+//      }
+//      pass
+//    })
+//  }
 
   def list() {
     db.visitKeysReadonly(key => println(key))

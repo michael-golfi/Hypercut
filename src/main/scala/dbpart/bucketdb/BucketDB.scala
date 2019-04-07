@@ -64,6 +64,10 @@ trait KyotoDB[Packed, B] {
   def visitBucketsReadonly(keys: Iterable[Packed], f: (Packed, B) => Unit) {
     visitReadonly(keys, (key, value) => f(key, unpack(key, value)))
   }
+
+  def dbSet(key: Packed, value: Packed)
+  def dbGet(key: Packed): Packed
+  def setBulk(kvs: Iterable[(Packed, Packed)])
 }
 
 /**
@@ -77,12 +81,30 @@ trait ByteKyotoDB[B] extends KyotoDB[Array[Byte], B] {
   def visitReadonly(keys: Iterable[Rec], f: (Rec, Rec) => Unit) {
     db.accept_bulk(keys.toArray, readonlyVisitor(f), false)
   }
+
+  def dbSet(key: Rec, value: Rec) = db.set(key, value)
+  def dbGet(key: Rec): Rec = db.get(key)
+  def setBulk(kvs: Iterable[(Rec, Rec)]) = {
+    val recary = Array.ofDim[Array[Byte]](kvs.size * 2)
+    var ridx = 0
+    for (kv <- kvs) {
+      recary(ridx) = kv._1
+      ridx += 1
+      recary(ridx) = kv._2
+      ridx += 1
+    }
+    db.set_bulk(recary, false)
+  }
 }
 
 /**
  * A KyotoDB that stores strings.
  */
 trait StringKyotoDB[B] extends KyotoDB[String, B] {
+  def dbSet(key: String, value: String) = db.set(key, value)
+
+  def dbGet(key: String): String = db.get(key)
+
   def setBulk(kvs: Iterable[(String, String)]) {
     val recary = Array.ofDim[Array[Byte]](kvs.size * 2)
     var ridx = 0
@@ -93,12 +115,6 @@ trait StringKyotoDB[B] extends KyotoDB[String, B] {
       ridx += 1
     }
     db.set_bulk(recary, false)
-  }
-
-  protected def bucketsRaw: Vector[(String, String)] = {
-    var r = Vector[(String, String)]()
-    visitReadonly((key, value) => r :+= (key, value))
-    r
   }
 
   def stringVisitor(f: (String, String) => Unit) =
@@ -126,48 +142,35 @@ trait StringKyotoDB[B] extends KyotoDB[String, B] {
  * A database that stores keyed buckets of some type B, which can be serialised
  * to strings. Efficient bulk insertion is supported.
  */
-abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOptions: String,
-    val unpacker: Unpacker[String, B],
-    k: Int) extends StringKyotoDB[B] {
+abstract class BucketDB[Packed, B <: Bucket[Packed, B]](val dbLocation: String, val dbOptions: String,
+    val unpacker: Unpacker[Packed, B],
+    k: Int) extends KyotoDB[Packed, B] {
 
-  def newBucket(values: Iterable[String]): B
+  def newBucket(values: Iterable[Packed]): B
 
-  def unpack(key: String, bucket: String) = unpacker.unpack(key, bucket, k)
+  def unpack(key: Packed, bucket: Packed) = unpacker.unpack(key, bucket, k)
 
-  def addSingle(key: String, record: String) {
-    val v = Option(db.get(key))
+  def addSingle(key: Packed, record: Packed) {
+    val v = Option(dbGet(key))
     v match {
       case Some(value) =>
-        if (value.size > 2000) {
-          println(s"Key $key size ${value.size}")
-        }
         unpack(key, value).insertSingle(record) match {
-          case Some(nv) => db.set(key, nv.pack)
+          case Some(nv) => dbSet(key, nv.pack)
           case None =>
         }
       case None =>
-        db.set(key, newBucket(List(record)).pack)
-    }
-  }
-
-  /**
-   * Copy all values from another database of the same type.
-   */
-  def copyAllFrom(other: BucketDB[B]) {
-    for (bs <- other.buckets.grouped(1000)) {
-      val data = Map() ++ bs.map(b => b._1 -> b._2)
-      val dataPk = Map() ++ bs.map(b => b._1 -> b._2.pack)
-      db.set_bulk(dataPk.asJava, false)
-      afterBulkWrite(data)
+        dbSet(key, newBucket(List(record)).pack)
     }
   }
 
   /**
    * Merge new values into the existing values. Returns a list of buckets
    * that need to be written back to the database.
+   *
+   * TODO: this may not work correctly for byte arrays, due to lack of deep equality
    */
-  def merge(oldVals: CMap[String, B], from: CMap[String, Iterable[String]]) = {
-    var r = List[(String, B)]()
+  def merge(oldVals: CMap[Packed, B], from: CMap[Packed, Iterable[Packed]]) = {
+    var r = List[(Packed, B)]()
     for ((k, vs) <- from) {
       oldVals.get(k) match {
         case Some(existingBucket) =>
@@ -184,11 +187,11 @@ abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOp
     r
   }
 
-  protected def shouldWriteBack(key: String, bucket: B): Boolean = true
+  protected def shouldWriteBack(key: Packed, bucket: B): Boolean = true
 
-  protected def afterBulkWrite(merged: Iterable[(String, B)]) {}
+  protected def afterBulkWrite(merged: Iterable[(Packed, B)]) {}
 
-  protected def beforeBulkLoad(keys: Iterable[String]) {}
+  protected def beforeBulkLoad(keys: Iterable[Packed]) {}
 
   class InsertStats {
     var writeback = 0
@@ -207,12 +210,12 @@ abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOp
   /**
    * Add pairs of buckets and sequences.
    */
-  def addBulk(data: Iterable[(String, String)]) {
+  def addBulk(data: Iterable[(Packed, Packed)]) {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
     addBulk(insert)
   }
 
-  def addBulk(insert: CMap[String, Iterable[String]]) {
+  def addBulk(insert: CMap[Packed, Iterable[Packed]]) {
     val stats = new InsertStats
     for (insertGr <- insert.grouped(10000).toSeq.par) {
       val existing = getBulk(insertGr.keys)
@@ -228,15 +231,12 @@ abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOp
   }
 
 
-  def getBulk(keys: Iterable[String]): CMap[String, B] = synchronized {
+  def getBulk(keys: Iterable[Packed]): CMap[Packed, B] = synchronized {
     beforeBulkLoad(keys)
-    var r = MMap[String,B]()
+    var r = MMap[Packed,B]()
     visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
     r
   }
-
-  def buckets: Vector[(String, B)] =
-    bucketsRaw.map(x => (x._1, unpack(x._1, x._2)))
 
   def bucketSizeStats() = {
     val r = new Distribution
@@ -253,6 +253,11 @@ abstract class BucketDB[B <: Bucket[String, B]](val dbLocation: String, val dbOp
   }
 }
 
+abstract class StringBucketDB[B <: Bucket[String, B]](location: String,
+    dbOptions: String, unpacker: Unpacker[String, B], k: Int)
+  extends BucketDB[String, B](location, dbOptions, unpacker, k) with StringKyotoDB[B]
+
+
 object EdgeDB {
   import SeqBucketDB._
 
@@ -268,7 +273,7 @@ object EdgeDB {
  * unique strings.
  */
 final class EdgeDB(location: String, buckets: Int)
-  extends BucketDB[DistinctBucket](location, EdgeDB.dbOptions(buckets), DistinctBucket, 0) {
+  extends StringBucketDB[DistinctBucket](location, EdgeDB.dbOptions(buckets), DistinctBucket, 0) {
 
   def newBucket(values: Iterable[String]) = {
     val seed = values.head
@@ -300,16 +305,12 @@ object SeqBucketDB {
 /**
  * BucketDB that merges k-mers into contiguous paths.
  * Buckets will contain lists of paths, not KMers.
- * To obtain individual KMers, methods such as kmerBuckets and kmerHistogram
- * can be used.
- *
  * The coverage of each k-mer is also tracked in an auxiliary database (covDB).
  *
- * The coverage filter, if present, affects extractor methods such as kmerBuckets, buckets,
- * getBulk, bucketKeys.
+ * The coverage filter, if present, affects some of the accessor methods.
  */
 final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Int])
-extends BucketDB[CountingSeqBucket](location, options,
+extends StringBucketDB[CountingSeqBucket](location, options,
     new CountingUnpacker(location, minCoverage, buckets), k) {
 
   def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
@@ -317,15 +318,15 @@ extends BucketDB[CountingSeqBucket](location, options,
   //Traversing the coverages should be cheaper than traversing the full buckets
   //for counting the number of sequences
   override def bucketSizeHistogram(limitMax: Option[Long] = None) = {
-    val ss = covDB.buckets.map(_._2.coverages.size)
-    new Histogram(ss.toSeq, 10, limitMax)
+    var sizes = Vector[Int]()
+    covDB.visitBucketsReadonly((key, bucket) => {
+      sizes :+= bucket.coverages.size
+    })
+    new Histogram(sizes, 10, limitMax)
   }
 
   def newBucket(values: Iterable[String]) =
     new CountingSeqBucket(Iterable.empty, new CoverageBucket(Iterable.empty), k).insertBulk(values).get
-
-  override def buckets =
-    super.buckets.filter(! _._2.sequences.isEmpty)
 
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences

@@ -80,11 +80,11 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       banner("Copy a bucket database into another one (appending), optionally applying coverage filtering. Edges are not coverage filtered.")
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
-        //TODO: not copying edges yet, only sequences and coverages
         val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options(bnum.toOption.get),
           bnum.toOption.get,
           k.toOption.get, None)
-        out.copyAllFrom(defaultBuckets.db)
+       //TODO implement or remove this command
+       ???
       }
     }
     addSubcommand(copy)
