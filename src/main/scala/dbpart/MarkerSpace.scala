@@ -5,19 +5,24 @@ import scala.annotation.tailrec
 import scala.collection.Seq
 
 object MarkerSpace {
-  val simple = new MarkerSpace(Seq(
+  def simple(n: Int) = new MarkerSpace(Seq(
         "TTA",
         "AT", "AC",
         "GT", "GC",
-        "CTT"))
+        "CTT"), n)
 
-  val default = new MarkerSpace(Seq(
+  def default(n: Int) = new MarkerSpace(Seq(
     "ATA", "CCT", "AGG",
-    "GT", "AC", "GC", "CC", "GG", "AT"))
+    "GT", "AC", "GC", "CC", "GG", "AT"), n)
 
 }
 
-final class MarkerSpace(val byPriority: Seq[String]) {
+/**
+ * A set of markers that can be used, and their relative priorities.
+ * @param n Number of markers in a marker set. Currently only used here
+ * to compute compactSize.
+ */
+final class MarkerSpace(val byPriority: Seq[String], n: Int) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
@@ -106,4 +111,9 @@ final class MarkerSpace(val byPriority: Seq[String]) {
     }
     r
   }
+
+  /**
+   * Size of a compact marker set, in bytes
+   */
+  def compactSize = 2 * n
 }

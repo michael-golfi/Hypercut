@@ -165,13 +165,11 @@ abstract class BucketDB[Packed, B <: Bucket[Packed, B]](val dbLocation: String, 
 
   /**
    * Merge new values into the existing values. Returns a list of buckets
-   * that need to be written back to the database.
-   *
-   * TODO: this may not work correctly for byte arrays, due to lack of deep equality
+   * that need to be written back to the database. 
    */
   def merge(oldVals: CMap[Packed, B], from: CMap[Packed, Iterable[Packed]]) = {
     var r = List[(Packed, B)]()
-    for ((k, vs) <- from) {
+    for ((k, vs) <- from) { 
       oldVals.get(k) match {
         case Some(existingBucket) =>
           existingBucket.insertBulk(vs) match {
@@ -230,7 +228,6 @@ abstract class BucketDB[Packed, B <: Bucket[Packed, B]](val dbLocation: String, 
     stats.print()
   }
 
-
   def getBulk(keys: Iterable[Packed]): CMap[Packed, B] = synchronized {
     beforeBulkLoad(keys)
     var r = MMap[Packed,B]()
@@ -257,31 +254,63 @@ abstract class StringBucketDB[B <: Bucket[String, B]](location: String,
     dbOptions: String, unpacker: Unpacker[String, B], k: Int)
   extends BucketDB[String, B](location, dbOptions, unpacker, k) with StringKyotoDB[B]
 
+abstract class ByteBucketDB[B <: Bucket[Array[Byte], B]](location: String,
+    dbOptions: String, unpacker: Unpacker[Array[Byte], B], k: Int)
+  extends BucketDB[Array[Byte], B](location, dbOptions, unpacker, k) with ByteKyotoDB[B] {
+
+  // Overriding to handle equality 
+  override def addBulk(data: Iterable[(Rec, Rec)]) {
+    val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
+    addBulk(insert)
+  }
+  
+  // Overriding to handle equality 
+  override def merge(oldVals: CMap[Rec, B], from: CMap[Rec, Iterable[Rec]]) = {
+    val oldValsS = Map() ++ oldVals.map(x => (x._1.toSeq -> x._2))    
+    var r = List[(Rec, B)]()
+    for ((k, vs) <- from) { 
+      oldValsS.get(k.toSeq) match {
+        case Some(existingBucket) =>
+          existingBucket.insertBulk(vs) match {
+            case Some(ins) =>
+              r ::= (k, ins)
+            case None =>
+          }
+        case None =>
+          val ins = newBucket(vs)
+          r ::= (k, ins)
+      }
+    }
+    r
+  }
+}
+
 
 object EdgeDB {
   import SeqBucketDB._
 
   /**
-   * 128 byte alignment
+   * 32 byte alignment
    * 8 GB mmap
    */
-  def dbOptions(buckets: Int): String = s"#bnum=$buckets#apow=7#mmap=$c20g"
+  def dbOptions(buckets: Int): String = s"#bnum=$buckets#apow=5#mmap=$c20g"
 }
 
 /**
  * Database of nodes and edges in the macro graph. Buckets here simply store
  * unique strings.
+ * k is irrelevant here.
  */
-final class EdgeDB(location: String, buckets: Int)
-  extends StringBucketDB[DistinctBucket](location, EdgeDB.dbOptions(buckets), DistinctBucket, 0) {
+final class EdgeDB(location: String, buckets: Int, unpacker: DistinctByteBucket.Unpacker)
+  extends ByteBucketDB[DistinctByteBucket](location, EdgeDB.dbOptions(buckets), unpacker, 0) {
 
-  def newBucket(values: Iterable[String]) = {
+  def newBucket(values: Iterable[Rec]) = {
     val seed = values.head
-    val b = new DistinctBucket(seed, List(seed))
+    val b = new DistinctByteBucket(seed, List(seed), unpacker.itemSize)
     b.insertBulk(values.tail).getOrElse(b)
   }
 
-  def visitEdges(f: List[(String, String)] => Unit) {
+  def visitEdges(f: List[(Rec, Rec)] => Unit) {
     visitBucketsReadonly((key, value) => {
       f(value.items.map(to => (key, to)))
     })
@@ -311,9 +340,9 @@ object SeqBucketDB {
  */
 final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Int])
 extends StringBucketDB[CountingSeqBucket](location, options,
-    new CountingUnpacker(location, minCoverage, buckets), k) {
+    new CountingSeqBucket.Unpacker(location, minCoverage, buckets), k) {
 
-  def covDB = unpacker.asInstanceOf[CountingUnpacker].covDB
+  def covDB = unpacker.asInstanceOf[CountingSeqBucket.Unpacker].covDB
 
   //Traversing the coverages should be cheaper than traversing the full buckets
   //for counting the number of sequences

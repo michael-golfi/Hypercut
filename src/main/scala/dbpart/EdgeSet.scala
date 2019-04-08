@@ -55,7 +55,7 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
       flushedNodeCount += data.size
       data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
       for (g <- groups) {
-        db.addBulk(g.map(x => uncompact(x._1) -> x._2.toSeq.map(uncompact)))
+        db.addBulk(g.map(x => x._1.toArray -> x._2.map(_.toArray).toSeq))
       }
     }
   }

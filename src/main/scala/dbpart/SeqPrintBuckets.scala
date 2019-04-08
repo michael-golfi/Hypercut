@@ -16,7 +16,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
   val extractor = new MarkerSetExtractor(space, numMarkers, k)
   lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minCov)
-  lazy val edgeDb = settings.edgeDb
+  lazy val edgeDb = settings.edgeDb(space)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -127,7 +127,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
-  def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
+//  def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
 
   def makeGraph() = {
     var nodeLookup = new scala.collection.mutable.HashMap[MacroNode, MacroNode]
@@ -156,7 +156,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
      */
     var count = 0
     edgeDb.visitEdges(edges => {
-      val es = edges.map(x => (nodeLookup.get(asMacroNode(x._1)), nodeLookup.get(asMacroNode(x._2))))
+      val es = edges.map(x => (nodeLookup.get(new MacroNode(x._1)), nodeLookup.get(new MacroNode(x._2))))
       for {
         (from, to) <- es
         filtFrom <- from
@@ -213,8 +213,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
   def show(bucket: String) {
     println(s"Bucket $bucket")
+    val key = MarkerSet.unpackToCompact(space, bucket)
     val seqs = db.getBulk(List(bucket))
-    val edges = edgeDb.getBulk(List(bucket))
+    val edges = edgeDb.getBulk(List(key))
 
     val ind = "  "
     //Note: could also print sequence average coverage, integer coverages etc.
@@ -228,11 +229,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     for {
       e <- edges.headOption
     } {
-      println(ind + "Edges forward: " + e._2.items.mkString(" "))
+      println(ind + "Edges forward: " + e._2.items.map(MarkerSet.uncompactToString(_, space)).mkString(" "))
     }
   }
-}
-
-object SeqPrintBuckets {
-  val space = MarkerSpace.default
 }

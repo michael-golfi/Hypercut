@@ -3,6 +3,8 @@ package dbpart.bucketdb
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec
 import dbpart.Read
+import scala.collection.mutable.ArrayBuilder
+import java.util.Arrays
 
 trait Unpacker[Packed, B <: Bucket[Packed, B]] {
   def unpack(key: Packed, value: Packed, k: Int): B
@@ -42,7 +44,7 @@ final class DistinctBucket(oldSet: String, val items: List[String])
   import DistinctBucket._
   def size: Int = items.size
 
-   def insertSingle(value: String): Option[DistinctBucket] = {
+  def insertSingle(value: String): Option[DistinctBucket] = {
     if (!items.contains(value)) {
       Some(new DistinctBucket(s"$oldSet$separator$value", value :: items))
     } else {
@@ -61,6 +63,63 @@ final class DistinctBucket(oldSet: String, val items: List[String])
   }
 
   def pack: String = oldSet
+}
+
+
+object DistinctByteBucket {
+  type Rec = Array[Byte]
+
+  class Unpacker(val itemSize: Int) extends dbpart.bucketdb.Unpacker[Array[Byte], DistinctByteBucket] {
+
+    def unpack(key: Rec, set: Rec, k: Int): DistinctByteBucket = {
+      var i = 0
+      var items = List[Seq[Byte]]()
+      while (i < set.length) {
+        items ::= Arrays.copyOfRange(set, i, i + itemSize).toSeq
+        i += itemSize
+      }
+      new DistinctByteBucket(set, items, itemSize)
+    }
+  }
+}
+
+/**
+ * Distinct bucket for byte arrays.
+ * Arrays do not have deep equality by default, so we also maintain them internally
+ * as Seq[Byte] (which do).
+ */
+final class DistinctByteBucket(oldSet: Array[Byte], separated: List[Seq[Byte]],
+  val itemSize: Int)
+  extends Bucket[Array[Byte], DistinctByteBucket] {
+  import DistinctByteBucket._
+
+  def size = separated.size
+
+  //Pad to size and also convert to Seq for equality
+  def pad(value: Rec): Seq[Byte] = value.toSeq.padTo(itemSize, 0.toByte)
+
+  def items: List[Rec] = separated.map(_.toArray)
+
+  def insertSingle(value: Rec): Option[DistinctByteBucket] = {
+    val pv = pad(value)
+    if (!separated.contains(pv)) {
+      Some(new DistinctByteBucket(oldSet ++ pv, pv :: separated, itemSize))
+    } else {
+      None
+    }
+  }
+
+  def insertBulk(values: Iterable[Rec]): Option[DistinctByteBucket] = {
+    val newVals = values.map(pad(_)).filter(!separated.contains(_)).toList.distinct
+    if (!newVals.isEmpty) {
+      val newData = oldSet ++ newVals.flatten
+      Some(new DistinctByteBucket(newData, newVals ::: separated, itemSize))
+    } else {
+      None
+    }
+  }
+
+  def pack: Rec = oldSet
 }
 
 /**
@@ -190,19 +249,19 @@ object CountingSeqBucket {
 
   @volatile
   var mergeCount = 0
-}
 
-class CountingUnpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
-  extends Unpacker[String, CountingSeqBucket] {
-  import CountingSeqBucket._
+  class Unpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
+    extends dbpart.bucketdb.Unpacker[String, CountingSeqBucket] {
 
-  val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
+    val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
 
-  def unpack(key: String, value: String, k: Int): CountingSeqBucket = {
-    val cov = covDB.get(key)
-    new CountingSeqBucket(value.split(separator, -1), cov, k).atMinCoverage(minCoverage)
+    def unpack(key: String, value: String, k: Int): CountingSeqBucket = {
+      val cov = covDB.get(key)
+      new CountingSeqBucket(value.split(separator, -1), cov, k).atMinCoverage(minCoverage)
+    }
   }
 }
+
 
 /**
  * A bucket the counts the coverage of each k-mer, encoding it as a single char.

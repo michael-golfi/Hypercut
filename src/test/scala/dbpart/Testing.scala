@@ -4,7 +4,7 @@ import scala.collection.Seq
 
 object Testing {
 
-  val space = MarkerSpace.simple
+  val space = MarkerSpace.simple(4)
   def m(code: String, pos: Int) = space.get(code, pos)
   def ms(markers: Seq[(String, Int)]) = markers.map(x => m(x._1, x._2))
 

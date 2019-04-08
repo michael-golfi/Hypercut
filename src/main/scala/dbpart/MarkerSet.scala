@@ -113,14 +113,17 @@ object MarkerSet {
     }
   }
 
+  def unpackToCompact(space: MarkerSpace, key: String) =
+    unpack(space, key).compact
+
   def uncompactToString(data: Array[Byte], space: MarkerSpace): String = {
     val b = ByteBuffer.wrap(data)
     val r = new StringBuilder
-    val n = b.capacity() / 3
+    val n = b.capacity() / 2
     var i = 0
     while (i < n) {
       r.append(space.byPriority(b.get))
-      val pos = b.getShort
+      val pos = b.get
       if (pos < 10) {
         r.append("0")
       }
@@ -232,12 +235,13 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
   }
 
   lazy val compact = {
-    val r = ByteBuffer.allocate(3 * relativeMarkers.size)
+    val r = ByteBuffer.allocate(space.compactSize)
     val it = relativeMarkers.iterator
     while (it.hasNext) {
       val m = it.next
       r.put(m.features.tagIndex(space).toByte)
-      r.putShort(m.pos.toShort)
+      //TODO check/warn about max size of positions, if we're not using short for the position
+      r.put(m.pos.toByte)
     }
     r.array()
   }

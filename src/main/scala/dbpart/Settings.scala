@@ -1,13 +1,16 @@
 package dbpart
 
 import dbpart.bucketdb.EdgeDB
+import dbpart.bucketdb.DistinctByteBucket
 
 object Settings {
+  //NB the ideal edge flush interval should be set considering the number of expected edges per node
+  //(since the memory cost of buffering edges can be high)
   def noindexSettings(dbfile: String, buckets: Int): dbpart.Settings =
-    new Settings(dbfile, buckets, Some(7500000), 50000)
+    new Settings(dbfile, buckets, Some(4000000), 50000)
 
   def settings(dbfile: String, buckets: Int): dbpart.Settings =
-    new Settings(dbfile, buckets, Some(5000000), 20000)
+    new Settings(dbfile, buckets, Some(4000000), 20000)
 }
 
 /**
@@ -18,5 +21,7 @@ class Settings(val dbfile: String,
   val edgeWriteInterval: Option[Int],
   val readBufferSize: Int) {
 
-  def edgeDb: dbpart.bucketdb.EdgeDB = new EdgeDB(dbfile.replace(".kch", "_edge.kch"), buckets)
+  def edgeDb(space: MarkerSpace): dbpart.bucketdb.EdgeDB =
+    new EdgeDB(dbfile.replace(".kch", "_edge.kch"), buckets,
+      new DistinctByteBucket.Unpacker(space.compactSize))
 }

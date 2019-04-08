@@ -16,15 +16,17 @@ object ReadFiles {
   def fasta(r: BufferedSource): Iterator[String] =
     r.getLines.grouped(2).map(_(1))
 
-  def iterator(file: String): Iterator[String] = {
+  def iterator(rawFile: String): Iterator[String] = {
+    val file = if (rawFile.endsWith(".gz")) rawFile.dropRight(3) else rawFile
+
     if (file.endsWith(".fq") || file.endsWith(".fastq") || file == "-") {
      println("Assuming fastq format")
-     fastq(file)
+     fastq(rawFile)
    } else if (file.endsWith(".fa") || file.endsWith(".fasta")) {
      println("Assuming fasta format")
-     fasta(file)
+     fasta(rawFile)
    } else {
-     throw new Exception(s"Unknown file format: $file")
+     throw new Exception(s"Unknown file format: $rawFile")
    }
  }
 }

@@ -32,8 +32,9 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   val minCov = opt[Int](descr = "Minimum coverage cutoff when reading databases")
 
   lazy val defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
+  lazy val defaultSpace = MarkerSpace.default(numMarkers.toOption.get)
   lazy val defaultBuckets = new SeqPrintBuckets(
-    SeqPrintBuckets.space, k.toOption.get, numMarkers.toOption.get,
+    defaultSpace, k.toOption.get, numMarkers.toOption.get,
     defaultSettings, SeqBucketDB.options(bnum.toOption.get), minCov.toOption)
 
   val buckets = new Subcommand("buckets") {
@@ -50,7 +51,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
           Settings.noindexSettings(dbfile.toOption.get, bnum.toOption.get)
         }
 
-        val spb = new SeqPrintBuckets(SeqPrintBuckets.space, k.toOption.get,
+        val spb = new SeqPrintBuckets(defaultSpace, k.toOption.get,
           numMarkers.toOption.get,
           settings, SeqBucketDB.mmapOptions(bnum.toOption.get),
           None)
@@ -111,7 +112,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 
   val analyse = new Subcommand("analyse") with RunnableCommand {
     banner("Analyse reads and display their fingerprints.")
-    lazy val defaultExtractor = new MarkerSetExtractor(SeqPrintBuckets.space,
+    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace,
       numMarkers.toOption.get, k.toOption.get)
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
