@@ -42,10 +42,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[CompactEdge]]) {
-    blocking {
-      for (es <- edges) {
-        edgeSet.add(es)
-      }
+    for (es <- edges) {
+      edgeSet.add(es)
     }
     println("Up to " + edgeSet.seenNodes + " nodes found")
   }

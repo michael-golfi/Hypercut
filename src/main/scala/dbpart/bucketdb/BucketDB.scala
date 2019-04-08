@@ -28,6 +28,8 @@ trait KyotoDB[Packed, B] {
 
   addHook()
 
+  def count = db.count
+
   //Ensure that we close the database on JVM shutdown
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
@@ -165,11 +167,11 @@ abstract class BucketDB[Packed, B <: Bucket[Packed, B]](val dbLocation: String, 
 
   /**
    * Merge new values into the existing values. Returns a list of buckets
-   * that need to be written back to the database. 
+   * that need to be written back to the database.
    */
   def merge(oldVals: CMap[Packed, B], from: CMap[Packed, Iterable[Packed]]) = {
     var r = List[(Packed, B)]()
-    for ((k, vs) <- from) { 
+    for ((k, vs) <- from) {
       oldVals.get(k) match {
         case Some(existingBucket) =>
           existingBucket.insertBulk(vs) match {
@@ -258,17 +260,17 @@ abstract class ByteBucketDB[B <: Bucket[Array[Byte], B]](location: String,
     dbOptions: String, unpacker: Unpacker[Array[Byte], B], k: Int)
   extends BucketDB[Array[Byte], B](location, dbOptions, unpacker, k) with ByteKyotoDB[B] {
 
-  // Overriding to handle equality 
+  // Overriding to handle equality
   override def addBulk(data: Iterable[(Rec, Rec)]) {
     val insert = data.groupBy(_._1).mapValues(vs => vs.map(_._2))
     addBulk(insert)
   }
-  
-  // Overriding to handle equality 
+
+  // Overriding to handle equality
   override def merge(oldVals: CMap[Rec, B], from: CMap[Rec, Iterable[Rec]]) = {
-    val oldValsS = Map() ++ oldVals.map(x => (x._1.toSeq -> x._2))    
+    val oldValsS = Map() ++ oldVals.map(x => (x._1.toSeq -> x._2))
     var r = List[(Rec, B)]()
-    for ((k, vs) <- from) { 
+    for ((k, vs) <- from) {
       oldValsS.get(k.toSeq) match {
         case Some(existingBucket) =>
           existingBucket.insertBulk(vs) match {

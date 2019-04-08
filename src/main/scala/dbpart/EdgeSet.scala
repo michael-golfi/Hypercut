@@ -12,7 +12,7 @@ import dbpart.bucketdb.EdgeDB
 final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
   var data: HashMap[Seq[Byte],MSet[Seq[Byte]]] = new HashMap[Seq[Byte],MSet[Seq[Byte]]]
 
-  var flushedNodeCount: Int = 0
+  var flushedNodeCount: Long = 0
   var edgeCount: Int = 0
   def seenNodes = data.size + flushedNodeCount
 
@@ -52,11 +52,11 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
       def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
 
       val groups = data.grouped(1000000)
-      flushedNodeCount += data.size
       data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
       for (g <- groups) {
         db.addBulk(g.map(x => x._1.toArray -> x._2.map(_.toArray).toSeq))
       }
+      flushedNodeCount = db.count
     }
   }
 }
