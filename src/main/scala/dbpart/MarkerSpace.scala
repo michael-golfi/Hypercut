@@ -19,7 +19,7 @@ object MarkerSpace {
 
 /**
  * A set of markers that can be used, and their relative priorities.
- * @param n Number of markers in a marker set. 
+ * @param n Number of markers in a marker set.
  */
 final class MarkerSpace(val byPriority: Seq[String], val n: Int) {
   val maxMotifLength = byPriority.map(_.length()).max
@@ -32,22 +32,21 @@ final class MarkerSpace(val byPriority: Seq[String], val n: Int) {
     maxMotifLength - motif.length()
 
   @volatile
-  private var lookup = Map[(String, Boolean, Int), Features]()
+  private var lookup = Map[(String, Int), Features]()
 
-  def getFeatures(pattern: String, lowestRank: Boolean, sortValue: Int): Features = {
-    val key = (pattern, lowestRank, sortValue)
+  def getFeatures(pattern: String, sortValue: Int): Features = {
+    val key = (pattern, sortValue)
     if (!lookup.contains(key)) {
       synchronized {
-        val f = new Features(pattern, priorityOf(pattern), lowestRank, sortValue)
+        val f = new Features(pattern, priorityOf(pattern), sortValue)
         lookup += key -> f
       }
     }
     lookup(key)
   }
 
-  def get(pattern: String, pos: Int, lowestRank: Boolean = false,
-          sortValue: Int = 0): Marker = {
-    Marker(pos, getFeatures(pattern, lowestRank, sortValue))
+  def get(pattern: String, pos: Int, sortValue: Int = 0): Marker = {
+    Marker(pos, getFeatures(pattern, sortValue))
   }
 
   val priorityMap = Map() ++ byPriority.zipWithIndex

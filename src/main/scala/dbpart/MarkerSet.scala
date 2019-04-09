@@ -17,23 +17,19 @@ object Marker {
 /**
  * The attributes of a marker, except its position.
  */
-final class Features(val tag: String, val tagRank: Int, val lowestRank: Boolean = false,
-  val sortValue: Int = 0) {
+final class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
 
   def tagIndex(space: MarkerSpace) = space.byIndex(tag)
 
   def strongEquivalent(other: Features) = {
-    tag == other.tag && lowestRank == other.lowestRank
+    tag == other.tag
   }
 
-  def asLowestRank(space: MarkerSpace) = space.getFeatures(tag, true, sortValue)
-
-  def withSortValue(space: MarkerSpace, value: Int) = space.getFeatures(tag, lowestRank, value)
+  def withSortValue(space: MarkerSpace, value: Int) = space.getFeatures(tag, value)
 }
 
 final case class Marker(pos: Int, features: Features) {
   def tag = features.tag
-  def lowestRank = features.lowestRank
   def sortValue = features.sortValue
 
   //Note: implicit assumption that pos < 100 when we use this
@@ -51,9 +47,7 @@ final case class Marker(pos: Int, features: Features) {
     r.append(pos)
   }
 
-  override def toString = "[%s,%02d%s]".format(tag, pos, lrs)
-
-  def lrs = if (lowestRank) ":l" else ""
+  override def toString = "[%s,%02d]".format(tag, pos)
 
   def equivalent(other: Marker) = {
     tag == other.tag && pos == other.pos
@@ -72,14 +66,11 @@ final case class Marker(pos: Int, features: Features) {
 
   override lazy val hashCode: Int = pos.hashCode * 41 + features.hashCode
 
-  def asLowestRank(space: MarkerSpace) = if (lowestRank) this else
-    copy(features = features.asLowestRank(space))
-
   /**
    * Obtain the canonical version of this marker, to save memory
    */
   def canonical(ms: MarkerSpace): Marker = {
-    ms.get(tag, pos, lowestRank, sortValue)
+    ms.get(tag, pos, sortValue)
   }
 
   lazy val rankSort = features.tagRank * 1000 + pos
@@ -267,87 +258,20 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
 
   def fromZero = new MarkerSet(space, setFirstToZero(relativeMarkers))
 
-  /**
-   * Whether a sequence of relative markers is allowed to precede another one.
-   * @param n The maximum number of markers in a full set. Tracks the maximum number
-   *   allowed on the right hand side.
-   *
-   * lowestRank on markers must have been set in advance, and may only be set on one marker
-   * in each MarkerSet.
-   */
-  private def canPrecede(s1: Seq[Marker], s2: Seq[Marker],
-                         n: Int,
-                         mayRemoveLeftRank: Boolean = true,
-                         mayInsertRight: Boolean = true,
-                         removedLeftPos: Boolean = false): Boolean = {
-    //TODO check size handling - initial marker sets might be smaller than n,
-    //since not enough markers available
-
-//    println(s"Now at: $s1 $s2 $mayRemoveLeftRank $mayInsertRight $removedLeftPos")
-//    println(s"SortValues ${s1.headOption map {_.sortValue}} ${s2.headOption map {_.sortValue }}")
-//
-    if (s1.isEmpty) {
-//      println("Reached end")
-      s2.size <= n
-    } else if (!s2.isEmpty && (s1.head equivalent s2.head) &&
-        canPrecede(s1.tail, s2.tail, n - 1, mayRemoveLeftRank, mayInsertRight, removedLeftPos)) {
-//        println("Normal success")
-        true
-    } else if ((s1.head.lowestRank) && mayRemoveLeftRank &&
-        canPrecede(removeHeadMarker(s1), s2, n, false, mayInsertRight, removedLeftPos)) {
-//        println("Left rank")
-      //the lowest ranked item may disappear once on the left
-      //TODO could validate that a corresponding marker with a suitable rank appears on the right
-      true
-    } else if (!s2.isEmpty && mayInsertRight &&
-        (s1.size >= n - 1) &&
-        removedLeftPos &&
-        s2.head.sortValue > s1.head.sortValue &&
-        canPrecede(setFirstToZero(s1.toList),
-          dropHeadMarker(s2.toList), n - 1, mayRemoveLeftRank, false, removedLeftPos)) {
-//        println("Right rank")
-       //a new item may be inserted once on the right by rank.
-       //Its rank must be lower than the corresponding item on the left.
-       //A corresponding drop must have occurred (or s1 must be too small to begin with)
-        true
-    } else {
-//      println(s"fail at: leftRel $s1 rightRel $s2")
-      false
-    }
-  }
-
-  /**
-   * Whether this marker set is allowed to precede another one.
-   *
-   */
-  def precedes(other: MarkerSet, n: Int): Boolean = {
-//    println(s"Test: $thisRel $otherRel")
-
-    //Normal case
-    canPrecede(relativeMarkers, other.relativeMarkers, n) ||
-    //Case 2 and 4
-      (relativeMarkers.head.pos == 0 &&
-          canPrecede(dropHeadMarker(relativeMarkers), setFirstToZero(other.relativeMarkers),
-            n, false, true, true))
-  }
 
   def relativeByRank =
     relativeMarkers.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
 
   /**
-   * Produces a copy where both the lowest rank and the ranks of all the markers are set.
-   * Also converts all marker sets to lists.
-   * Assumes that the lowestRank flag is not set on any markers prior to invocation.
+   * Produces a copy where the sort values have been assigned to all markers.
+   * Also converts the marker set to a list.
    */
   def fixMarkers = {
     if (relativeByRank.isEmpty) {
       this
     } else {
       val withSortValues = relativeMarkers.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
-      val lowest = withSortValues.sortBy(_.sortValue).last
-      val i = relativeMarkers.lastIndexOf(lowest)
-
-      new MarkerSet(space, withSortValues.updated(i, lowest.asLowestRank(space)))
+      new MarkerSet(space, withSortValues)
     }
   }
 
@@ -378,13 +302,6 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
       new MarkerSet(space, List())
     }
   }
-
-  /**
-   * Produces a copy where lowestRank values have all been set to false.
-   */
-  def unfixMarkers =
-      new MarkerSet(space, relativeMarkers.map(m =>
-        space.get(m.tag, m.pos, false, m.sortValue)))
 
   /**
    * Produce a copy with canonical markers, to save memory.
