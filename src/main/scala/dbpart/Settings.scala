@@ -22,7 +22,9 @@ class Settings(val dbfile: String,
   val edgeWriteInterval: Option[Int],
   val readBufferSize: Int) {
 
-  def edgeDb(space: MarkerSpace): dbpart.bucketdb.EdgeDB =
+  def edgeDb(space: MarkerSpace): dbpart.bucketdb.EdgeDB = {
+    val compact = MarkerSet.compactSize(space)
     new EdgeDB(dbfile.replace(".kch", "_edge.kch"), buckets,
-      new DistinctByteBucket.Unpacker(space.compactSize))
+      new DistinctByteBucket.Unpacker(compact))
+  }
 }

@@ -19,10 +19,9 @@ object MarkerSpace {
 
 /**
  * A set of markers that can be used, and their relative priorities.
- * @param n Number of markers in a marker set. Currently only used here
- * to compute compactSize.
+ * @param n Number of markers in a marker set. 
  */
-final class MarkerSpace(val byPriority: Seq[String], n: Int) {
+final class MarkerSpace(val byPriority: Seq[String], val n: Int) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
@@ -111,9 +110,4 @@ final class MarkerSpace(val byPriority: Seq[String], n: Int) {
     }
     r
   }
-
-  /**
-   * Size of a compact marker set, in bytes
-   */
-  def compactSize = 2 * n
 }

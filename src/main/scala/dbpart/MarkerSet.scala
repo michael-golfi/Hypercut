@@ -113,6 +113,11 @@ object MarkerSet {
     }
   }
 
+  /**
+   * Size of a compact marker set in bytes
+   */
+  def compactSize(space: MarkerSpace) = 2 * space.n
+
   def unpackToCompact(space: MarkerSpace, key: String) =
     unpack(space, key).compact
 
@@ -235,7 +240,7 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
   }
 
   lazy val compact = {
-    val r = ByteBuffer.allocate(space.compactSize)
+    val r = ByteBuffer.allocate(compactSize(space))
     val it = relativeMarkers.iterator
     while (it.hasNext) {
       val m = it.next
