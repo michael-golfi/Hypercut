@@ -1,4 +1,4 @@
-package dbpart
+package dbpart.shortread
 
 import scala.io.BufferedSource
 import friedrich.util.IO

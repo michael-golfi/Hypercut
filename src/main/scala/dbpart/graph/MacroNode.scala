@@ -1,7 +1,7 @@
 package dbpart.graph
 
-import dbpart.MarkerSet
-import dbpart.MarkerSpace
+import dbpart.hash.MarkerSet
+import dbpart.hash.MarkerSpace
 import dbpart.HasID
 
 /**

@@ -2,11 +2,12 @@ package dbpart.graph
 
 import dbpart._
 import dbpart.bucketdb.SeqBucketDB
-import dbpart.MarkerSet
+import dbpart.hash.MarkerSet
 import friedrich.graph.Graph
 import scala.annotation.tailrec
 import friedrich.util.formats.GraphViz
 import scala.collection.mutable.ArrayBuffer
+import dbpart.hash.MarkerSpace
 
 /**
  * Builds a graph that contains edges between k-mers in a partition.

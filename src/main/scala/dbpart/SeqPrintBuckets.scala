@@ -10,6 +10,8 @@ import dbpart.bucketdb._
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
+import dbpart.hash._
+import dbpart.shortread.ReadFiles
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   settings: Settings, dbOptions: String, minCov: Option[Int]) {

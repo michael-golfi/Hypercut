@@ -4,6 +4,7 @@ import scala.collection.mutable.HashMap
 import scala.collection.mutable.{ HashSet => MSet }
 
 import dbpart.bucketdb.EdgeDB
+import dbpart.hash._
 
 /**
  * Tracks discovered edges in memory.

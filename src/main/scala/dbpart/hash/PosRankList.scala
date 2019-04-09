@@ -1,5 +1,8 @@
-package dbpart
+package dbpart.hash
 
+import scala.Left
+import scala.Right
+import scala.util.Either.MergeableEither
 import scala.annotation.tailrec
 
 /**
@@ -144,7 +147,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
     }
   }
 
-  val end: dbpart.End = nextPos.left.get
+  val end: End = nextPos.left.get
 
   def rankInsert(insert: MarkerNode) {
     lowerRank match {

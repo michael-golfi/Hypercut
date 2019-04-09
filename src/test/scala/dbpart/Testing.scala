@@ -1,6 +1,9 @@
 package dbpart
 
 import scala.collection.Seq
+import dbpart.hash.MarkerSet
+import dbpart.hash.Marker
+import dbpart.hash.MarkerSpace
 
 object Testing {
 

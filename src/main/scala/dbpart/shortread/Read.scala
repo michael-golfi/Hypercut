@@ -1,4 +1,4 @@
-package dbpart
+package dbpart.shortread
 
 object Read {
   /**

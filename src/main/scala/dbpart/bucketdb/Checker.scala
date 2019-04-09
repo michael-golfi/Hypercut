@@ -1,7 +1,7 @@
 package dbpart.bucketdb
 
-import dbpart.MarkerSet
-import dbpart.MarkerSpace
+import dbpart.hash.MarkerSet
+import dbpart.hash.MarkerSpace
 
 class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) {
   import scala.collection.mutable.HashMap

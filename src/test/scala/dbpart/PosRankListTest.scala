@@ -2,6 +2,8 @@ package dbpart
 
 import org.scalatest.Matchers
 import org.scalatest.FunSuite
+import dbpart.hash.PosRankList
+import dbpart.hash.End
 
 class PosRankListTest extends FunSuite with Matchers {
   import Testing._

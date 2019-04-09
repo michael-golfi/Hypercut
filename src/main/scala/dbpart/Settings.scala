@@ -2,6 +2,8 @@ package dbpart
 
 import dbpart.bucketdb.EdgeDB
 import dbpart.bucketdb.DistinctByteBucket
+import dbpart.hash.MarkerSet
+import dbpart.hash.MarkerSpace
 
 object Settings {
   //NB the ideal edge flush interval should be set considering the number of expected edges per node

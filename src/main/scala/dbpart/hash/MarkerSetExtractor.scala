@@ -1,7 +1,9 @@
-package dbpart
+package dbpart.hash
 
-import friedrich.util.IO
 import scala.annotation.tailrec
+
+import dbpart.shortread.ReadFiles
+import dbpart.shortread.Read
 
 final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
    @volatile
@@ -11,10 +13,10 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 
    val n = numMarkers
 
-    /**
-     * Scans a single read, using mutable state to track the current marker set
-     * in a window.
-     */
+  /**
+   * Scans a single read, using mutable state to track the current marker set
+   * in a window.
+   */
   final class MarkerExtractor(read: String) {
     var scannedToPos: Int = space.maxMotifLength - 2
 

@@ -1,4 +1,5 @@
 import dbpart.graph.MacroNode
+import dbpart.hash.MarkerSet
 
 package object dbpart {
   /**
@@ -6,8 +7,6 @@ package object dbpart {
    */
   type NTSeq = String
 
-  type ExpandedEdge = (MarkerSet, MarkerSet)
-  
   /**
    * Type of edges between buckets in the macro graph.
    */

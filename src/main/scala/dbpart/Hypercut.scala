@@ -5,6 +5,8 @@ import org.rogach.scallop.Subcommand
 
 import dbpart.graph.PathExtraction
 import dbpart.bucketdb.SeqBucketDB
+import dbpart.hash.MarkerSpace
+import dbpart.hash.MarkerSetExtractor
 
 trait RunnableCommand {
   this: Subcommand =>

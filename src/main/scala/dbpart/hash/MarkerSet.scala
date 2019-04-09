@@ -1,4 +1,4 @@
-package dbpart
+package dbpart.hash
 
 import scala.annotation.tailrec
 import scala.collection.Seq

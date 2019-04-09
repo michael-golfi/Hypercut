@@ -1,4 +1,4 @@
-package dbpart
+package dbpart.hash
 
 import scala.collection.mutable.ListBuffer
 import scala.annotation.tailrec

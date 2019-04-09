@@ -2,9 +2,9 @@ package dbpart.bucketdb
 
 import scala.collection.mutable.ArrayBuffer
 import scala.annotation.tailrec
-import dbpart.Read
 import scala.collection.mutable.ArrayBuilder
 import java.util.Arrays
+import dbpart.shortread.Read
 
 trait Unpacker[Packed, B <: Bucket[Packed, B]] {
   def unpack(key: Packed, value: Packed, k: Int): B
