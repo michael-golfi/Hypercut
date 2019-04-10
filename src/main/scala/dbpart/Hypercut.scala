@@ -44,7 +44,8 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       banner("Hash reads and append them to a bucket database.")
       val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
       val mates = opt[String](descr = "Paired-end mates file (fastq, optionally .gz)")
-      val index = toggle("index", default = Some(true), descrNo = "Do not index sequences in database")
+      val index = toggle("index", default = Some(true), descrNo = "Do not index sequences")
+      val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
       def run() {
         val settings = if (index.toOption.get) {
@@ -58,7 +59,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
           settings, SeqBucketDB.mmapOptions(bnum.toOption.get),
           None)
 
-        spb.build(input.toOption.get, mates.toOption, index.toOption.get)
+        spb.build(input.toOption.get, mates.toOption, index.toOption.get, edges.toOption.get)
         spb.stats
       }
     }

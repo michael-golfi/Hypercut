@@ -73,6 +73,9 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
 //      println(s"Read $read")
 
       readCount += 1
+      if (readCount % 100000 == 0) {
+        println(s"$readCount reads seen")
+      }
 
       var r = List[MarkerSet]()
       val ext = new MarkerExtractor(read)

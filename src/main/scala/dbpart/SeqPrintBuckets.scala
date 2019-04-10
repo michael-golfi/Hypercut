@@ -50,7 +50,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     println("Up to " + edgeSet.seenNodes + " nodes found")
   }
 
-  def handle(reads: Iterator[String], index: Boolean) {
+  def handle(reads: Iterator[String], doIndex: Boolean, doEdges: Boolean) {
     val edgeSet = new EdgeSet(edgeDb, settings.edgeWriteInterval, space)
     var edgesFuture: Future[Unit] = Future.successful(())
 
@@ -73,16 +73,18 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
       segment <- handledReads
       edges = segment.map(_._2).seq
     } {
-      if (index) {
+      if (doIndex) {
         val st = Stats.beginNew
         blocking {
           db.addBulk(segment.flatMap(_._1).seq)
         }
         st.end("Write data chunk")
       }
-      //Synchronize here to ensure we don't proceed if the edge set is currently writing
-      edgeSet.writeLock.synchronized {
-        edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+      if (doEdges) {
+        //Synchronize here to ensure we don't proceed if the edge set is currently writing
+        edgeSet.writeLock.synchronized {
+          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+        }
       }
     }
 
@@ -108,9 +110,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     println(s"Check finished. ${c.errors} errors found.")
   }
 
-  def build(inputFile: String, matesFile: Option[String], index: Boolean) {
+  def build(inputFile: String, matesFile: Option[String], index: Boolean, edges: Boolean) {
     Stats.begin()
-    handle(ReadFiles.iterator(inputFile), index)
+    handle(ReadFiles.iterator(inputFile), index, edges)
     Stats.end("Build buckets")
     println("")
   }
