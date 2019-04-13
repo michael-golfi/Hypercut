@@ -120,9 +120,14 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
+    val features = toggle("features", default = Some(false), descrYes = "Scan for raw features in the reads and print a histogram")
 
     def run() {
-      defaultExtractor.prettyPrintMarkers(input.toOption.get)
+      if (features.toOption.get) {
+       new FeatureScanner(defaultSpace, k.toOption.get).scan(input.toOption.get, None)
+      } else {
+        defaultExtractor.prettyPrintMarkers(input.toOption.get)
+      }
     }
   }
   addSubcommand(analyse)
