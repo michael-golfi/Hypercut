@@ -22,23 +22,6 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
-  def precompIterator[A](it: Iterator[A]) = new Iterator[A] {
-    def nextBuffer = if (it.hasNext) Some(Future(it.next)) else None
-    var buffer = nextBuffer
-
-    def hasNext = it.hasNext || buffer != None
-
-    def next = {
-      buffer match {
-        case Some(f) =>
-          val rs = Await.result(f, Duration.Inf)
-          buffer = nextBuffer
-          rs
-        case None => ???
-      }
-    }
-  }
-
   def packEdge(e: ExpandedEdge) = {
     (e._1.compact, e._2.compact)
   }
