@@ -26,9 +26,9 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     (e._1.compact, e._2.compact)
   }
 
-  def addEdges(edgeSet: EdgeSet, edges: Iterable[Iterator[CompactEdge]]) {
-    for (es <- edges) {
-      edgeSet.add(es)
+  def addEdges(edgeSet: EdgeSet, edges: Iterable[List[MarkerSet]]) {
+    edgeSet.synchronized {
+      edgeSet.add(edges)
     }
     println("Up to " + edgeSet.seenNodes + " nodes found")
   }
@@ -44,29 +44,27 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     val bufferSize = settings.readBufferSize
     val handledReads =
       reads.grouped(bufferSize).map(group =>
-      { group.par.map(r => {
+      { group.par.flatMap(r => {
         val forward = extractor.handle(r)
         val rev = extractor.handle(DNAHelpers.reverseComplement(r))
-        (forward._1 ++ rev._1,
-            forward._2.iterator.map(packEdge) ++ rev._2.iterator.map(packEdge))
+        Seq(forward, rev)
       })
       })
 
     for {
       segment <- handledReads
-      edges = segment.map(_._2).seq
     } {
       if (doIndex) {
         val st = Stats.beginNew
         blocking {
-          db.addBulk(segment.flatMap(_._1).seq)
+          db.addBulk(segment.flatMap(x => x._1.map(_.packedString).iterator zip x._2).seq)
         }
         st.end("Write data chunk")
       }
       if (doEdges) {
         //Synchronize here to ensure we don't proceed if the edge set is currently writing
         edgeSet.writeLock.synchronized {
-          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, edges) }
+          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, segment.map(_._1).seq) }
         }
       }
     }

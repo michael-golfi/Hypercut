@@ -5,9 +5,10 @@ import scala.collection.mutable.{ HashSet => MSet }
 
 import dbpart.bucketdb.EdgeDB
 import dbpart.hash._
+import scala.collection.mutable.Buffer
 
 /**
- * Tracks discovered edges in memory.
+ * Tracks discovered edges in memory for periodic write to a database.
  * This class is not thread safe, and users must synchronise appropriately.
  */
 final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
@@ -19,29 +20,31 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
 
   val writeLock = new Object
 
-  def add(edges: TraversableOnce[CompactEdge]) {
-    synchronized {
-      for ((e, f) <- edges) {
-        edgeCount += 1
-        data.get(e.toSeq) match {
-          case Some(old) => old += f.toSeq
-          case None =>
-          data += (e.toSeq -> MSet[Seq[Byte]](f.toSeq))
-          //Added unit value to workaround compiler bug.
-          //See https://github.com/scala/bug/issues/10151
-          ()
-        }
+  def add(edges: Iterable[List[MarkerSet]]) {
+    for (es <- edges) {
+      MarkerSetExtractor.visitTransitions(es, (e, f) => addEdge(e.compact, f.compact))
+    }
+  }
 
-        writeInterval match {
-          case Some(int) =>
-            //Avoid frequent size check
-            if ((edgeCount % 10000 == 0) &&
-              data.size > int) {
-              writeTo(db, space)
-            }
-          case _ =>
+  def addEdge(e: Array[Byte], f: Array[Byte]) {
+    edgeCount += 1
+    data.get(e.toSeq) match {
+      case Some(old) => old += f.toSeq
+      case None =>
+        data += (e.toSeq -> MSet[Seq[Byte]](f.toSeq))
+        //Added unit value to workaround compiler bug.
+        //See https://github.com/scala/bug/issues/10151
+        ()
+    }
+
+    writeInterval match {
+      case Some(int) =>
+        //Avoid frequent size check
+        if ((edgeCount % 100000 == 0) &&
+          data.size > int) {
+          writeTo(db, space)
         }
-      }
+      case _ =>
     }
   }
 

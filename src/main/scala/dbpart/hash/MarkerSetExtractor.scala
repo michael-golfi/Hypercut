@@ -99,33 +99,15 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
       r.reverse
     }
 
- /**
-  * Extract bucket transitions (i.e. macro edges).
-  */
-  @tailrec
-  def transitions(data: List[MarkerSet],
-                  acc: List[ExpandedEdge] = Nil): List[ExpandedEdge] = {
-    data match {
-      case x :: y :: xs =>
-        if ((x eq y) || (x.compact.toSeq == y.compact.toSeq)) {
-          transitions(y :: xs, acc)
-        } else {
-          transitions(y :: xs, (x, y) :: acc)
-        }
-      case _ => acc
-    }
-  }
-
   /**
    * Ingest a read.
-   * Returns pairs of buckets and their k-mers, as well as bucket transitions.
+   * Returns the sequence of discovered buckets, as well as the k-mers in the read.
+   * k-mers and buckets at the same position will correspond to each other.
    */
-  def handle(read: String): (Iterator[(String, String)], List[ExpandedEdge]) = {
+  def handle(read: String): (List[MarkerSet], Iterator[String]) = {
     val kmers = Read.kmers(read, k)
-
     val mss = markerSetsInRead(read)
-    (mss.map(_.packedString).iterator zip kmers,
-        transitions(mss))
+    (mss, kmers)
   }
 
   def prettyPrintMarkers(input: String) = {
@@ -134,20 +116,42 @@ final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
      print(s"Read: $read")
      val analysed = handle(read)
      var lastMarkers: String = ""
-     for ((markers, kmer) <- analysed._1) {
-       if (markers == lastMarkers) {
+     for ((markers, kmer) <- (analysed._1 zip analysed._2.toList)) {
+       if (markers.packedString == lastMarkers) {
          print(s"$kmer ")
        } else {
          println("")
-         lastMarkers = markers
+         lastMarkers = markers.packedString
          println(s"  $lastMarkers")
          print(s"    $kmer ")
        }
      }
-     println("  Edges " + analysed._2.map(e =>
-       e._1.packedString + "->" + e._2.packedString).mkString(" "))
+
+     println("  Edges ")
+     MarkerSetExtractor.visitTransitions(analysed._1, (e, f) => print(
+       e.packedString + " -> " + f.packedString + " "))
      println("")
    }
   }
+}
 
+object MarkerSetExtractor {
+
+ /**
+  * Efficiently visit bucket transitions (i.e. macro edges) in a list that was previously
+  * computed by markerSetsInRead.
+  */
+  @tailrec
+  def visitTransitions(data: List[MarkerSet], f: (MarkerSet, MarkerSet) => Unit) {
+    data match {
+      case x :: y :: xs =>
+        if ((x eq y) || (x.compact.toSeq == y.compact.toSeq)) {
+          visitTransitions(y :: xs, f)
+        } else {
+          f(x,y)
+          visitTransitions(y :: xs, f)
+        }
+      case _ =>
+    }
+  }
 }
