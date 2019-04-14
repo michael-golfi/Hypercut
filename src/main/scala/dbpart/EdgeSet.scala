@@ -20,6 +20,12 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
 
   val writeLock = new Object
 
+  //Number of nodes plus number of distinct edges stored.
+  def fullSize = {
+    val r = data.size + data.valuesIterator.map(x => x.size).sum
+    r
+  }
+
   def add(edges: Iterable[List[MarkerSet]]) {
     for (es <- edges) {
       MarkerSetExtractor.visitTransitions(es, (e, f) => addEdge(e.compact, f.compact))
@@ -40,8 +46,8 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
     writeInterval match {
       case Some(int) =>
         //Avoid frequent size check
-        if ((edgeCount % 100000 == 0) &&
-          data.size > int) {
+        if ((edgeCount % 1000000 == 0) &&
+          fullSize > int) {
           writeTo(db, space)
         }
       case _ =>
