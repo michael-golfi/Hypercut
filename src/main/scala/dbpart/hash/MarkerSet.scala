@@ -210,6 +210,17 @@ object MarkerSet {
 
 }
 
+/**
+ * Compact version of a MarkerSet with fast hashCode and equals.
+ */
+final class CompactNode(val data: Array[Byte], override val hashCode: Int) {
+  override def equals(other: Any): Boolean = other match {
+    case cn: CompactNode =>
+      data.toSeq == cn.data.toSeq
+    case _ => super.equals(other)
+  }
+}
+
 /*
  * Markers, with relative positions, sorted by absolute position
  */
@@ -233,13 +244,17 @@ final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
   lazy val compact = {
     val r = ByteBuffer.allocate(compactSize(space))
     val it = relativeMarkers.iterator
+    var hash = 0
     while (it.hasNext) {
       val m = it.next
-      r.put(m.features.tagIndex(space).toByte)
+      val tag = m.features.tagIndex(space).toByte
+      r.put(tag)
       //TODO check/warn about max size of positions, if we're not using short for the position
-      r.put(m.pos.toByte)
+      val pos = m.pos.toByte
+      r.put(pos)
+      hash = (hash * 41 + tag) * 41 + pos
     }
-    r.array()
+    new CompactNode(r.array(), hash)
   }
 
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"

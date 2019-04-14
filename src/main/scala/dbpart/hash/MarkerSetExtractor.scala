@@ -145,7 +145,7 @@ object MarkerSetExtractor {
   def visitTransitions(data: List[MarkerSet], f: (MarkerSet, MarkerSet) => Unit) {
     data match {
       case x :: y :: xs =>
-        if ((x eq y) || (x.compact.toSeq == y.compact.toSeq)) {
+        if ((x eq y) || (x.compact == y.compact)) {
           visitTransitions(y :: xs, f)
         } else {
           f(x,y)

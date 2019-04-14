@@ -118,7 +118,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     db.visitKeysReadonly(key => {
       try {
         val ms = asMarkerSet(key)
-        val n = new dbpart.graph.MacroNode(ms.compact)
+        val n = new dbpart.graph.MacroNode(ms.compact.data)
         nodeLookup += (n -> n)
       } catch {
         case e: Exception =>
@@ -198,7 +198,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     println(s"Bucket $bucket")
     val key = MarkerSet.unpackToCompact(space, bucket)
     val seqs = db.getBulk(List(bucket))
-    val edges = edgeDb.getBulk(List(key))
+    val edges = edgeDb.getBulk(List(key.data))
 
     val ind = "  "
     //Note: could also print sequence average coverage, integer coverages etc.

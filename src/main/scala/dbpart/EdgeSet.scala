@@ -12,7 +12,7 @@ import scala.collection.mutable.Buffer
  * This class is not thread safe, and users must synchronise appropriately.
  */
 final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
-  var data: HashMap[Seq[Byte],MSet[Seq[Byte]]] = new HashMap[Seq[Byte],MSet[Seq[Byte]]]
+  var data: HashMap[CompactNode,MSet[CompactNode]] = new HashMap[CompactNode,MSet[CompactNode]]
 
   var flushedNodeCount: Long = 0
   var edgeCount: Int = 0
@@ -26,12 +26,12 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
     }
   }
 
-  def addEdge(e: Array[Byte], f: Array[Byte]) {
+  def addEdge(e: CompactNode, f: CompactNode) {
     edgeCount += 1
-    data.get(e.toSeq) match {
-      case Some(old) => old += f.toSeq
+    data.get(e) match {
+      case Some(old) => old += f
       case None =>
-        data += (e.toSeq -> MSet[Seq[Byte]](f.toSeq))
+        data += (e -> MSet(f))
         //Added unit value to workaround compiler bug.
         //See https://github.com/scala/bug/issues/10151
         ()
@@ -56,9 +56,9 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
       def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
 
       val groups = data.grouped(1000000)
-      data = new HashMap[Seq[Byte], MSet[Seq[Byte]]]
+      data = new HashMap[CompactNode, MSet[CompactNode]]
       for (g <- groups) {
-        db.addBulk(g.map(x => x._1.toArray -> x._2.map(_.toArray).toSeq))
+        db.addBulk(g.map(x => x._1.data -> x._2.map(_.data).toSeq))
       }
       flushedNodeCount = db.count
     }
