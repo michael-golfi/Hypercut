@@ -10,7 +10,7 @@ object Settings {
   //(since the memory cost of buffering edges can be high)
 
   def noindexSettings(dbfile: String, buckets: Int): dbpart.Settings =
-    new Settings(dbfile, buckets, Some(10000000), 50000)
+    new Settings(dbfile, buckets, Some(20000000), 50000)
 
   def settings(dbfile: String, buckets: Int): dbpart.Settings =
     new Settings(dbfile, buckets, Some(5000000), 20000)
