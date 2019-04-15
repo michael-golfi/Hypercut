@@ -3,6 +3,7 @@ package dbpart.hash
 import scala.annotation.tailrec
 import scala.collection.Seq
 import java.nio.ByteBuffer
+import java.util.Arrays
 
 object Marker {
   val PackedMarker = "([ACTGUN]+)(\\d+)"r
@@ -214,9 +215,10 @@ object MarkerSet {
  * Compact version of a MarkerSet with fast hashCode and equals.
  */
 final class CompactNode(val data: Array[Byte], override val hashCode: Int) {
+
   override def equals(other: Any): Boolean = other match {
     case cn: CompactNode =>
-      data.toSeq == cn.data.toSeq
+      Arrays.equals(data, cn.data)
     case _ => super.equals(other)
   }
 }

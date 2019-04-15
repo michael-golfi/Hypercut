@@ -16,23 +16,29 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
 
   var flushedNodeCount: Long = 0
   var edgeCount: Int = 0
-  def seenNodes = data.size + flushedNodeCount
+  def seenNodes = synchronized {
+    data.size + flushedNodeCount
+  }
 
   val writeLock = new Object
 
   //Number of nodes plus number of distinct edges stored.
   def fullSize = {
-    val r = data.size + data.valuesIterator.map(x => x.size).sum
+    //Estimate size through an average since the full calculation is costly
+    val sample = data.values.take(10000)
+    val avgSize = sample.toSeq.map(x => x.size).sum/sample.size
+    val nodes = data.size
+    val r = nodes + nodes * avgSize
     r
   }
 
-  def add(edges: Iterable[List[MarkerSet]]) {
+  def add(edges: TraversableOnce[List[MarkerSet]]) = synchronized {
     for (es <- edges) {
       MarkerSetExtractor.visitTransitions(es, (e, f) => addEdge(e.compact, f.compact))
     }
   }
 
-  def addEdge(e: CompactNode, f: CompactNode) {
+  private def addEdge(e: CompactNode, f: CompactNode) {
     edgeCount += 1
     data.get(e) match {
       case Some(old) => old += f
@@ -57,16 +63,11 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
   /**
    * Writes (appends) the edges to the provided EdgeDB.
    */
-  def writeTo(db: EdgeDB, space: MarkerSpace) = writeLock.synchronized {
-    this.synchronized {
-      def uncompact(e: Seq[Byte]) = MarkerSet.uncompactToString(e.toArray, space)
-
-      val groups = data.grouped(1000000)
-      data = new HashMap[CompactNode, MSet[CompactNode]]
-      for (g <- groups) {
-        db.addBulk(g.map(x => x._1.data -> x._2.map(_.data).toSeq))
-      }
-      flushedNodeCount = db.count
+  def writeTo(db: EdgeDB, space: MarkerSpace) = synchronized {
+    for (g <- data.grouped(1000000)) {
+      db.addBulk(g.map(x => x._1.data -> x._2.map(_.data).toSeq))
     }
+    data.clear()
+    flushedNodeCount = db.count
   }
 }

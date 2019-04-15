@@ -26,10 +26,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     (e._1.compact, e._2.compact)
   }
 
-  def addEdges(edgeSet: EdgeSet, edges: Iterable[List[MarkerSet]]) {
-    edgeSet.synchronized {
-      edgeSet.add(edges)
-    }
+  def addEdges(edgeSet: EdgeSet, edges: TraversableOnce[List[MarkerSet]]) {
+    edgeSet.add(edges)
     println("Up to " + edgeSet.seenNodes + " nodes found")
   }
 
@@ -53,6 +51,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
     for {
       segment <- handledReads
+      edges = segment.seq.iterator.map(_._1)
     } {
       if (doIndex) {
         val st = Stats.beginNew
@@ -62,10 +61,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
         st.end("Write data chunk")
       }
       if (doEdges) {
-        //Synchronize here to ensure we don't proceed if the edge set is currently writing
-        edgeSet.writeLock.synchronized {
-          edgesFuture = edgesFuture.andThen { case u => addEdges(edgeSet, segment.map(_._1).seq) }
-        }
+        Await.result(edgesFuture, Duration.Inf)
+        edgesFuture = Future { addEdges(edgeSet, edges) }
       }
     }
 
