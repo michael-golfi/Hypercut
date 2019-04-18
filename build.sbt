@@ -7,7 +7,9 @@ seq(SbtStartScript.startScriptForClassesSettings: _*)
 
 name := "DBPart"
 
-scalaVersion := "2.12.3"
+//Currently using 2.11 series for compatibility with Apache Spark images on Google Dataproc
+//scalaVersion := "2.12.3"
+scalaVersion := "2.11.11"
 
 libraryDependencies += "com.fallabs" % "kyotocabinet-java" % "latest.integration"
 

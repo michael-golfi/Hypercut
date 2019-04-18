@@ -285,8 +285,9 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * Removes items before the given position.
    */
   def dropUntilPosition(pos: Int, space: MarkerSpace) {
-    for (mn <- nextPos) {
-      dropUntilPositionRec(mn, pos, space)
+    nextPos match {
+      case Right(mn) => dropUntilPositionRec(mn, pos, space)
+      case _ =>
     }
   }
 
