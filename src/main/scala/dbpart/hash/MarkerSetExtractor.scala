@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import dbpart.shortread.ReadFiles
 import dbpart.shortread.Read
 
-final class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
+final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
    @volatile
    var readCount = 0
    @volatile

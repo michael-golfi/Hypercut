@@ -1,9 +1,10 @@
 package dbpart.hash
 
-import scala.annotation.tailrec
-import scala.collection.Seq
 import java.nio.ByteBuffer
 import java.util.Arrays
+
+import scala.annotation.tailrec
+import scala.collection.Seq
 
 object Marker {
   val PackedMarker = "([ACTGUN]+)(\\d+)"r
@@ -18,7 +19,7 @@ object Marker {
 /**
  * The attributes of a marker, except its position.
  */
-final class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
+final case class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
 
   def tagIndex(space: MarkerSpace) = space.byIndex(tag)
 
@@ -214,7 +215,7 @@ object MarkerSet {
 /**
  * Compact version of a MarkerSet with fast hashCode and equals.
  */
-final class CompactNode(val data: Array[Byte], override val hashCode: Int) {
+final case class CompactNode(val data: Array[Byte], override val hashCode: Int) {
 
   override def equals(other: Any): Boolean = other match {
     case cn: CompactNode =>
@@ -226,7 +227,7 @@ final class CompactNode(val data: Array[Byte], override val hashCode: Int) {
 /*
  * Markers, with relative positions, sorted by absolute position
  */
-final class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
+final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
   import MarkerSet._
 
   var inPartition: Boolean = false
