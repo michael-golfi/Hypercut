@@ -11,10 +11,34 @@ object MarkerSpace {
         "GT", "GC",
         "CTT"), n)
 
-  def default(n: Int) = new MarkerSpace(Seq(
-    "ATA", "CCT", "AGG",
-    "GT", "AC", "GC", "CC", "GG", "AT"), n)
+  def default(n: Int) = using(all2mers, n)
 
+  val mixedTest = Seq(
+    "ATA", "CCT", "AGG",
+    "GT", "AC", "GC", "CC", "GG", "AT")
+
+  val all1mers = Seq("A", "C", "T", "G")
+
+  //Roughly in order from rare to common in an e.coli dataset
+  val all2mers = Seq("AG", "CT", "GG", "CC",
+    "GT", "AC", "GA", "TC",
+    "CG", "GC",
+    "TG", "CA", "AT", "TA",
+    "TT", "AA")
+
+  val all3mers = all2mers.flatMap(x => all1mers.map(y => x + y))
+
+  def named(name: String): Seq[String] = name match {
+    case "all1" => all1mers
+    case "all2" => all2mers
+    case "all3" => all3mers
+    case "mixedTest" => mixedTest
+    case _ => throw new Exception(s"Unknown marker set name: $name")
+  }
+
+  def named(name: String, n: Int): MarkerSpace = using(named(name), n)
+
+  def using(mers: Seq[String], n: Int) = new MarkerSpace(mers, n)
 }
 
 /**

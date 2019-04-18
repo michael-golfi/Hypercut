@@ -32,9 +32,11 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
       descr = "Path to database file (.kch) where sequences are stored")
   val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
   val minCov = opt[Int](descr = "Minimum coverage cutoff when reading databases")
+  val space = opt[String](required = false, descr = "Marker space to use", default = Some("mixedTest"))
 
-  lazy val defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
-  lazy val defaultSpace = MarkerSpace.default(numMarkers.toOption.get)
+  def defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
+  def defaultSpace = MarkerSpace.named(space.toOption.get, numMarkers.toOption.get)
+
   lazy val defaultBuckets = new SeqPrintBuckets(
     defaultSpace, k.toOption.get, numMarkers.toOption.get,
     defaultSettings, SeqBucketDB.options(bnum.toOption.get), minCov.toOption)
@@ -120,10 +122,10 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
-    val features = toggle("features", default = Some(false), descrYes = "Scan for raw features in the reads and print a histogram")
+    val markers = toggle("markers", default = Some(false), descrYes = "Scan for raw markers in the reads and print a histogram")
 
     def run() {
-      if (features.toOption.get) {
+      if (markers.toOption.get) {
        new FeatureScanner(defaultSpace, k.toOption.get).scan(input.toOption.get, None)
       } else {
         defaultExtractor.prettyPrintMarkers(input.toOption.get)
