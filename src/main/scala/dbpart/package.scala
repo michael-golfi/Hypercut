@@ -14,4 +14,5 @@ package object dbpart {
 
   type CompactEdge = (Array[Byte], Array[Byte])
 
+  type ExpandedEdge = (MarkerSet, MarkerSet)
 }
