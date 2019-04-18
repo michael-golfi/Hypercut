@@ -6,15 +6,18 @@ import dbpart.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
 import dbpart.hash.Marker
 
+/**
+ * Looks for raw markers in reads, counting them in a histogram.
+ */
 final class FeatureScanner(val space: MarkerSpace, val k: Int) {
 
-  def markerAt(read: String, pos: Int): Seq[Marker] = {
+  def markerTagAt(read: String, pos: Int): Iterator[String] = {
     //rely on these also being rank sorted
     val candidates = space.byFirstChar.get(read.charAt(pos))
     candidates match {
       case Some(cs) =>
-        cs.filter(m => read.regionMatches(pos + 1, m, 1, m.length() - 1)).map(m => space.get(m, pos))
-      case None => Seq()
+        cs.iterator.filter(m => read.regionMatches(pos + 1, m, 1, m.length() - 1))
+      case None => Iterator.empty
     }
   }
 
@@ -24,8 +27,8 @@ final class FeatureScanner(val space: MarkerSpace, val k: Int) {
     var i = 0
     val max = read.length - space.minMotifLength
     while (i < max) {
-      for (m <- markerAt(read, i)) {
-        counter += m.tag
+      for (m <- markerTagAt(read, i)) {
+        counter += m
       }
       i += 1
     }
@@ -58,6 +61,8 @@ final class FeatureScanner(val space: MarkerSpace, val k: Int) {
     Stats.begin()
     val counter = handle(ReadFiles.iterator(inputFile))
     counter.print("Total feature count")
+    println("In order from rare to common: ")
+    println(counter.counter.toList.sortBy(_._2).map(_._1))
     Stats.end("Scan features")
     println("")
   }
