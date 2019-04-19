@@ -118,7 +118,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
   val analyse = new Subcommand("analyse") with RunnableCommand {
     banner("Analyse reads and display their fingerprints.")
     lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace,
-      numMarkers.toOption.get, k.toOption.get)
+      numMarkers.toOption.get)
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))

@@ -5,13 +5,13 @@ import scala.annotation.tailrec
 import dbpart.shortread.ReadFiles
 import dbpart.shortread.Read
 
-final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int) {
+final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
    @volatile
    var readCount = 0
    @volatile
    var kmerCount = 0
 
-   val n = numMarkers
+   val n = space.n
 
   /**
    * Scans a single read, using mutable state to track the current marker set
@@ -69,9 +69,6 @@ final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int)
   }
 
     def markerSetsInRead(read: String): List[MarkerSet] = {
-//      Thread.sleep(500)
-//      println(s"Read $read")
-
       readCount += 1
       if (readCount % 100000 == 0) {
         println(s"$readCount reads seen")
@@ -95,7 +92,6 @@ final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int)
         r ::= lastMarkerSet
         p += 1
       }
-//      println(s"Extracted $r")
       r.reverse
     }
 
@@ -104,17 +100,27 @@ final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int)
    * Returns the sequence of discovered buckets, as well as the k-mers in the read.
    * k-mers and buckets at the same position will correspond to each other.
    */
-  def handle(read: String): (List[MarkerSet], Iterator[String]) = {
+  def markers(read: String): (List[MarkerSet], Iterator[String]) = {
     val kmers = Read.kmers(read, k)
     val mss = markerSetsInRead(read)
     (mss, kmers)
+  }
+
+  /**
+   * Ingest a read, returning pairs of discovered buckets (in compact form)
+   * and corresponding k-mers.
+   */
+  def compactMarkers(read: String): List[(CompactNode, String)] = {
+    val kmers = Read.kmers(read, k).toList
+    val mss = markerSetsInRead(read).map(_.compact)
+    mss zip kmers
   }
 
   def prettyPrintMarkers(input: String) = {
    val data = ReadFiles.iterator(input)
    for (read <- data) {
      print(s"Read: $read")
-     val analysed = handle(read)
+     val analysed = markers(read)
      var lastMarkers: String = ""
      for ((markers, kmer) <- (analysed._1 zip analysed._2.toList)) {
        if (markers.packedString == lastMarkers) {
@@ -136,6 +142,11 @@ final case class MarkerSetExtractor(space: MarkerSpace, numMarkers: Int, k: Int)
 }
 
 object MarkerSetExtractor {
+
+  def fromSpace(spaceName: String, numMarkers: Int, k: Int) = {
+    val space = MarkerSpace.named(spaceName, numMarkers)
+    new MarkerSetExtractor(space, k)
+  }
 
  /**
   * Efficiently visit bucket transitions (i.e. macro edges) in a list that was previously

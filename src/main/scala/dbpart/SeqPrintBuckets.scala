@@ -16,7 +16,7 @@ import dbpart.shortread.ReadFiles
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   settings: Settings, dbOptions: String, minCov: Option[Int]) {
 
-  val extractor = new MarkerSetExtractor(space, numMarkers, k)
+  val extractor = new MarkerSetExtractor(space, k)
   lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minCov)
   lazy val edgeDb = settings.edgeDb(space)
 
@@ -43,8 +43,8 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     val handledReads =
       reads.grouped(bufferSize).map(group =>
       { group.par.flatMap(r => {
-        val forward = extractor.handle(r)
-        val rev = extractor.handle(DNAHelpers.reverseComplement(r))
+        val forward = extractor.markers(r)
+        val rev = extractor.markers(DNAHelpers.reverseComplement(r))
         Seq(forward, rev)
       })
       })
