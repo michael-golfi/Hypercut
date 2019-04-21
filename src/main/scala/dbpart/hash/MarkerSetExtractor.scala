@@ -165,4 +165,21 @@ object MarkerSetExtractor {
       case _ =>
     }
   }
+
+  @tailrec
+  def groupTransitions[T](data: List[(CompactNode, T)], acc: List[(CompactNode, List[T])] = Nil,
+      acc2: List[T] = Nil): List[(CompactNode, List[T])] = {
+    data match {
+      case x :: y :: xs =>
+        if ((x._1 eq y._1) || (x._1 == y._1)) {
+          groupTransitions(y :: xs, acc, x._2 :: acc2)
+        } else {
+          groupTransitions(y :: xs, (x._1, x._2 :: acc2) :: acc, Nil)
+        }
+      case x:: xs =>
+        (x._1, x._2 :: acc2) :: acc
+      case _ =>
+        acc
+    }
+  }
 }

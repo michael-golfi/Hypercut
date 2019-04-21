@@ -133,7 +133,7 @@ object SeqBucket extends Unpacker[String, SeqBucket] {
   }
 }
 
-class SeqBucket(val sequences: Iterable[String], k: Int) extends Bucket[String, SeqBucket] {
+class SeqBucket(sequences: Iterable[String], k: Int) extends Bucket[String, SeqBucket] with Serializable {
   import SeqBucket._
 
   def items = sequences
@@ -250,6 +250,9 @@ object CountingSeqBucket {
   @volatile
   var mergeCount = 0
 
+  def newBucket(kmers: List[String], k: Int) =
+    new CountingSeqBucket(Array(), new CoverageBucket(Array()), k).insertBulk(kmers).get
+
   class Unpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
     extends dbpart.bucketdb.Unpacker[String, CountingSeqBucket] {
 
@@ -266,7 +269,7 @@ object CountingSeqBucket {
 /**
  * A bucket the counts the coverage of each k-mer, encoding it as a single char.
  */
-final class CountingSeqBucket(sequences: Iterable[String],
+final case class CountingSeqBucket(val sequences: Array[String],
   val coverage: CoverageBucket, k: Int, var sequencesUpdated: Boolean = false)
   extends SeqBucket(sequences, k) with Bucket[String, CountingSeqBucket] {
 
@@ -304,7 +307,7 @@ final class CountingSeqBucket(sequences: Iterable[String],
       r += fs
       covR += fc
     }
-    new CountingSeqBucket(r, new CoverageBucket(covR), k, false)
+    new CountingSeqBucket(r.toArray, new CoverageBucket(covR.toArray), k, false)
   }
 
   /**
@@ -350,13 +353,14 @@ final class CountingSeqBucket(sequences: Iterable[String],
    * @return true iff the sequence was found.
    */
   def findAndIncrement(data: String, inSeq: Seq[String],
-                inCov: ArrayBuffer[String], numSequences: Int): Boolean = {
+                inCov: ArrayBuffer[String], numSequences: Int,
+                amount: Int = 1): Boolean = {
     var i = 0
     while (i < numSequences) {
       val s = inSeq(i)
       val index = s.indexOf(data)
       if (index != -1) {
-        inCov(i) = incrementCoverage(inCov(i), index, 1)
+        inCov(i) = incrementCoverage(inCov(i), index, amount)
         return true
       }
       i += 1
@@ -397,7 +401,8 @@ final class CountingSeqBucket(sequences: Iterable[String],
    * Returns the new updated sequence count (may decrease due to merging).
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[String],
-                     intoCov: ArrayBuffer[String], numSequences: Int): Int = {
+                     intoCov: ArrayBuffer[String], numSequences: Int,
+                     coverage: Int = 1): Int = {
     val suffix = data.substring(1)
     val prefix = data.substring(0, k - 1)
     var i = 0
@@ -413,16 +418,19 @@ final class CountingSeqBucket(sequences: Iterable[String],
         return tryMerge(i, intoSeq, intoCov, numSequences)
       } else if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
-        intoCov(i) = intoCov(i) + asCoverage(1)
+        intoCov(i) = intoCov(i) + asCoverage(coverage)
         return numSequences
       }
       i += 1
     }
     intoSeq += data
-    intoCov += asCoverage(1).toString()
+    intoCov += asCoverage(coverage).toString()
     numSequences + 1
   }
 
+  /**
+   * Insert a number of k-mers, each with coverage 1.
+   */
   override def insertBulk(values: Iterable[String]): Option[CountingSeqBucket] = {
     var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
     var covR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
@@ -431,11 +439,39 @@ final class CountingSeqBucket(sequences: Iterable[String],
     r ++= sequences
     covR ++= coverage.coverages
 
-    for (v <- values; if !findAndIncrement(v, r, covR, n)) {
-      n = insertSequence(v, r, covR, n)
+    for (v <- values; if !findAndIncrement(v, r, covR, n, 1)) {
+      n = insertSequence(v, r, covR, n, 1)
       sequencesUpdated = true
     }
 
-    Some(new CountingSeqBucket(r, new CoverageBucket(covR), k, sequencesUpdated))
+    Some(new CountingSeqBucket(r.toArray, new CoverageBucket(covR.toArray), k, sequencesUpdated))
+  }
+
+  /**
+   * Insert k-mers with corresponding coverages.
+   */
+  def insertBulk(values: Iterable[String], coverages: Iterator[Int]): CountingSeqBucket = {
+    var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+    var covR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+
+    var n = sequences.size
+    r ++= sequences
+    covR ++= coverage.coverages
+
+    for (
+      (v, cov) <- values.iterator zip coverages if !findAndIncrement(v, r, covR, n, cov)
+    ) {
+      n = insertSequence(v, r, covR, n, cov)
+      sequencesUpdated = true
+    }
+
+    new CountingSeqBucket(r.toArray, new CoverageBucket(covR.toArray), k, sequencesUpdated)
+  }
+
+  /**
+   * Merge k-mers and coverages from another bucket into a new bucket.
+   */
+  def mergeBucket(other: CountingSeqBucket): CountingSeqBucket = {
+    insertBulk(other.kmers, other.kmerCoverages)
   }
 }

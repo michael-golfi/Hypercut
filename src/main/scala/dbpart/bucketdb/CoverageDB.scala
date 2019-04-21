@@ -9,7 +9,7 @@ import scala.collection.mutable.{ Map => MMap }
  * The coverage char at each position corresponds to the k-mer in the associated
  * CountingSeqBucket at the same position.
  */
-final class CoverageBucket(val coverages: Iterable[String]) {
+final case class CoverageBucket(val coverages: Array[String]) {
   import CountingSeqBucket._
 
   def kmerCoverages: Iterator[Int] = coverages.iterator.flatMap(_.map(covToInt))
@@ -21,7 +21,7 @@ final class CoverageBucket(val coverages: Iterable[String]) {
   def sequenceAvgCoverages: Iterable[Double] =
     sequenceCoverages.map(sc => average(sc.map(_.toDouble)))
 
-  def hasMinCoverage(min: Int) = kmerCoverages.exists(_ >= min)
+  def hasMinCoverage(min: Int): Boolean = kmerCoverages.exists(_ >= min)
 
   def pack: String = coverages.mkString(separator)
 }

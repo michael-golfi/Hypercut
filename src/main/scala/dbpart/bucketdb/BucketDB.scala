@@ -357,7 +357,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
   }
 
   def newBucket(values: Iterable[String]) =
-    new CountingSeqBucket(Iterable.empty, new CoverageBucket(Iterable.empty), k).insertBulk(values).get
+    new CountingSeqBucket(Array(), new CoverageBucket(Array()), k).insertBulk(values).get
 
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences
