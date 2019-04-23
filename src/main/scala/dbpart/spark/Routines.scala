@@ -1,11 +1,12 @@
 package dbpart.spark
 
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.Dataset
-import miniasm.genome.util.DNAHelpers
-import dbpart.hash._
+import org.apache.spark.sql.SparkSession
+
 import dbpart._
 import dbpart.bucketdb._
+import dbpart.hash._
+import miniasm.genome.util.DNAHelpers
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -21,6 +22,15 @@ class Routines(spark: SparkSession) {
     val reads = sc.textFile(fileSpec).toDF.map(_.getString(0))
     val withRev = reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
     withRev
+  }
+
+  def countFeatures(reads: Dataset[String], space: MarkerSpace) = {
+    reads.map(r => {
+      val c = new FeatureCounter
+      val s = new FeatureScanner(space)
+      s.scanRead(c, r)
+      c
+    }).reduce( _+_ )
   }
 
   def hashReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(CompactNode, String)] = {

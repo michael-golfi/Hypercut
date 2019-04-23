@@ -9,7 +9,7 @@ import dbpart.hash.Marker
 /**
  * Looks for raw markers in reads, counting them in a histogram.
  */
-final class FeatureScanner(val space: MarkerSpace, val k: Int) {
+final class FeatureScanner(val space: MarkerSpace) {
 
   def markerTagAt(read: String, pos: Int): Iterator[String] = {
     //rely on these also being rank sorted

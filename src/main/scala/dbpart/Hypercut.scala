@@ -126,7 +126,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
 
     def run() {
       if (markers.toOption.get) {
-       new FeatureScanner(defaultSpace, k.toOption.get).scan(input.toOption.get, None)
+       new FeatureScanner(defaultSpace).scan(input.toOption.get, None)
       } else {
         defaultExtractor.prettyPrintMarkers(input.toOption.get)
       }

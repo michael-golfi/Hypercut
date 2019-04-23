@@ -2,7 +2,7 @@ package dbpart.hash
 
 import scala.collection.mutable.Map
 
-final class FeatureCounter {
+final case class FeatureCounter() {
   val counter: scala.collection.mutable.Map[String,Long] = Map[String, Long]()
 
   def increment(feature: String, n: Long = 1) {
