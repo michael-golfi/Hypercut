@@ -385,9 +385,9 @@ final case class CountingSeqBucket(val sequences: Array[String],
         intoSeq.remove(atOffset)
         intoCov.remove(atOffset)
         mergeCount += 1
-        if (mergeCount % 1000 == 0) {
-          println(s"$mergeCount merged sequences")
-        }
+//        if (mergeCount % 1000 == 0) {
+//          println(s"$mergeCount merged sequences")
+//        }
         return numSequences - 1
       }
       i += 1
@@ -439,7 +439,10 @@ final case class CountingSeqBucket(val sequences: Array[String],
     r ++= sequences
     covR ++= coverage.coverages
 
-    for (v <- values; if !findAndIncrement(v, r, covR, n, 1)) {
+    for {
+      v <- values
+      if !findAndIncrement(v, r, covR, n, 1)
+    } {
       n = insertSequence(v, r, covR, n, 1)
       sequencesUpdated = true
     }
@@ -458,9 +461,10 @@ final case class CountingSeqBucket(val sequences: Array[String],
     r ++= sequences
     covR ++= coverage.coverages
 
-    for (
-      (v, cov) <- values.iterator zip coverages if !findAndIncrement(v, r, covR, n, cov)
-    ) {
+    for {
+      (v, cov) <- values.iterator zip coverages
+      if !findAndIncrement(v, r, covR, n, cov)
+    } {
       n = insertSequence(v, r, covR, n, cov)
       sequencesUpdated = true
     }
