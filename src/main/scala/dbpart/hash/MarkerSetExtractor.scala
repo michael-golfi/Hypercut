@@ -6,12 +6,12 @@ import dbpart.shortread.ReadFiles
 import dbpart.shortread.Read
 
 final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
-   @volatile
-   var readCount = 0
-   @volatile
-   var kmerCount = 0
+  @volatile
+  var readCount = 0
+  @volatile
+  var kmerCount = 0
 
-   val n = space.n
+  val n = space.n
 
   /**
    * Scans a single read, using mutable state to track the current marker set
@@ -63,37 +63,37 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
         }
         windowMarkers.dropUntilPosition(start, space)
       }
-//      println(windowMarkers)
+      //      println(windowMarkers)
       windowMarkers.takeByRank
     }
   }
 
-    def markerSetsInRead(read: String): List[MarkerSet] = {
-      readCount += 1
-      if (readCount % 100000 == 0) {
-        println(s"$readCount reads seen")
-      }
-
-      var r = List[MarkerSet]()
-      val ext = new MarkerExtractor(read)
-      ext.scanTo(k - 2)
-      var p = k - 1
-
-      var lastMarkers: List[Marker] = null
-      var lastMarkerSet: MarkerSet = null
-
-      while (p <= read.length - 1) {
-        kmerCount += 1
-        val scan = ext.scanTo(p)
-        if (! (scan eq lastMarkers)) {
-          lastMarkerSet = new MarkerSet(space, MarkerSet.relativePositionsSorted(space, scan)).fromZero
-          lastMarkers = scan
-        }
-        r ::= lastMarkerSet
-        p += 1
-      }
-      r.reverse
+  def markerSetsInRead(read: String): List[MarkerSet] = {
+    readCount += 1
+    if (readCount % 100000 == 0) {
+      println(s"$readCount reads seen")
     }
+
+    var r = List[MarkerSet]()
+    val ext = new MarkerExtractor(read)
+    ext.scanTo(k - 2)
+    var p = k - 1
+
+    var lastMarkers: List[Marker] = null
+    var lastMarkerSet: MarkerSet = null
+
+    while (p <= read.length - 1) {
+      kmerCount += 1
+      val scan = ext.scanTo(p)
+      if (!(scan eq lastMarkers)) {
+        lastMarkerSet = new MarkerSet(space, MarkerSet.relativePositionsSorted(space, scan)).fromZero
+        lastMarkers = scan
+      }
+      r ::= lastMarkerSet
+      p += 1
+    }
+    r.reverse
+  }
 
   /**
    * Ingest a read.
@@ -117,27 +117,27 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   }
 
   def prettyPrintMarkers(input: String) = {
-   val data = ReadFiles.iterator(input)
-   for (read <- data) {
-     print(s"Read: $read")
-     val analysed = markers(read)
-     var lastMarkers: String = ""
-     for ((markers, kmer) <- (analysed._1 zip analysed._2.toList)) {
-       if (markers.packedString == lastMarkers) {
-         print(s"$kmer ")
-       } else {
-         println("")
-         lastMarkers = markers.packedString
-         println(s"  $lastMarkers")
-         print(s"    $kmer ")
-       }
-     }
+    val data = ReadFiles.iterator(input)
+    for (read <- data) {
+      print(s"Read: $read")
+      val analysed = markers(read)
+      var lastMarkers: String = ""
+      for ((markers, kmer) <- (analysed._1 zip analysed._2.toList)) {
+        if (markers.packedString == lastMarkers) {
+          print(s"$kmer ")
+        } else {
+          println("")
+          lastMarkers = markers.packedString
+          println(s"  $lastMarkers")
+          print(s"    $kmer ")
+        }
+      }
 
-     println("  Edges ")
-     MarkerSetExtractor.visitTransitions(analysed._1, (e, f) => print(
-       e.packedString + " -> " + f.packedString + " "))
-     println("")
-   }
+      println("  Edges ")
+      MarkerSetExtractor.visitTransitions(analysed._1, (e, f) => print(
+        e.packedString + " -> " + f.packedString + " "))
+      println("")
+    }
   }
 }
 
@@ -148,10 +148,10 @@ object MarkerSetExtractor {
     new MarkerSetExtractor(space, k)
   }
 
- /**
-  * Efficiently visit bucket transitions (i.e. macro edges) in a list that was previously
-  * computed by markerSetsInRead.
-  */
+  /**
+   * Efficiently visit bucket transitions (i.e. macro edges) in a list that was previously
+   * computed by markerSetsInRead.
+   */
   @tailrec
   def visitTransitions(data: List[MarkerSet], f: (MarkerSet, MarkerSet) => Unit) {
     data match {
@@ -159,7 +159,7 @@ object MarkerSetExtractor {
         if ((x eq y) || (x.compact == y.compact)) {
           visitTransitions(y :: xs, f)
         } else {
-          f(x,y)
+          f(x, y)
           visitTransitions(y :: xs, f)
         }
       case _ =>
@@ -168,7 +168,7 @@ object MarkerSetExtractor {
 
   @tailrec
   def groupTransitions[T](data: List[(CompactNode, T)], acc: List[(CompactNode, List[T])] = Nil,
-      acc2: List[T] = Nil): List[(CompactNode, List[T])] = {
+                          acc2: List[T] = Nil): List[(CompactNode, List[T])] = {
     data match {
       case x :: y :: xs =>
         if ((x._1 eq y._1) || (x._1 == y._1)) {
@@ -176,7 +176,7 @@ object MarkerSetExtractor {
         } else {
           groupTransitions(y :: xs, (x._1, x._2 :: acc2) :: acc, Nil)
         }
-      case x:: xs =>
+      case x :: xs =>
         (x._1, x._2 :: acc2) :: acc
       case _ =>
         acc
