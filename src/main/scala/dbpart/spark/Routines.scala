@@ -37,6 +37,13 @@ class Routines(spark: SparkSession) {
     reads.flatMap(r => ext.compactMarkers(r))
   }
 
+  def splitReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[Array[(CompactNode, String)]] = {
+    reads.map(r => {
+      val buckets = ext.markerSetsInRead(r)._2
+      ext.splitRead(r, buckets).iterator.map(x => (x._1.compact, x._2)).toArray
+    })
+  }
+
   def hashToBuckets(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(CompactNode, CountingSeqBucket)] = {
     reads.flatMap(r => {
       val ms = ext.compactMarkers(r)
@@ -49,7 +56,7 @@ class Routines(spark: SparkSession) {
    val mss = reads.map(r => ext.markerSetsInRead(r))
    mss.flatMap(readMss => {
      var r = List[(CompactNode, CompactNode)]()
-     MarkerSetExtractor.visitTransitions(readMss, (a,b) => r ::= (a.compact,b.compact))
+     MarkerSetExtractor.visitTransitions(readMss._1, (a,b) => r ::= (a.compact,b.compact))
      r
    }).distinct
   }

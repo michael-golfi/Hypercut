@@ -68,13 +68,21 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
     }
   }
 
-  def markerSetsInRead(read: String): List[MarkerSet] = {
+  /**
+   * Look for marker sets in a read.
+   * Returns two lists:
+   * 1. The MarkerSet of every k-mer (in order),
+   * 2. The positions where each contiguous MarkerSet region is first detected
+   */
+  def markerSetsInRead(read: String): (List[MarkerSet], List[(MarkerSet, Int)]) = {
     readCount += 1
     if (readCount % 100000 == 0) {
       println(s"$readCount reads seen")
     }
 
-    var r = List[MarkerSet]()
+    var perPosition = List[MarkerSet]()
+    var perBucket = List[(MarkerSet, Int)]()
+
     val ext = new MarkerExtractor(read)
     ext.scanTo(k - 2)
     var p = k - 1
@@ -88,11 +96,28 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
       if (!(scan eq lastMarkers)) {
         lastMarkerSet = new MarkerSet(space, MarkerSet.relativePositionsSorted(space, scan)).fromZero
         lastMarkers = scan
+        perBucket ::= (lastMarkerSet, p)
       }
-      r ::= lastMarkerSet
+      perPosition ::= lastMarkerSet
       p += 1
     }
-    r.reverse
+    (perPosition.reverse, perBucket.reverse)
+  }
+
+  /**
+   * Convert extracted buckets into overlapping substrings of a read,
+   * overlapping by (k-1) bases. The ordering is not guaranteed.
+   * Designed to operate on the second list produced by the markerSetsInRead function.
+   */
+  @tailrec
+  def splitRead(read: String, buckets: List[(MarkerSet, Int)],
+                acc: List[(MarkerSet, String)] = Nil): List[(MarkerSet, String)] = {
+    buckets match {
+      case b1 :: b2 :: bs =>
+        splitRead(read, b2 :: bs, (b1._1, read.substring(b1._2 - (k - 1), b2._2)) :: acc)
+      case b1 :: bs => (b1._1, read.substring(b1._2 - (k - 1))) :: acc
+      case _ => acc
+    }
   }
 
   /**
@@ -103,7 +128,7 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   def markers(read: String): (List[MarkerSet], Iterator[String]) = {
     val kmers = Read.kmers(read, k)
     val mss = markerSetsInRead(read)
-    (mss, kmers)
+    (mss._1, kmers)
   }
 
   /**
@@ -112,7 +137,7 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
    */
   def compactMarkers(read: String): List[(CompactNode, String)] = {
     val kmers = Read.kmers(read, k).toList
-    val mss = markerSetsInRead(read).map(_.compact)
+    val mss = markerSetsInRead(read)._1.map(_.compact)
     mss zip kmers
   }
 
@@ -182,4 +207,5 @@ object MarkerSetExtractor {
         acc
     }
   }
+
 }
