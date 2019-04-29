@@ -287,7 +287,6 @@ abstract class ByteBucketDB[B <: Bucket[Array[Byte], B]](location: String,
   }
 }
 
-
 object EdgeDB {
   import SeqBucketDB._
 
@@ -341,10 +340,10 @@ object SeqBucketDB {
  * The coverage filter, if present, affects some of the accessor methods.
  */
 final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Int])
-extends StringBucketDB[CountingSeqBucket](location, options,
-    new CountingSeqBucket.Unpacker(location, minCoverage, buckets), k) {
+extends StringBucketDB[PackedSeqBucket](location, options,
+    new PackedSeqBucket.Unpacker(location, minCoverage, buckets), k) {
 
-  def covDB = unpacker.asInstanceOf[CountingSeqBucket.Unpacker].covDB
+  def covDB = unpacker.asInstanceOf[PackedSeqBucket.Unpacker].covDB
 
   //Traversing the coverages should be cheaper than traversing the full buckets
   //for counting the number of sequences
@@ -357,7 +356,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
   }
 
   def newBucket(values: Iterable[String]) =
-    new CountingSeqBucket(Array(), Seq(), k).insertBulk(values).get
+    new PackedSeqBucket(Array(), Seq(), k).insertBulk(values).get
 
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences
@@ -378,7 +377,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
   /**
    * Only write back sequences if they did actually change
    */
-  override protected def shouldWriteBack(key: String, bucket: CountingSeqBucket): Boolean =
+  override protected def shouldWriteBack(key: String, bucket: PackedSeqBucket): Boolean =
     bucket.sequencesUpdated
 
   override protected def beforeBulkLoad(keys: Iterable[String]) {
@@ -388,7 +387,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
   /**
    * Always write back coverage when a bucket changes
    */
-  override protected def afterBulkWrite(merged: Iterable[(String, CountingSeqBucket)]) {
+  override protected def afterBulkWrite(merged: Iterable[(String, PackedSeqBucket)]) {
     covDB.setBulk(merged.map(x => (x._1 -> StringCovBucket.fromCoverages(x._2.coverages).pack)))
   }
 

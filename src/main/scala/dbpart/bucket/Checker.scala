@@ -1,4 +1,4 @@
-package dbpart.bucketdb
+package dbpart.bucket
 
 import dbpart.hash.MarkerSet
 import dbpart.hash.MarkerSpace
@@ -14,7 +14,7 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
      */
   var map = new HashMap[String, String]()
 
-  def checkBucket(key: String, bucket: CountingSeqBucket) {
+  def checkBucket(key: String, bucket: CountingSeqBucket[_]) {
     if (bucket.sequences.size > 100) {
       println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
     }

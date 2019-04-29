@@ -16,7 +16,7 @@ object StringCovBucket {
     (cov - zeroCoverage)
   }
 
-  def fromCoverages(coverages: Seq[Seq[Coverage]]): StringCovBucket =
+  def fromCoverages(coverages: Seq[Array[Coverage]]): StringCovBucket =
     new StringCovBucket(coverages.map(x => new String(x.map(asChar).toArray)).toArray)
 }
 
@@ -30,16 +30,16 @@ object StringCovBucket {
  * ShortCoverageBucket.
  */
 final case class StringCovBucket(val coverageData: Array[String]) extends CoverageBucket {
-  import CountingSeqBucket._
+  import PackedSeqBucket._
   import StringCovBucket._
 
-  def coverages: Seq[Seq[Coverage]] = coverageData.toSeq.map(_.map(charToInt))
+  def coverages: Seq[Array[Coverage]] = coverageData.toSeq.map(_.toArray.map(charToInt))
 
   def pack: String = coverages.mkString(separator)
 }
 
 final class CoverageDB(val dbLocation: String, bnum: Int) extends StringKyotoDB[StringCovBucket] {
-  import CountingSeqBucket._
+  import PackedSeqBucket._
   import SeqBucketDB._
 
   def unpack(key: String, value: String): StringCovBucket = {

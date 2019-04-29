@@ -5,12 +5,12 @@ object CoverageBucket {
 
 }
 
-trait CoverageBucket {
-  def coverages: Iterable[Iterable[Coverage]]
+trait CoverageBucket extends Serializable {
+  def coverages: Iterable[Array[Coverage]]
 
   def kmerCoverages: Iterator[Coverage] = coverages.iterator.flatten
 
-  def sequenceCoverages: Iterable[Iterable[Coverage]] = coverages
+  def sequenceCoverages: Iterable[Array[Coverage]] = coverages
 
   def average(xs: Iterable[Double]): Double = xs.sum/xs.size
 
@@ -21,5 +21,5 @@ trait CoverageBucket {
 }
 
 case class ShortCoverageBucket(coverageData: Array[Array[Short]]) extends CoverageBucket {
-  def coverages: Iterable[Iterable[Coverage]] = coverageData.toSeq.map(_.toSeq.map(_.toInt))
+  def coverages: Iterable[Array[Coverage]] = coverageData.toSeq.map(_.map(_.toInt))
 }
