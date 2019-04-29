@@ -201,7 +201,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     //Note: could also print sequence average coverage, integer coverages etc.
     for {
       b <- seqs.headOption
-      sc <- (b._2.sequences zip b._2.coverage.coverages)
+      sc <- (b._2.sequences zip b._2.coverages)
     } {
       println(ind + sc._1)
       println(ind + sc._2)

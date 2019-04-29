@@ -7,6 +7,8 @@ package object dbpart {
    */
   type NTSeq = String
 
+  type Coverage = Int
+  
   /**
    * Type of edges between buckets in the macro graph.
    */
@@ -15,4 +17,5 @@ package object dbpart {
   type CompactEdge = (Array[Byte], Array[Byte])
 
   type ExpandedEdge = (MarkerSet, MarkerSet)
+  
 }

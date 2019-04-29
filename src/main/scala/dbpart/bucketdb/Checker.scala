@@ -19,7 +19,7 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
       println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
     }
 
-    val numCoverages = bucket.coverage.coverages.size
+    val numCoverages = bucket.coverages.size
     val numSeqs = bucket.sequences.size
 
     if (numCoverages != numSeqs) {
@@ -49,7 +49,7 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
         }
       }
       val numKmers = bucket.kmers.size
-      val numCoverages = bucket.coverage.coverages.map(_.length).sum
+      val numCoverages = bucket.coverages.map(_.length).sum
       if (numKmers != numCoverages) {
         Console.err.println(s"Error: bucket $key has $numKmers kmers but $numCoverages coverage positions")
         errors += 1

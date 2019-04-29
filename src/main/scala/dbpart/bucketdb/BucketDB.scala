@@ -357,7 +357,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
   }
 
   def newBucket(values: Iterable[String]) =
-    new CountingSeqBucket(Array(), new CoverageBucket(Array()), k).insertBulk(values).get
+    new CountingSeqBucket(Array(), Seq(), k).insertBulk(values).get
 
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences
@@ -389,7 +389,7 @@ extends StringBucketDB[CountingSeqBucket](location, options,
    * Always write back coverage when a bucket changes
    */
   override protected def afterBulkWrite(merged: Iterable[(String, CountingSeqBucket)]) {
-    covDB.setBulk(merged.map(x => (x._1 -> x._2.coverage.pack)))
+    covDB.setBulk(merged.map(x => (x._1 -> StringCovBucket.fromCoverages(x._2.coverages).pack)))
   }
 
   def kmerCoverageStats = {
