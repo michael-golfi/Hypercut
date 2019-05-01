@@ -2,6 +2,7 @@ package dbpart.hash
 
 import scala.annotation.tailrec
 
+import dbpart._
 import dbpart.shortread.ReadFiles
 import dbpart.shortread.Read
 
@@ -188,6 +189,16 @@ object MarkerSetExtractor {
           visitTransitions(y :: xs, f)
         }
       case _ =>
+    }
+  }
+
+  @tailrec
+  def collectTransitions(data: List[MarkerSet], acc: List[ExpandedEdge] = Nil):
+    List[ExpandedEdge] = {
+    data match {
+      case x :: y :: xs =>
+        collectTransitions(y :: xs, (x, y) :: acc)
+      case _ => acc
     }
   }
 }
