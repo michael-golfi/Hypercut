@@ -38,17 +38,19 @@ class Routines(spark: SparkSession) {
     reads.flatMap(r => ext.compactMarkers(r))
   }
 
-  def splitReads(reads: Dataset[String],  ext: MarkerSetExtractor): Dataset[Array[(CompactNode, String)]] = {
-    reads.map(r => {
+  def splitReads(reads: Dataset[String],  ext: MarkerSetExtractor): Dataset[(CompactNode, String)] = {
+    val readSet = reads.flatMap(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      ext.splitRead(r, buckets).iterator.map(x => (x._1.compact, x._2)).toArray
+      ext.splitRead(r, buckets).iterator.map(x => (x._1.compact, x._2))
     })
+    readSet
   }
 
   def hashToBuckets(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val split = splitReads(reads, ext)
     val countedSegments =
-      split.flatMap(x => x).groupByKey(x => (x._1.data, x._2)).mapValues(_._2).count
+      split.groupByKey(x => (x._1.data, x._2)).mapValues(_._2).count
+
     val byBucket = countedSegments.groupByKey( { case (key, count) => key._1 }).
       mapValues( { case (key, count) => (key._2, count) })
     val buckets = byBucket.mapGroups(
