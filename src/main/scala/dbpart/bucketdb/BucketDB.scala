@@ -34,11 +34,15 @@ trait KyotoDB[Packed, B] {
   def addHook() {
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run() {
-        shouldQuit = true
-        println(s"Close $dbLocation")
-        db.close()
+        close()
       }
     })
+  }
+
+  def close() {
+    shouldQuit = true
+    println(s"Close $dbLocation")
+    db.close()
   }
 
   type Rec = Array[Byte]
@@ -227,6 +231,14 @@ abstract class BucketDB[Packed, B <: Bucket[Packed, B]](val dbLocation: String, 
       stats.add(forWrite.size, merged.size)
       setBulk(forWrite)
     }
+    stats.print()
+  }
+
+  def overwriteBulk(insert: Iterable[(Packed, B)]) {
+    val stats = new InsertStats
+    afterBulkWrite(insert)
+    setBulk(insert.map(x => (x._1, x._2.pack)))
+    stats.add(insert.size, insert.size)
     stats.print()
   }
 
