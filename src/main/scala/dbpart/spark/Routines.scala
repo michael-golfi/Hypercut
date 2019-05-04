@@ -1,18 +1,19 @@
 package dbpart.spark
 
+import scala.collection.JavaConverters._
+
+import org.apache.spark.SparkConf
+import org.apache.spark.graphx._
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.graphx._
+
+import com.google.common.hash.Hashing
 
 import dbpart._
 import dbpart.bucket._
+import dbpart.bucketdb.PackedSeqBucket
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
-
-import scala.collection.JavaConverters._
-import dbpart.bucketdb.PackedSeqBucket
-
-import com.google.common.hash.Hashing
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -20,7 +21,7 @@ import com.google.common.hash.Hashing
 class Routines(spark: SparkSession) {
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
-  import CountingSeqBucket._
+  import dbpart.bucket.CountingSeqBucket._
 
   /**
    * Load reads and their reverse complements from DNA files.
@@ -70,17 +71,17 @@ class Routines(spark: SparkSession) {
   def edgesFromSplit(reads: Dataset[ProcessedRead]) =
     reads.flatMap(x => MarkerSetExtractor.collectTransitions(x.map(_._1))).distinct()
 
-  def hashToBuckets(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val split = segmentsFromSplit(reads)
+  def hashToBuckets[A](reads: Dataset[List[(Long, String)]], ext: MarkerSetExtractor): Dataset[(Long, SimpleCountingBucket)] = {
+    val split = reads.flatMap(x => x)
     val countedSegments =
-      split.groupByKey(x => (x._1, x._2)).mapValues(_._2).count
+      split.groupByKey(x => x).mapValues(_._2).count
 
     val byBucket = countedSegments.groupByKey( { case (key, count) => key._1 }).
       mapValues( { case (key, count) => (key._2, count) })
     val buckets = byBucket.mapGroups(
       { case (bucket, data) => {
         val segmentsCounts = data.toSeq
-        val empty = SimpleCountingBucket.empty(ext. k)
+        val empty = SimpleCountingBucket.empty(ext.k)
         (bucket, empty.insertBulkSegments(segmentsCounts.map(_._1), segmentsCounts.map(c => clipCov(c._2))))
       }
     })
@@ -92,14 +93,14 @@ class Routines(spark: SparkSession) {
    */
   def makeGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor) = {
     val inner = new InnerRoutines
-    reads.cache
-    val edges = edgesFromSplit(reads)
-    val verts = hashToBuckets(reads, ext).map(v => (inner.longId(v._1), v._2))
-    val ids = edges.map(e => (inner.longId(e._1), inner.longId(e._2))).rdd
-    val r = Graph.fromEdgeTuples(ids, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
+    val md5Hashed = reads.map(_.map(s => (inner.longId(s._1), s._2)))
+    md5Hashed.cache
+    val edges = md5Hashed.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_._1))).distinct().rdd
+    val verts = hashToBuckets(md5Hashed, ext)
+    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r.numVertices //Force computation
-    reads.unpersist
+    md5Hashed.unpersist
     r
   }
 
@@ -138,12 +139,12 @@ class Routines(spark: SparkSession) {
     db.close
     data.unpersist
   }
-
-  def writeEdgesAndBuckets(reads: Dataset[String], ext: MarkerSetExtractor, dbFile: String) {
-    val segments = splitReads(reads, ext)
-    writeEdges(edgesFromSplit(segments), ext, dbFile)
-    writeBuckets(hashToBuckets(segments, ext), ext, dbFile)
-  }
+//
+//  def writeEdgesAndBuckets(reads: Dataset[String], ext: MarkerSetExtractor, dbFile: String) {
+//    val segments = splitReads(reads, ext)
+//    writeEdges(edgesFromSplit(segments), ext, dbFile)
+//    writeBuckets(hashToBuckets(segments, ext), ext, dbFile)
+//  }
 }
 
 class InnerRoutines extends Serializable {
@@ -152,7 +153,23 @@ class InnerRoutines extends Serializable {
 }
 
 object BuildGraph {
-  def main() {
+  def conf: SparkConf = {
+    val conf = new SparkConf
+    conf.set("spark.kryo.classesToRegister", "dbpart.bucket.SimpleCountingBucket,dbpart.hash.CompactNode")
+    GraphXUtils.registerKryoClasses(conf)
+    conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")    
+    conf
+  }
 
+  def main(args: Array[String]) {
+    val spark = SparkSession.builder().appName("Hypercut").
+      master("spark://localhost:7077").config(conf).getOrCreate()
+    val file = args(0)
+    val routines = new Routines(spark)
+    val reads = routines.getReads(file)
+    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, 41)
+    val split = routines.splitReads(reads, ext)
+    val g = routines.makeGraph(split, ext)
+    println(g.numVertices)
   }
 }
