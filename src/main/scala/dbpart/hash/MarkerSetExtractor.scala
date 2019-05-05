@@ -193,8 +193,7 @@ object MarkerSetExtractor {
   }
 
   @tailrec
-  def collectTransitions(data: List[MarkerSet], acc: List[ExpandedEdge] = Nil):
-    List[ExpandedEdge] = {
+  def collectTransitions[A](data: List[A], acc: List[(A, A)] = Nil): List[(A, A)] = {
     data match {
       case x :: y :: xs =>
         collectTransitions(y :: xs, (x, y) :: acc)

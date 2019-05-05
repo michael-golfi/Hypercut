@@ -156,7 +156,6 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
     }
   }
 
-
   /**
    * Append at the final position,
    * inserting at the correct place in rank ordering.
@@ -212,7 +211,6 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * x potentially overlaps with one or both
    */
   private def resolveOverlap(before: Marker, x: Marker, after: Marker): (List[Marker], Int) = {
-    var r = List[Marker]()
     if (before.overlaps(x) && x.overlaps(after)) {
       if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
         (List(x), -1)
