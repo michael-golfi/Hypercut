@@ -209,22 +209,22 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
 }
 
 final class RankListBuilder(from: MarkerNode, n: Int) {
+  //Number of remaining items to generate for the resulting output list
   private[this] var rem: Int = n
 
   /**
-   * Returns the resolved overlap when a and b are ordered,
-   * and the size of the resulting list minus 1.
+   * Returns the resolved overlap when a and b are ordered.
    */
-  def resolveOverlap(a: Marker, b: Marker): List[Marker] = {
+  def resolveOverlap(a: Marker, b: Marker, xs: List[Marker] = Nil): List[Marker] = {
     if (a.overlaps(b)) {
       if (a.rankSort <= b.rankSort) {
-        a :: Nil
+        a :: xs
       } else {
-        b :: Nil
+        b :: xs
       }
     } else {
       rem -= 1
-      a :: b :: Nil
+      a :: b :: xs
     }
   }
 
@@ -233,39 +233,37 @@ final class RankListBuilder(from: MarkerNode, n: Int) {
    * before and after do not overlap.
    * x potentially overlaps with one or both
    */
-  def resolveOverlap(before: Marker, x: Marker, after: Marker): List[Marker] = {
+  def resolveOverlap(before: Marker, x: Marker, after: Marker, xs: List[Marker]): List[Marker] = {
     if (before.overlaps(x) && x.overlaps(after)) {
       if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
         //Net removal of one item from the list, not insertion
         rem += 1
-        x :: Nil
+        x :: xs
       } else {
-        before :: after :: Nil
+        before :: after :: xs
       }
     } else if (x.overlaps(after)) {
-      before :: resolveOverlap(x, after)
+      before :: resolveOverlap(x, after, xs)
     } else {
-      resolveOverlap(before, x) :+ after
+      resolveOverlap(before, x, after :: xs)
     }
   }
 
   /**
    * Insert by position and edit out any overlaps
-   * Returns the size delta of the list (0 to 1)
    */
   def insertPosNoOverlap(into: List[Marker], ins: Marker): List[Marker] = {
     into match {
       case a :: b :: xs =>
         if (ins.pos > a.pos && ins.pos < b.pos) {
-          resolveOverlap(a, ins, b) ::: xs
+          resolveOverlap(a, ins, b, xs)
         } else if (ins.pos < a.pos) {
           //potentially a single overlap to resolve
-          val r = if (ins.pos > a.pos) {
-            resolveOverlap(a, ins)
+          if (ins.pos > a.pos) {
+            resolveOverlap(a, ins, b :: xs)
           } else {
-            resolveOverlap(ins, a)
+            resolveOverlap(ins, a, b :: xs)
           }
-          r ::: (b :: xs)
         } else {
           a :: insertPosNoOverlap(b :: xs, ins)
         }
