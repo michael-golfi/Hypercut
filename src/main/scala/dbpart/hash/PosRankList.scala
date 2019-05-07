@@ -83,7 +83,6 @@ object PosRankList {
     below.higherRank = Right(middle)
   }
 
-
   @tailrec
   def dropUntilPositionRec(from: MarkerNode, pos: Int, space: MarkerSpace) {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
@@ -189,94 +188,8 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
     }
   }
 
-  /**
-   * Returns the resolved overlap when a and b are ordered,
-   * and the size of the resulting list minus 1.
-   */
-  private def resolveOverlap(a: Marker, b: Marker): (List[Marker], Int) = {
-    if (a.overlaps(b)) {
-      if (a.rankSort <= b.rankSort) {
-        (List(a), 0)
-      } else {
-        (List(b), 0)
-      }
-    } else {
-      (a :: b :: Nil, 1)
-    }
-  }
-
-  /**
-   * before, x and after are ordered by position.
-   * before and after do not overlap.
-   * x potentially overlaps with one or both
-   */
-  private def resolveOverlap(before: Marker, x: Marker, after: Marker): (List[Marker], Int) = {
-    if (before.overlaps(x) && x.overlaps(after)) {
-      if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
-        (List(x), -1)
-      } else {
-        (before :: after :: Nil, 0)
-      }
-    } else if (x.overlaps(after)) {
-      val r = resolveOverlap(x, after)
-      (before :: r._1, r._2)
-    } else {
-      val r = resolveOverlap(before, x)
-      (r._1 :+ after, r._2)
-    }
-  }
-
-  /**
-   * Insert by position and edit out any overlaps
-   * Returns the size delta of the list (0 to 1)
-   */
-  private def insertPosNoOverlap(into: List[Marker], ins: Marker): (List[Marker], Int) = {
-    into match {
-      case a :: b :: xs =>
-        if (ins.pos > a.pos && ins.pos < b.pos) {
-          val r = resolveOverlap(a, ins, b)
-          (r._1 ::: xs, r._2)
-        } else if (ins.pos < a.pos) {
-          //potentially a single overlap to resolve
-          val r = if (ins.pos > a.pos) {
-            resolveOverlap(a, ins)
-          } else {
-            resolveOverlap(ins, a)
-          }
-          (r._1 ::: (b :: xs), r._2)
-        } else {
-          val r = insertPosNoOverlap(b :: xs, ins)
-          (a :: r._1, r._2)
-        }
-      case a :: Nil =>
-        //potentially a single overlap to resolve
-        if (ins.pos > a.pos) {
-          resolveOverlap(a, ins)
-        } else {
-          resolveOverlap(ins, a)
-        }
-      case _ => (List(ins), 1)
-    }
-  }
-
   private def takeByRank(from: MarkerNode, n: Int): List[Marker] = {
-    var cur = from
-    var r = List(cur.m)
-    var rem = n - 1
-    while (cur.lowerRank.isRight && rem > 0) {
-      cur = cur.lowerRank.right.get
-      val (nr, delta) = insertPosNoOverlap(r, cur.m)
-//      println(this)
-//      println(nr)
-//      for (pair <- nr.sliding(2); if pair.size > 1) {
-//        if(pair(0).overlaps(pair(1))) {
-//          assert(false)
-//        }
-//      }
-      r = nr
-      rem -= delta
-    }
-    r
+    new RankListBuilder(from, n).build
   }
 
   /**
@@ -292,6 +205,100 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   override def toString = {
     "PList(" + this.map(_.packedString).mkString(" ") + ")\n" +
     "  RList(" + this.rankIterator.map(_.packedString).mkString(" ") + ")\n"
+  }
+}
+
+final class RankListBuilder(from: MarkerNode, n: Int) {
+  private[this] var rem: Int = n
+
+  /**
+   * Returns the resolved overlap when a and b are ordered,
+   * and the size of the resulting list minus 1.
+   */
+  def resolveOverlap(a: Marker, b: Marker): List[Marker] = {
+    if (a.overlaps(b)) {
+      if (a.rankSort <= b.rankSort) {
+        a :: Nil
+      } else {
+        b :: Nil
+      }
+    } else {
+      rem -= 1
+      a :: b :: Nil
+    }
+  }
+
+  /**
+   * before, x and after are ordered by position.
+   * before and after do not overlap.
+   * x potentially overlaps with one or both
+   */
+  def resolveOverlap(before: Marker, x: Marker, after: Marker): List[Marker] = {
+    if (before.overlaps(x) && x.overlaps(after)) {
+      if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
+        //Net removal of one item from the list, not insertion
+        rem += 1
+        x :: Nil
+      } else {
+        before :: after :: Nil
+      }
+    } else if (x.overlaps(after)) {
+      before :: resolveOverlap(x, after)
+    } else {
+      resolveOverlap(before, x) :+ after
+    }
+  }
+
+  /**
+   * Insert by position and edit out any overlaps
+   * Returns the size delta of the list (0 to 1)
+   */
+  def insertPosNoOverlap(into: List[Marker], ins: Marker): List[Marker] = {
+    into match {
+      case a :: b :: xs =>
+        if (ins.pos > a.pos && ins.pos < b.pos) {
+          resolveOverlap(a, ins, b) ::: xs
+        } else if (ins.pos < a.pos) {
+          //potentially a single overlap to resolve
+          val r = if (ins.pos > a.pos) {
+            resolveOverlap(a, ins)
+          } else {
+            resolveOverlap(ins, a)
+          }
+          r ::: (b :: xs)
+        } else {
+          a :: insertPosNoOverlap(b :: xs, ins)
+        }
+      case a :: Nil =>
+        //potentially a single overlap to resolve
+        if (ins.pos > a.pos) {
+          resolveOverlap(a, ins)
+        } else {
+          resolveOverlap(ins, a)
+        }
+      case _ =>
+        rem -= 1
+        ins :: Nil
+    }
+  }
+
+  def build = {
+    var cur = from
+    var r = cur.m :: Nil
+    rem = n - 1
+    while (cur.lowerRank.isRight && rem > 0) {
+      cur = cur.lowerRank.right.get
+      val nr = insertPosNoOverlap(r, cur.m)
+      //      println(this)
+      //      println(nr)
+      //      for (pair <- nr.sliding(2); if pair.size > 1) {
+      //        if(pair(0).overlaps(pair(1))) {
+      //          assert(false)
+      //        }
+      //      }
+      r = nr
+    }
+    r
   }
 }
 
