@@ -20,22 +20,27 @@ class HCCommand(name: String)(act: => Unit) extends Subcommand(name) with Runnab
   }
 }
 
-class Conf(args: Seq[String]) extends ScallopConf(args) {
+class CoreConf(args: Seq[String]) extends ScallopConf(args) {
+  val k = opt[Int](required = true, descr = "Length of each k-mer")
+  val numMarkers = opt[Int](
+    required = true,
+    descr = "Number of markers to extract from each k-mer", default = Some(4))
+  val space = opt[String](required = false, descr = "Marker space to use", default = Some("mixedTest"))
+
+  def defaultSpace = MarkerSpace.named(space.toOption.get, numMarkers.toOption.get)
+}
+
+class Conf(args: Seq[String]) extends CoreConf(args) {
   version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
 
-  val k = opt[Int](required = true, descr = "Length of each k-mer")
-  val numMarkers = opt[Int](required = true,
-      descr = "Number of markers to extract from each k-mer", default = Some(4))
   val dbfile = opt[String](required = false,
       descr = "Path to database file (.kch) where sequences are stored")
   val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
   val minCov = opt[Int](descr = "Minimum coverage cutoff when reading databases")
-  val space = opt[String](required = false, descr = "Marker space to use", default = Some("mixedTest"))
 
   def defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
-  def defaultSpace = MarkerSpace.named(space.toOption.get, numMarkers.toOption.get)
 
   lazy val defaultBuckets = new SeqPrintBuckets(
     defaultSpace, k.toOption.get, numMarkers.toOption.get,
