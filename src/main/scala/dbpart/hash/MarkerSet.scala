@@ -5,6 +5,7 @@ import java.util.Arrays
 
 import scala.annotation.tailrec
 import scala.collection.Seq
+import scala.language.postfixOps
 
 object Marker {
   val PackedMarker = "([ACTGUN]+)(\\d+)"r
@@ -275,7 +276,6 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
   def fromZeroAsArray = new MarkerSet(space, setFirstToZero(relativeMarkers))
 
   def fromZero = new MarkerSet(space, setFirstToZero(relativeMarkers))
-
 
   def relativeByRank =
     relativeMarkers.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)

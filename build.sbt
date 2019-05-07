@@ -11,6 +11,10 @@ name := "DBPart"
 //scalaVersion := "2.12.3"
 scalaVersion := "2.11.11"
 
+scalacOptions ++= Seq("-optimize",
+  "-feature",
+  "-Yinline-warnings")
+
 libraryDependencies += "com.fallabs" % "kyotocabinet-java" % "latest.integration"
 
 libraryDependencies += "org.rogach" %% "scallop" % "latest.integration"
