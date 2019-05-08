@@ -110,9 +110,13 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
    * overlapping by (k-1) bases. The ordering is not guaranteed.
    * Designed to operate on the second list produced by the markerSetsInRead function.
    */
+
+  def splitRead(read: String, buckets: List[(MarkerSet, Int)]): List[(MarkerSet, String)] =
+    splitRead(read, buckets, Nil).reverse
+
   @tailrec
   def splitRead(read: String, buckets: List[(MarkerSet, Int)],
-                acc: List[(MarkerSet, String)] = Nil): List[(MarkerSet, String)] = {
+                acc: List[(MarkerSet, String)]): List[(MarkerSet, String)] = {
     buckets match {
       case b1 :: b2 :: bs =>
         splitRead(read, b2 :: bs, (b1._1, read.substring(b1._2 - (k - 1), b2._2)) :: acc)

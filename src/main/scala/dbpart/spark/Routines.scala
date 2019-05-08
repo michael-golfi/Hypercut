@@ -87,7 +87,7 @@ class Routines(spark: SparkSession) {
   type PathGraph = Graph[PathNode, Int]
 
   /**
-   * Construct a SparkX graph where the buckets are vertices.
+   * Construct a GraphX graph where the buckets are vertices.
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor): BucketGraph = {
     val inner = new InnerRoutines
@@ -117,7 +117,7 @@ class Routines(spark: SparkSession) {
 
     val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
       (inner.longId(x._1), new PathNode(x._1, x._2))))
-    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optBucket) => optBucket.get)
+    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
     r.cache
     r.numVertices
     r
