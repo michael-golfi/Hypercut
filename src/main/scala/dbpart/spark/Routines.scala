@@ -1,7 +1,5 @@
 package dbpart.spark
 
-import scala.collection.JavaConverters._
-
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx._
 import org.apache.spark.sql.Dataset
@@ -11,7 +9,6 @@ import com.google.common.hash.Hashing
 
 import dbpart._
 import dbpart.bucket._
-import dbpart.bucketdb.PackedSeqBucket
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
 
@@ -86,10 +83,13 @@ class Routines(spark: SparkSession) {
     buckets
   }
 
+  type BucketGraph = Graph[SimpleCountingBucket, Int]
+  type PathGraph = Graph[PathNode, Int]
+
   /**
    * Construct a SparkX graph where the buckets are vertices.
    */
-  def makeGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor) = {
+  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor): BucketGraph = {
     val inner = new InnerRoutines
     val md5Hashed = reads.map(_.map(s => (inner.longId(s._1), s._2)))
     md5Hashed.cache
@@ -102,58 +102,43 @@ class Routines(spark: SparkSession) {
     r
   }
 
-  def writeEdges(edges: Dataset[(Array[Byte], Array[Byte])], ext: MarkerSetExtractor, dbFile: String) {
-    val d = edges.cache
-    val data = d.groupByKey(_._1)
-    val n = data.keys.count
-    val set = Settings.settings(dbFile, n.toInt)
-    val db = set.edgeDb(ext.space)
-    val it = data.mapGroups((g, vs) => (g, vs.map(_._2).toList)).toLocalIterator()
-    for {
-      g <- it.asScala.grouped(1000000)
-      m = g.map(x => (x._1, db.newBucket(x._2)))
-    } {
-      db.overwriteBulk(m)
-    }
-    db.close
-    d.unpersist
-  }
+  def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
+    val inner = new InnerRoutines
+    val edges = graph.triplets.flatMap(tr => {
+      val fromNodes = tr.srcAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
+      val toNodes = tr.dstAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
+      val edges = (for {
+        from <- fromNodes; to <- toNodes
+        if from.end(k) == to.begin(k)
+        edge = (inner.longId(from), inner.longId(to))
+      }  yield edge)
+      edges
+    })
 
-  def writeBuckets(buckets: Dataset[(Array[Byte], SimpleCountingBucket)], ext: MarkerSetExtractor, dbFile: String) {
-    val data = buckets.cache
-    val n = data.count
-    val set = Settings.settings(dbFile, n.toInt)
-    val db = set.writeBucketDb(ext.k)
-    val it = data.toLocalIterator
-     for {
-      g <- it.asScala.grouped(1000000)
-      mg = g.map(x =>
-        (MarkerSet.uncompactToString(x._1, ext.space) ->
-        PackedSeqBucket(x._2.sequences, x._2.coverages, x._2.k)))
-      m = mg.toMap
-    } {
-      db.overwriteBulk(m)
-    }
-    db.close
-    data.unpersist
+    val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
+      (inner.longId(x._1), new PathNode(x._1, x._2))))
+    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optBucket) => optBucket.get)
+    r.cache
+    r.numVertices
+    r
   }
-//
-//  def writeEdgesAndBuckets(reads: Dataset[String], ext: MarkerSetExtractor, dbFile: String) {
-//    val segments = splitReads(reads, ext)
-//    writeEdges(edgesFromSplit(segments), ext, dbFile)
-//    writeBuckets(hashToBuckets(segments, ext), ext, dbFile)
-//  }
 }
 
-class InnerRoutines extends Serializable {
-  def longId(data: Array[Byte]) =
+final class InnerRoutines extends Serializable {
+  def longId(data: Array[Byte]): Long =
     Hashing.md5.hashBytes(data).asLong
+
+  def longId(data: String): Long =
+    Hashing.md5.hashString(data).asLong
+
+  def longId(node: PathNode): Long =
+    longId(node.seq)
 }
 
 object BuildGraph {
   def conf: SparkConf = {
     val conf = new SparkConf
-    conf.set("spark.kryo.classesToRegister", "dbpart.bucket.SimpleCountingBucket,dbpart.hash.CompactNode")
+    conf.set("spark.kryo.classesToRegister", "dbpart.bucket.SimpleCountingBucket,dbpart.hash.CompactNode,dbpart.spark.PathNode")
     GraphXUtils.registerKryoClasses(conf)
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     conf
@@ -167,7 +152,10 @@ object BuildGraph {
     val reads = routines.getReads(file)
     val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, 41)
     val split = routines.splitReads(reads, ext)
-    val g = routines.makeGraph(split, ext)
+    val g = routines.bucketGraph(split, ext)
     println(g.numVertices)
+    val g2 = routines.toPathGraph(g, 41)
+    println(g2.numVertices)
+    println(g2.numEdges)
   }
 }
