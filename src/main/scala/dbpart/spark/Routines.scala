@@ -97,8 +97,6 @@ class Routines(spark: SparkSession) {
     val verts = hashToBuckets(md5Hashed, ext)
     val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
-    r.numVertices //Force computation
-    md5Hashed.unpersist
     r
   }
 
@@ -116,11 +114,34 @@ class Routines(spark: SparkSession) {
     })
 
     val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
-      (inner.longId(x._1), new PathNode(x._1, x._2))))
-    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
+      (inner.longId(x._1), new PathNode(x._1, x._2, minId = inner.longId(x._1)))))
+    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optNode) =>
+      optNode.get)
     r.cache
-    r.numVertices
     r
+  }
+
+  /**
+   * Traverse the graph in forward direction, merging unambiguous paths.
+   */
+  def mergePaths(graph: PathGraph, k: Int) = {
+
+    val nodeIn = graph.inDegrees
+    val nodeOut = graph.outDegrees
+    val joined = graph.joinVertices(nodeIn)((id, node, branch) => node.
+          copy(branchInOrLoop = branch > 1)).
+      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
+
+    val inner = new InnerRoutines
+
+    joined.pregel(List[(String, Double, VertexId)](), Int.MaxValue,
+      EdgeDirection.Out)(inner.mergeProg(k), inner.sendMsg(k), _ ++ _)
+  }
+
+  def readsToPathGraph(reads: Dataset[String], ext: MarkerSetExtractor) = {
+    val split = splitReads(reads, ext)
+    val bg = bucketGraph(split, ext)
+    toPathGraph(bg, ext.k)
   }
 }
 
@@ -133,6 +154,38 @@ final class InnerRoutines extends Serializable {
 
   def longId(node: PathNode): Long =
     longId(node.seq)
+
+  type Msg = List[(String, Double, VertexId)]
+
+  def mergeProg(k: Int)(id: VertexId, node: PathNode, incoming: Msg): PathNode = {
+    if (node.stopPoint) {
+      node.collect(incoming.map(_._1), k)
+    } else {
+      incoming match {
+        case (seq, cov, minId) :: Nil =>
+          if (minId == id) {
+            println(s"Loop detected at $id")
+            node.copy(branchInOrLoop = true)
+          } else {
+            node.copy(seq = seq, avgCoverage = cov).observeVertex(minId)
+          }
+        case Nil =>
+          //Initial message
+          node
+        case _ => ???
+      }
+    }
+  }
+
+  def sendMsg(k: Int)(triplet: EdgeTriplet[PathNode, Int]): Iterator[(VertexId, Msg)] = {
+    val src = triplet.srcAttr
+    if (!src.stopPoint) {
+      Iterator((triplet.dstId, List(triplet.srcAttr.msg)))
+    } else {
+      Iterator.empty
+    }
+  }
+
 }
 
 object BuildGraph {
@@ -153,9 +206,9 @@ object BuildGraph {
     val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, 41)
     val split = routines.splitReads(reads, ext)
     val g = routines.bucketGraph(split, ext)
-    println(g.numVertices)
     val g2 = routines.toPathGraph(g, 41)
-    println(g2.numVertices)
-    println(g2.numEdges)
+    val (v2, e2) = (g2.numVertices, g2.numEdges)
+    println(v2)
+    println(e2)
   }
 }
