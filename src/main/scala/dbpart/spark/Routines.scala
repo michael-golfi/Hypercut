@@ -11,6 +11,7 @@ import dbpart._
 import dbpart.bucket._
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
+import org.apache.spark.storage.StorageLevel
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -115,8 +116,9 @@ class Routines(spark: SparkSession) {
 
     val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
       (inner.longId(x._1), new PathNode(x._1, x._2, minId = inner.longId(x._1)))))
-    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts)((vid, data, optNode) =>
-      optNode.get)
+    val r = Graph.fromEdgeTuples(edges, 0, edgeStorageLevel = StorageLevel.MEMORY_AND_DISK,
+        vertexStorageLevel = StorageLevel.MEMORY_AND_DISK).
+      outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
     r.cache
     r
   }
@@ -128,13 +130,15 @@ class Routines(spark: SparkSession) {
 
     val nodeIn = graph.inDegrees
     val nodeOut = graph.outDegrees
-    val joined = graph.joinVertices(nodeIn)((id, node, branch) => node.
+    val prepared = graph.joinVertices(nodeIn)((id, node, branch) => node.
           copy(branchInOrLoop = branch > 1)).
-      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
+      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg)).
+      removeSelfEdges()
 
+    prepared.cache()
     val inner = new InnerRoutines
 
-    joined.pregel(List[(String, Double, VertexId)](), Int.MaxValue,
+    prepared.pregel(List[(String, Double, VertexId)](), Int.MaxValue,
       EdgeDirection.Out)(inner.mergeProg(k), inner.sendMsg(k), _ ++ _)
   }
 
@@ -180,7 +184,7 @@ final class InnerRoutines extends Serializable {
   def sendMsg(k: Int)(triplet: EdgeTriplet[PathNode, Int]): Iterator[(VertexId, Msg)] = {
     val src = triplet.srcAttr
     if (!src.stopPoint) {
-      Iterator((triplet.dstId, List(triplet.srcAttr.msg)))
+      Iterator((triplet.dstId, List(src.msg)))
     } else {
       Iterator.empty
     }

@@ -5,6 +5,11 @@ oneJarSettings
 
 seq(SbtStartScript.startScriptForClassesSettings: _*)
 
+//Comment out the following line to speed up fetching dependencies,
+//if source attachments are not needed.
+
+EclipseKeys.withSource := true
+
 name := "DBPart"
 
 //Currently using 2.11 series for compatibility with Apache Spark images on Google Dataproc
