@@ -1,58 +1,16 @@
 package dbpart.graph
 
-import dbpart._
-
-import java.io.PrintWriter
-import friedrich.graph.Graph
 import scala.annotation.tailrec
+import friedrich.graph.Graph
+import dbpart.Contig
+import dbpart.PathPrinter
 
-case class Contig(nodes: List[KmerNode], k: Int,
-  stopReasonStart: String, stopReasonEnd: String) {
-  lazy val length = seq.length
-
-  lazy val seq = {
-    if (nodes.isEmpty) {
-      ""
-    } else {
-      val sb = new StringBuilder
-      sb.append(nodes.head.seq)
-      for (s <- nodes.tail) {
-        sb.append(s.seq.charAt(k-1))
-      }
-      sb.result()
-    }
-  }
-}
-
-final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
+/**
+ * Finds and prints branch-free paths.
+ */
+class PathFinder(outputFasta: String, k: Int, printReasons: Boolean)
+  extends PathPrinter(outputFasta, printReasons) {
   type N = KmerNode
-
-  var count: Int = 0
-  val w: java.io.PrintWriter = new PrintWriter(outputFasta)
-  val statsW = if (printReasons) Some(new PrintWriter(outputFasta + "_stats.txt")) else None
-
-  def close() {
-    w.close()
-    for (w2 <- statsW) w2.close
-  }
-
-  def printSequence(prefix: String, seq: Contig) {
-    val rsn = if (printReasons) Some(seq.stopReasonStart + " " + seq.stopReasonEnd) else None
-    printSequence(prefix, seq.seq, rsn)
-  }
-
-  def printSequence(prefix: String, seq: NTSeq, reasons: Option[String]) = synchronized {
-    count += 1
-    val idLine = s">$prefix-seq$count-${seq.size}bp"
-    w.println(idLine)
-    w.println(seq)
-    (reasons, statsW) match {
-      case (Some(r), Some(w)) =>
-        w.println(idLine)
-        w.println(r)
-      case _ =>
-    }
-  }
 
   def findSequences(graph: Graph[N]) = {
     //Reset flag
@@ -65,7 +23,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
       if !n.noise
       p1 = extendForward(graph, n)
       p2 = extendBackward(graph, n)
-      p = Contig(p2._1 ::: p1._1.reverse.tail, k,
+      p = Contig(p2._1.map(_.seq) ::: p1._1.map(_.seq).reverse.tail, k,
         p2._2, p1._2)
     } yield p
     r.toList
@@ -83,7 +41,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
    * Also return the reason for stopping.
    */
   @tailrec
-  def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
+  final def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     if (from.boundary) {
       //Boundaries have hidden branches
@@ -106,7 +64,7 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
   }
 
   @tailrec
-  def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
+  final def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
     if (from.boundary) {
       //Boundaries have hidden branches
@@ -127,5 +85,4 @@ final class PathPrinter(outputFasta: String, k: Int, printReasons: Boolean) {
       }
     }
   }
-
 }

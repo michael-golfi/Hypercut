@@ -67,7 +67,8 @@ class Routines(spark: SparkSession) {
   def edgesFromSplit(reads: Dataset[ProcessedRead]) = reads.flatMap(s =>
     MarkerSetExtractor.collectTransitions(s.toList.map(_._1)))
 
-  def hashToBuckets[A](reads: Dataset[Array[(Long, String)]], ext: MarkerSetExtractor): Dataset[(Long, SimpleCountingBucket)] = {
+  def hashToBuckets[A](reads: Dataset[Array[(Long, String)]], ext: MarkerSetExtractor,
+      minCoverage: Option[Int]): Dataset[(Long, SimpleCountingBucket)] = {
     val split = reads.flatMap(x => x)
     val countedSegments =
       split.groupByKey(x => x).mapValues(_._2).count
@@ -75,10 +76,12 @@ class Routines(spark: SparkSession) {
     val byBucket = countedSegments.groupByKey( { case (key, count) => key._1 }).
       mapValues( { case (key, count) => (key._2, count) })
     val buckets = byBucket.mapGroups(
-      { case (bucket, data) => {
+      { case (key, data) => {
         val segmentsCounts = data.toSeq
         val empty = SimpleCountingBucket.empty(ext.k)
-        (bucket, empty.insertBulkSegments(segmentsCounts.map(_._1), segmentsCounts.map(c => clipCov(c._2))))
+        val bkt = empty.insertBulkSegments(segmentsCounts.map(_._1), segmentsCounts.map(c => clipCov(c._2))).
+          atMinCoverage(minCoverage)
+        (key, bkt)
       }
     })
     buckets
@@ -90,12 +93,12 @@ class Routines(spark: SparkSession) {
   /**
    * Construct a GraphX graph where the buckets are vertices.
    */
-  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor): BucketGraph = {
+  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Int]): BucketGraph = {
     val inner = new InnerRoutines
     val md5Hashed = reads.map(_.map(s => (inner.longId(s._1), s._2)))
     md5Hashed.cache
     val edges = md5Hashed.flatMap(r => MarkerSetExtractor.collectTransitions(r.toList.map(_._1))).distinct().rdd
-    val verts = hashToBuckets(md5Hashed, ext)
+    val verts = hashToBuckets(md5Hashed, ext, minCoverage)
     val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
@@ -142,10 +145,27 @@ class Routines(spark: SparkSession) {
       EdgeDirection.Out)(inner.mergeProg(k), inner.sendMsg(k), _ ++ _)
   }
 
-  def readsToPathGraph(reads: Dataset[String], ext: MarkerSetExtractor) = {
+  def readsToPathGraph(reads: Dataset[String], ext: MarkerSetExtractor, minCoverage: Option[Int]) = {
     val split = splitReads(reads, ext)
-    val bg = bucketGraph(split, ext)
+    val bg = bucketGraph(split, ext, minCoverage)
     toPathGraph(bg, ext.k)
+  }
+
+  def assembleFiles(input: String, ext: MarkerSetExtractor, minCoverage: Option[Int], output: String) {
+    val reads = getReads(input)
+    val pg = readsToPathGraph(reads, ext, minCoverage)
+    reads.unpersist()
+    val merged = mergePaths(pg, ext.k)
+    merged.cache
+
+    val printer = new PathPrinter(output, false)
+    val seqs = merged.vertices.flatMap(x => x._2.collectedSeq)
+
+    for (contig <- seqs.toLocalIterator) {
+      printer.printSequence("hypercut-gx", contig, None)
+    }
+
+    printer.close()
   }
 }
 
@@ -204,15 +224,12 @@ object BuildGraph {
   def main(args: Array[String]) {
     val spark = SparkSession.builder().appName("Hypercut").
       master("spark://localhost:7077").config(conf).getOrCreate()
-    val file = args(0)
+    val input = args(0)
     val routines = new Routines(spark)
-    val reads = routines.getReads(file)
-    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, 41)
-    val split = routines.splitReads(reads, ext)
-    val g = routines.bucketGraph(split, ext)
-    val g2 = routines.toPathGraph(g, 41)
-    val (v2, e2) = (g2.numVertices, g2.numEdges)
-    println(v2)
-    println(e2)
+    val output = args(1)
+    val k = args(2).toInt
+    val minCoverage = Some(args(3).toInt)
+    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
+    routines.assembleFiles(input, ext, minCoverage, output)
   }
 }
