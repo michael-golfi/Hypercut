@@ -12,6 +12,7 @@ import dbpart.bucket._
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.rdd.RDD
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -118,7 +119,7 @@ class Routines(spark: SparkSession) {
     })
 
     val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
-      (inner.longId(x._1), new PathNode(x._1, x._2, minId = inner.longId(x._1)))))
+      (inner.longId(x._1), new PathNode(x._1, x._2, seenId = inner.longId(x._1)))))
     val r = Graph.fromEdgeTuples(edges, 0, edgeStorageLevel = StorageLevel.MEMORY_AND_DISK,
         vertexStorageLevel = StorageLevel.MEMORY_AND_DISK).
       outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
@@ -129,20 +130,22 @@ class Routines(spark: SparkSession) {
   /**
    * Traverse the graph in forward direction, merging unambiguous paths.
    */
-  def mergePaths(graph: PathGraph, k: Int) = {
+  def mergePaths(graph: PathGraph, k: Int): RDD[String] = {
 
     val nodeIn = graph.inDegrees
     val nodeOut = graph.outDegrees
-    val prepared = graph.joinVertices(nodeIn)((id, node, branch) => node.
-          copy(branchInOrLoop = branch > 1)).
+    var current = graph.joinVertices(nodeIn)((id, node, deg) => node.
+          copy(inDeg = deg)).
       joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg)).
       removeSelfEdges()
 
-    prepared.cache()
     val inner = new InnerRoutines
+    current.cache
 
-    prepared.pregel(List[(String, Double, VertexId)](), Int.MaxValue,
+    current.pregel(List[(VertexId, Int)](), Int.MaxValue,
       EdgeDirection.Out)(inner.mergeProg(k), inner.sendMsg(k), _ ++ _)
+
+    current.vertices.groupBy(_._2.seenId).mapValues(inner.joinPath(_, k)).values
   }
 
   def readsToPathGraph(reads: Dataset[String], ext: MarkerSetExtractor, minCoverage: Option[Int]) = {
@@ -159,9 +162,7 @@ class Routines(spark: SparkSession) {
     merged.cache
 
     val printer = new PathPrinter(output, false)
-    val seqs = merged.vertices.flatMap(x => x._2.collectedSeq)
-
-    for (contig <- seqs.toLocalIterator) {
+    for (contig <- merged.toLocalIterator) {
       printer.printSequence("hypercut-gx", contig, None)
     }
 
@@ -179,35 +180,68 @@ final class InnerRoutines extends Serializable {
   def longId(node: PathNode): Long =
     longId(node.seq)
 
-  type Msg = List[(String, Double, VertexId)]
-
-  def mergeProg(k: Int)(id: VertexId, node: PathNode, incoming: Msg): PathNode = {
-    if (node.stopPoint) {
-      node.collect(incoming.map(_._1), k)
-    } else {
-      incoming match {
-        case (seq, cov, minId) :: Nil =>
-          if (minId == id) {
-            println(s"Loop detected at $id")
-            node.copy(branchInOrLoop = true)
-          } else {
-            node.copy(seq = seq, avgCoverage = cov).observeVertex(minId)
-          }
-        case Nil =>
-          //Initial message
+  //Either start a path, or merge into one that we received a message from.
+  def mergeProg(k: Int)(id: VertexId, node: PathNode, incoming: PathMsg): PathNode = {
+    incoming match {
+      case (seenId, seqPos) :: Nil =>
+        if (seenId == node.seenId) {
+          println(s"Loop detected at $id")
+          node.copy(inLoop = true)
+        } else {
+          node.copy(seenId = seenId, seqPos = seqPos)
+        }
+      case Nil =>
+        //Initial message
+        if (node.startPoint) {
+          node.copy(seqPos = 1)
+        } else {
           node
-        case _ => ???
-      }
+        }
+      case _ => node
     }
   }
 
-  def sendMsg(k: Int)(triplet: EdgeTriplet[PathNode, Int]): Iterator[(VertexId, Msg)] = {
+  def sendMsg(k: Int)(triplet: EdgeTriplet[PathNode, Int]): Iterator[(VertexId, PathMsg)] = {
     val src = triplet.srcAttr
-    if (!src.stopPoint) {
+    val dst = triplet.dstAttr
+
+    if (!dst.startPoint &&
+        src.inPath &&
+        (src.startPoint || ! dst.stopPoint)) {
       Iterator((triplet.dstId, List(src.msg)))
     } else {
       Iterator.empty
     }
+  }
+
+  /**
+   * Simple algorithm for concatenating a small number of unsorted path nodes.
+   */
+  def joinPath(nodes: Iterable[(VertexId, PathNode)], k: Int): String = {
+    //TODO handling of coverage etc
+
+    import scala.collection.mutable.{Set => MSet}
+    var rem = MSet() ++ nodes.map(_._2.seq)
+    var build = rem.head
+    rem -= build
+    while (!rem.isEmpty) {
+      val buildPre = DNAHelpers.kmerPrefix(build, k)
+      val buildSuf = DNAHelpers.kmerSuffix(build, k)
+      rem.find(_.endsWith(buildPre)) match {
+        case Some(front) =>
+          rem -= front
+          build = DNAHelpers.withoutSuffix(front, k) + build
+        case _ =>
+      }
+
+      rem.find(_.startsWith(buildSuf)) match {
+        case Some(back) =>
+          rem -= back
+          build = build + DNAHelpers.withoutPrefix(back, k)
+        case _ =>
+      }
+    }
+    build
   }
 
 }
