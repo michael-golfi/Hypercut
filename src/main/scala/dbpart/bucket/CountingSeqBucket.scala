@@ -22,7 +22,7 @@ object CountingSeqBucket {
  * A bucket that counts the coverage of each k-mer and represents them as joined sequences.
  */
 abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences: Array[String],
-  val coverages: Seq[Array[Coverage]], val k: Int) extends CoverageBucket with Serializable {
+  val coverages: Array[Array[Coverage]], val k: Int) extends CoverageBucket with Serializable {
   this: Self =>
 
   import CountingSeqBucket._
@@ -43,7 +43,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Produce a copy of this bucket with updated data.
    * @param sequencesUpdated whether sequence data has changed in the copy.
    */
-  def copy(sequences: Array[String], coverage: Seq[Array[Coverage]],
+  def copy(sequences: Array[String], coverage: Array[Array[Coverage]],
            sequencesUpdated: Boolean): Self
 
   /**
@@ -69,7 +69,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       r += fs
       covR += fc
     }
-    copy(r.toArray, covR.map(_.toArray), false)
+    copy(r.toArray, covR.map(_.toArray).toArray, false)
   }
 
   /**
@@ -211,7 +211,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       sequencesUpdated = true
     }
 
-    copy(r.toArray, covR.map(_.toArray), sequencesUpdated)
+    copy(r.toArray, covR.map(_.toArray).toArray, sequencesUpdated)
   }
 
   /**
@@ -244,13 +244,13 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 }
 
 object SimpleCountingBucket {
-  def empty(k: Int) = new SimpleCountingBucket(Array(), Seq(), k)
+  def empty(k: Int) = new SimpleCountingBucket(Array(), Array(), k)
 }
 
 final case class SimpleCountingBucket(override val sequences: Array[String],
-  override val coverages: Seq[Array[Coverage]],
+  override val coverages: Array[Array[Coverage]],
   override val k: Int) extends CountingSeqBucket[SimpleCountingBucket](sequences, coverages, k)  {
-  def copy(sequences: Array[String], coverage: Seq[Array[Coverage]],
+  def copy(sequences: Array[String], coverage: Array[Array[Coverage]],
            sequencesUpdated: Boolean): SimpleCountingBucket =
         new SimpleCountingBucket(sequences, coverage, k)
 }

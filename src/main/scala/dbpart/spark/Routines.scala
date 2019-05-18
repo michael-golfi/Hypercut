@@ -70,6 +70,11 @@ class Routines(spark: SparkSession) {
 
   def hashToBuckets[A](reads: Dataset[Array[(Long, String)]], ext: MarkerSetExtractor,
       minCoverage: Option[Int]): Dataset[(Long, SimpleCountingBucket)] = {
+
+    /*
+     * Note: should check impact of storing reads as simply Dataset[String]
+     * and recomputing the hash of each string after counting
+     */
     val split = reads.flatMap(x => x)
     val countedSegments =
       split.groupByKey(x => x).mapValues(_._2).count
@@ -249,9 +254,27 @@ final class InnerRoutines extends Serializable {
 object BuildGraph {
   def conf: SparkConf = {
     val conf = new SparkConf
-    conf.set("spark.kryo.classesToRegister", "dbpart.bucket.SimpleCountingBucket,dbpart.hash.CompactNode,dbpart.spark.PathNode")
+
+    conf.registerKryoClasses(Array(
+      classOf[SimpleCountingBucket], classOf[CompactNode], classOf[PathNode],
+      classOf[Array[SimpleCountingBucket]], classOf[Array[CompactNode]], classOf[Array[PathNode]],
+
+      classOf[String], classOf[Array[String]], classOf[Array[Int]], classOf[Array[Array[Int]]],
+      classOf[Array[Byte]], classOf[Array[Array[Byte]]], classOf[Tuple2[Any, Any]],
+
+      //Hidden or inaccessible classes
+      Class.forName("scala.reflect.ManifestFactory$$anon$8"),
+      Class.forName("scala.reflect.ManifestFactory$$anon$9"),
+      Class.forName("scala.reflect.ManifestFactory$$anon$10"),
+      Class.forName("org.apache.spark.sql.execution.columnar.CachedBatch"),
+      Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$mcJI$sp"),
+      Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$$anonfun$1"),
+
+      classOf[org.apache.spark.sql.catalyst.expressions.GenericInternalRow]
+      ))
     GraphXUtils.registerKryoClasses(conf)
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    conf.set("spark.kryo.registrationRequired", "true")
     conf
   }
 

@@ -33,7 +33,7 @@ final case class StringCovBucket(val coverageData: Array[String]) extends Covera
   import PackedSeqBucket._
   import StringCovBucket._
 
-  def coverages: Seq[Array[Coverage]] = coverageData.toSeq.map(_.toArray.map(charToInt))
+  def coverages: Array[Array[Coverage]] = coverageData.map(_.toArray.map(charToInt))
 
   def pack: String = coverages.mkString(separator)
 }

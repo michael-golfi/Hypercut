@@ -128,7 +128,7 @@ object PackedSeqBucket {
   val separator: String = "\n"
 
   def newBucket(kmers: List[String], k: Int) =
-    new PackedSeqBucket(Array(), Seq(), k).insertBulk(kmers).get
+    new PackedSeqBucket(Array(), Array(), k).insertBulk(kmers).get
 
   class Unpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
     extends dbpart.bucketdb.Unpacker[String, PackedSeqBucket] {
@@ -136,7 +136,7 @@ object PackedSeqBucket {
     val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
 
     def unpack(key: String, value: String, k: Int): PackedSeqBucket = {
-      val cov = covDB.get(key).coverages
+      val cov = covDB.get(key).coverages.toArray
       new PackedSeqBucket(value.split(separator, -1), cov, k).atMinCoverage(minCoverage)
     }
   }
@@ -146,7 +146,8 @@ object PackedSeqBucket {
  * A bucket that counts the coverage of each k-mer.
  */
 final case class PackedSeqBucket(override val sequences: Array[String],
-  override val coverages: Seq[Array[Coverage]], override val k: Int,
+  override val coverages: Array[Array[Coverage]], 
+  override val k: Int,
   var sequencesUpdated: Boolean = false)
   extends CountingSeqBucket[PackedSeqBucket](sequences, coverages, k) with Bucket[String, PackedSeqBucket] {
 
@@ -168,7 +169,7 @@ final case class PackedSeqBucket(override val sequences: Array[String],
   override def insertBulk(values: Iterable[String]): Option[PackedSeqBucket] =
     Some(insertBulk(values, values.iterator.map(x => 1)))
 
-  def copy(sequences: Array[String], coverage: Seq[Array[Coverage]],
+  def copy(sequences: Array[String], coverage: Array[Array[Coverage]],
            sequencesUpdated: Boolean): PackedSeqBucket =
     new PackedSeqBucket(sequences, coverage, k, sequencesUpdated)
 }

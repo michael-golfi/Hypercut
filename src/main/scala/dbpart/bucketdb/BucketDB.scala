@@ -368,7 +368,7 @@ extends StringBucketDB[PackedSeqBucket](location, options,
   }
 
   def newBucket(values: Iterable[String]) =
-    new PackedSeqBucket(Array(), Seq(), k).insertBulk(values).get
+    new PackedSeqBucket(Array(), Array(), k).insertBulk(values).get
 
   /*
    * Going purely through the coverage DB is cheaper than unpacking all sequences
