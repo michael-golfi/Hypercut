@@ -44,16 +44,17 @@ class Routines(spark: SparkSession) {
     reads.flatMap(r => ext.compactMarkers(r))
   }
 
-  type ProcessedRead = Array[(Array[Byte], String)]
+  type ProcessedRead = Array[(Long, String)]
 
   /**
    * Process a set of reads, generating an intermediate dataset that contains both read segments
    * and edges between buckets.
    */
   def splitReads(reads: Dataset[String],  ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
+    val inner = new InnerRoutines
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      ext.splitRead(r, buckets).iterator.map(x => (x._1.compact.data, x._2)).toArray
+      ext.splitRead(r, buckets).iterator.map(x => (inner.longId(x._1.compact), x._2)).toArray
     })
   }
 
@@ -70,17 +71,18 @@ class Routines(spark: SparkSession) {
 
   def hashToBuckets[A](reads: Dataset[Array[(Long, String)]], ext: MarkerSetExtractor,
       minCoverage: Option[Int]): Dataset[(Long, SimpleCountingBucket)] = {
+    val inner = new InnerRoutines
 
-    /*
-     * Note: should check impact of storing reads as simply Dataset[String]
-     * and recomputing the hash of each string after counting
-     */
-    val split = reads.flatMap(x => x)
+    //Remove hash key to speed up counting
+    val readsOnly = reads.flatMap(x => x.map(_._2))
     val countedSegments =
-      split.groupByKey(x => x).mapValues(_._2).count
+      readsOnly.groupByKey(x => x).count
+    //Restore hash by recomputing it
+     val withHash = countedSegments.map(x =>
+       (inner.longId(ext.markerSetFor(x._1.substring(0, ext.k)).compact), x._1, x._2))
 
-    val byBucket = countedSegments.groupByKey( { case (key, count) => key._1 }).
-      mapValues( { case (key, count) => (key._2, count) })
+    val byBucket = withHash.groupByKey( { case (key, _, _) => key }).
+      mapValues( { case (_, read, count) => (read, count) })
     val buckets = byBucket.mapGroups(
       { case (key, data) => {
         val segmentsCounts = data.toSeq
@@ -101,10 +103,9 @@ class Routines(spark: SparkSession) {
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Int]): BucketGraph = {
     val inner = new InnerRoutines
-    val md5Hashed = reads.map(_.map(s => (inner.longId(s._1), s._2)))
-    md5Hashed.cache
-    val edges = md5Hashed.flatMap(r => MarkerSetExtractor.collectTransitions(r.toList.map(_._1))).distinct().rdd
-    val verts = hashToBuckets(md5Hashed, ext, minCoverage)
+    reads.cache
+    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.toList.map(_._1))).distinct().rdd
+    val verts = hashToBuckets(reads, ext, minCoverage)
     val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
@@ -181,6 +182,8 @@ final class InnerRoutines extends Serializable {
 
   def longId(data: String): Long =
     Hashing.md5.hashString(data).asLong
+
+  def longId(n: CompactNode): Long = longId(n.data)
 
   def longId(node: PathNode): Long =
     longId(node.seq)
