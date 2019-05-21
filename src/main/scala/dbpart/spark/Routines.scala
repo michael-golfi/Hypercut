@@ -14,6 +14,7 @@ import miniasm.genome.util.DNAHelpers
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SaveMode
+import java.io.PrintStream
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -135,17 +136,25 @@ class Routines(spark: SparkSession) {
   def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)]) {
     def sm(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
     
-    val count = bkts.count()
-    val sequenceCount = bkts.map(_._2.sequences.size).cache
-    val kmerCount = bkts.map(_._2.kmers.size).cache
-    val coverage = bkts.flatMap(_._2.coverages.flatten.map(_.toInt)).cache
-    println(s"Bucket count: $count")
-    println("Sequence count: sum " + sm(sequenceCount))
-    sequenceCount.describe().show()
-    println("k-mer count: sum " + sm(kmerCount))
-    kmerCount.describe().show()
-    println("k-mer coverage: sum " + sm(coverage))
-    coverage.describe().show()
+    val fileStream = new PrintStream("bucketStats.txt")
+
+    try {
+      Console.withOut(fileStream) {
+        val count = bkts.count()
+        val sequenceCount = bkts.map(_._2.sequences.size).cache
+        val kmerCount = bkts.map(_._2.kmers.size).cache
+        val coverage = bkts.flatMap(_._2.coverages.flatten.map(_.toInt)).cache
+        println(s"Bucket count: $count")
+        println("Sequence count: sum " + sm(sequenceCount))
+        sequenceCount.describe().show()
+        println("k-mer count: sum " + sm(kmerCount))
+        kmerCount.describe().show()
+        println("k-mer coverage: sum " + sm(coverage))
+        coverage.describe().show()
+      }
+    } finally {
+      fileStream.close()
+    }
   }
 
   def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
