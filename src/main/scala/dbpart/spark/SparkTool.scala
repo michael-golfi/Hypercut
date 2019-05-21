@@ -43,4 +43,6 @@ abstract class SparkTool(appName: String) {
 
   lazy val spark = SparkSession.builder().appName(appName).
       master("spark://localhost:7077").config(conf).getOrCreate()
+
+  lazy val routines = new Routines(spark)
 }

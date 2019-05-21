@@ -22,15 +22,16 @@ class Routines(spark: SparkSession) {
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
+  import org.apache.spark.sql.functions._
+  import org.apache.spark.sql._
   import InnerRoutines._
 
   /**
    * Load reads and their reverse complements from DNA files.
    */
   def getReads(fileSpec: String): Dataset[String] = {
-    val reads = sc.textFile(fileSpec).toDF.map(_.getString(0))
-    val withRev = reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
-    withRev
+    val reads = sc.textFile(fileSpec).toDS
+    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))    
   }
 
   def countFeatures(reads: Dataset[String], space: MarkerSpace) = {
@@ -103,9 +104,12 @@ class Routines(spark: SparkSession) {
     val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r._1.toList)).distinct()
     val verts = hashToBuckets(reads, ext, minCoverage)
 
+    edges.cache
+    verts.cache
     for (output <- writeLocation) {
       edges.write.mode(SaveMode.Overwrite).parquet(s"${output}_edges")
       verts.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
+      reads.unpersist()
     }
 
     val r = Graph.fromEdgeTuples(edges.rdd, 0).
@@ -114,13 +118,34 @@ class Routines(spark: SparkSession) {
     r
   }
 
-  def loadBucketGraph(readLocation: String, minCoverage: Option[Coverage] = None): BucketGraph = {
+  def loadBucketsEdges(readLocation: String) = {
     val edges = spark.read.parquet(s"${readLocation}_edges").as[(Long, Long)]
-    val verts = spark.read.parquet(s"${readLocation}_buckets").as[(Long, SimpleCountingBucket)]
+    val bkts = spark.read.parquet(s"${readLocation}_buckets").as[(Long, SimpleCountingBucket)]
+    (bkts, edges)
+  }
+
+  def loadBucketGraph(readLocation: String): BucketGraph = {
+    val (verts, edges) = loadBucketsEdges(readLocation)
     val r = Graph.fromEdgeTuples(edges.rdd, 0).
       outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
+  }
+
+  def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)]) {
+    def sm(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
+    
+    val count = bkts.count()
+    val sequenceCount = bkts.map(_._2.sequences.size).cache
+    val kmerCount = bkts.map(_._2.kmers.size).cache
+    val coverage = bkts.flatMap(_._2.coverages.flatten.map(_.toInt)).cache
+    println(s"Bucket count: $count")
+    println("Sequence count: sum " + sm(sequenceCount))
+    sequenceCount.describe().show()
+    println("k-mer count: sum " + sm(kmerCount))
+    kmerCount.describe().show()
+    println("k-mer coverage: sum " + sm(coverage))
+    coverage.describe().show()
   }
 
   def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
@@ -271,7 +296,6 @@ object InnerRoutines {
 object AssembleRaw extends SparkTool("Hypercut-AssembleRaw") {
   def main(args: Array[String]) {
     val input = args(0)
-    val routines = new Routines(spark)
     val output = args(1)
     val k = args(2).toInt
     val minCoverage = Some(args(3).toShort)
@@ -284,7 +308,6 @@ object AssembleRaw extends SparkTool("Hypercut-AssembleRaw") {
 object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
   def main(args: Array[String]) {
     val input = args(0)
-    val routines = new Routines(spark)
     val output = args(1)
     val k = args(2).toInt
     val minCoverage = Some(args(3).toShort)
@@ -293,13 +316,20 @@ object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
   }
 }
 
+object BucketStats extends SparkTool("Hypercut-BucketStats") {
+  def main(args: Array[String]) {
+    val input = args(0)
+    val (verts, edges) = routines.loadBucketsEdges(input)
+    routines.bucketStats(verts)
+  }
+}
+
 object AssembleBuckets extends SparkTool("Hypercut-AssembleBuckets") {
   def main(args: Array[String]) {
     val input = args(0)
-    val routines = new Routines(spark)
     val output = args(1)
     val k = args(2).toInt
-    val pg = routines.toPathGraph(routines.loadBucketGraph(input, None), k)
+    val pg = routines.toPathGraph(routines.loadBucketGraph(input), k)
     routines.assemble(pg, k, None, output)
   }
 }
