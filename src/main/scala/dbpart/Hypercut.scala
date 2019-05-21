@@ -38,7 +38,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val dbfile = opt[String](required = false,
       descr = "Path to database file (.kch) where sequences are stored")
   val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
-  val minCov = opt[Int](descr = "Minimum coverage cutoff when reading databases")
+  val minCov = opt[Coverage](descr = "Minimum coverage cutoff when reading databases")
 
   def defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
 

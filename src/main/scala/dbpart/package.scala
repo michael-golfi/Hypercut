@@ -7,7 +7,7 @@ package object dbpart {
    */
   type NTSeq = String
 
-  type Coverage = Int
+  type Coverage = Short
   
   /**
    * Type of edges between buckets in the macro graph.

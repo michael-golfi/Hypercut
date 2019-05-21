@@ -1,4 +1,5 @@
 package dbpart.bucketdb
+import dbpart._
 import scala.collection.JavaConverters._
 import kyotocabinet._
 import friedrich.util.Distribution
@@ -351,7 +352,7 @@ object SeqBucketDB {
  *
  * The coverage filter, if present, affects some of the accessor methods.
  */
-final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Int])
+final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Coverage])
 extends StringBucketDB[PackedSeqBucket](location, options,
     new PackedSeqBucket.Unpacker(location, minCoverage, buckets), k) {
 
@@ -406,7 +407,7 @@ extends StringBucketDB[PackedSeqBucket](location, options,
   def kmerCoverageStats = {
     val d = new Distribution
     covDB.visitBucketsReadonly((key, b) => {
-      d.observe(b.kmerCoverages)
+      d.observe(b.kmerCoverages.map(_.toInt))
     })
     d
   }

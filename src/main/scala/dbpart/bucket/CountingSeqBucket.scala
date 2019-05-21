@@ -4,13 +4,15 @@ import dbpart.shortread.Read
 import scala.collection.mutable.ArrayBuffer
 
 object CountingSeqBucket {
-  val coverageCutoff = 5000
+  val coverageCutoff = 5000.toShort
 
-  def clipCov(cov: Long): Coverage = if (cov > coverageCutoff) coverageCutoff else cov.toInt
+  def clipCov(cov: Long): Coverage = if (cov > coverageCutoff) coverageCutoff else cov.toShort
 
-  def clipCov(cov: Int): Coverage = if (cov > coverageCutoff) coverageCutoff else cov
+  def clipCov(cov: Int): Coverage = if (cov > coverageCutoff) coverageCutoff else cov.toShort
 
-  def incrementCoverage(covSeq: Vector[Int], pos: Int, amt: Int) = {
+  def clipCov(cov: Short): Coverage = if (cov > coverageCutoff) coverageCutoff else cov
+
+  def incrementCoverage(covSeq: Vector[Coverage], pos: Int, amt: Coverage) = {
     covSeq.updated(pos, clipCov(covSeq(pos) + amt))
   }
 
@@ -50,7 +52,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Produce a coverage-filtered version of this sequence bucket.
    * sequencesUpdated is initially set to false.
    */
-  def atMinCoverage(minCoverage: Option[Int]): Self = {
+  def atMinCoverage(minCoverage: Option[Coverage]): Self = {
     minCoverage match {
       case None => this
       case Some(cov) => coverageFilter(cov)
@@ -111,7 +113,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    */
   def findAndIncrement(data: String, inSeq: Seq[String],
                 inCov: ArrayBuffer[Vector[Coverage]], numSequences: Int,
-                amount: Int = 1): Boolean = {
+                amount: Coverage = 1): Boolean = {
     var i = 0
     while (i < numSequences) {
       val s = inSeq(i)
@@ -159,7 +161,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[String],
                      intoCov: ArrayBuffer[Vector[Coverage]], numSequences: Int,
-                     coverage: Int = 1): Int = {
+                     coverage: Coverage = 1): Int = {
     val suffix = data.substring(1)
     val prefix = data.substring(0, k - 1)
     var i = 0
@@ -167,7 +169,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       val existingSeq = intoSeq(i)
       if (existingSeq.startsWith(suffix)) {
         intoSeq(i) = (data.charAt(0) + existingSeq)
-        intoCov(i) = 1 +: intoCov(i)
+        intoCov(i) = clipCov(coverage) +: intoCov(i)
 
         //A merge is possible if a k-mer has both a prefix and a suffix match.
         //So it is sufficient to check for it here, as it would never hit the

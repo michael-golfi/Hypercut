@@ -130,7 +130,7 @@ object PackedSeqBucket {
   def newBucket(kmers: List[String], k: Int) =
     new PackedSeqBucket(Array(), Array(), k).insertBulk(kmers).get
 
-  class Unpacker(dbLocation: String, minCoverage: Option[Int], buckets: Int)
+  class Unpacker(dbLocation: String, minCoverage: Option[Coverage], buckets: Int)
     extends dbpart.bucketdb.Unpacker[String, PackedSeqBucket] {
 
     val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)

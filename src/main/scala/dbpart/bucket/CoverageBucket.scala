@@ -21,5 +21,5 @@ trait CoverageBucket extends Serializable {
 }
 
 case class ShortCoverageBucket(coverageData: Array[Array[Short]]) extends CoverageBucket {
-  def coverages: Array[Array[Coverage]] = coverageData.map(_.map(_.toInt))
+  def coverages: Array[Array[Coverage]] = coverageData
 }

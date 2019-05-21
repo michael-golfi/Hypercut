@@ -15,7 +15,7 @@ import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
-  settings: Settings, dbOptions: String, minCov: Option[Int]) {
+  settings: Settings, dbOptions: String, minCov: Option[Coverage]) {
 
   val extractor = new MarkerSetExtractor(space, k)
   lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minCov)

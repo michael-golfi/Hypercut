@@ -13,6 +13,7 @@ import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SaveMode
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -21,6 +22,7 @@ class Routines(spark: SparkSession) {
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
+  import InnerRoutines._
 
   /**
    * Load reads and their reverse complements from DNA files.
@@ -51,10 +53,9 @@ class Routines(spark: SparkSession) {
    * and edges between buckets.
    */
   def splitReads(reads: Dataset[String],  ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
-    val inner = new InnerRoutines
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      ext.splitRead(r, buckets).iterator.map(x => (inner.longId(x._1.compact), x._2)).toArray
+      ext.splitRead(r, buckets).iterator.map(x => (longId(x._1.compact), x._2)).toArray
     })
   }
 
@@ -70,8 +71,7 @@ class Routines(spark: SparkSession) {
     MarkerSetExtractor.collectTransitions(s.toList.map(_._1)))
 
   def hashToBuckets[A](reads: Dataset[Array[(Long, String)]], ext: MarkerSetExtractor,
-      minCoverage: Option[Int]): Dataset[(Long, SimpleCountingBucket)] = {
-    val inner = new InnerRoutines
+      minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
 
     //Remove hash key to speed up counting
     val readsOnly = reads.flatMap(x => x.map(_._2))
@@ -79,7 +79,7 @@ class Routines(spark: SparkSession) {
       readsOnly.groupByKey(x => x).count
     //Restore hash by recomputing it
      val withHash = countedSegments.map(x =>
-       (inner.longId(ext.markerSetFor(x._1.substring(0, ext.k)).compact), x._1, x._2))
+       (longId(ext.markerSetFor(x._1.substring(0, ext.k)).compact), x._1, x._2))
 
     val byBucket = withHash.groupByKey( { case (key, _, _) => key }).
       mapValues( { case (_, read, count) => (read, count) })
@@ -100,32 +100,39 @@ class Routines(spark: SparkSession) {
 
   /**
    * Construct a GraphX graph where the buckets are vertices.
+   * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Int]): BucketGraph = {
-    val inner = new InnerRoutines
+  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Coverage],
+                  writeLocation: Option[String] = None): BucketGraph = {
     reads.cache
-    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.toList.map(_._1))).distinct().rdd
+    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.toList.map(_._1))).distinct()
     val verts = hashToBuckets(reads, ext, minCoverage)
-    val r = Graph.fromEdgeTuples(edges, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
+
+    for (output <- writeLocation) {
+      edges.write.mode(SaveMode.Overwrite).parquet(s"${output}_edges")
+      verts.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
+    }
+
+    val r = Graph.fromEdgeTuples(edges.rdd, 0).outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
   }
 
   def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
-    val inner = new InnerRoutines
+
     val edges = graph.triplets.flatMap(tr => {
       val fromNodes = tr.srcAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
       val toNodes = tr.dstAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
       val edges = (for {
         from <- fromNodes; to <- toNodes
         if from.end(k) == to.begin(k)
-        edge = (inner.longId(from), inner.longId(to))
+        edge = (longId(from), longId(to))
       }  yield edge)
       edges
     })
 
     val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
-      (inner.longId(x._1), new PathNode(x._1, x._2, seenId = inner.longId(x._1)))))
+      (longId(x._1), new PathNode(x._1, x._2, seenId = longId(x._1)))))
     val r = Graph.fromEdgeTuples(edges, 0, edgeStorageLevel = StorageLevel.MEMORY_AND_DISK,
         vertexStorageLevel = StorageLevel.MEMORY_AND_DISK).
       outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
@@ -145,25 +152,20 @@ class Routines(spark: SparkSession) {
       joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg)).
       removeSelfEdges()
 
-    val inner = new InnerRoutines
     current.cache
 
     current.pregel(List[(VertexId, Int)](), Int.MaxValue,
-      EdgeDirection.Out)(inner.mergeProg(k), inner.sendMsg(k), _ ++ _)
+      EdgeDirection.Out)(mergeProg(k), sendMsg(k), _ ++ _)
 
-    current.vertices.groupBy(_._2.seenId).mapValues(inner.joinPath(_, k)).values
+    current.vertices.groupBy(_._2.seenId).mapValues(joinPath(_, k)).values
   }
 
-  def readsToPathGraph(reads: Dataset[String], ext: MarkerSetExtractor, minCoverage: Option[Int]) = {
-    val split = splitReads(reads, ext)
-    val bg = bucketGraph(split, ext, minCoverage)
-    toPathGraph(bg, ext.k)
+  def readsToPathGraph(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage]) = {
+    toPathGraph(buildBuckets(input, ext, minCoverage), ext.k)
   }
 
-  def assembleFiles(input: String, ext: MarkerSetExtractor, minCoverage: Option[Int], output: String) {
-    val reads = getReads(input)
-    val pg = readsToPathGraph(reads, ext, minCoverage)
-    reads.unpersist()
+  def assembleFiles(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage], output: String) {
+    val pg = readsToPathGraph(input, ext, minCoverage)
     val merged = mergePaths(pg, ext.k)
     merged.cache
 
@@ -174,9 +176,19 @@ class Routines(spark: SparkSession) {
 
     printer.close()
   }
+
+  def buildBuckets(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage],
+                   outputLocation: Option[String] = None) = {
+    val reads = getReads(input)
+    val split = splitReads(reads, ext)
+    val r = bucketGraph(split, ext, minCoverage, outputLocation)
+    split.unpersist
+    r
+  }
+
 }
 
-final class InnerRoutines extends Serializable {
+object InnerRoutines {
   def longId(data: Array[Byte]): Long =
     Hashing.md5.hashBytes(data).asLong
 
@@ -254,7 +266,7 @@ final class InnerRoutines extends Serializable {
 
 }
 
-object BuildGraph {
+abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
     val conf = new SparkConf
 
@@ -262,7 +274,7 @@ object BuildGraph {
       classOf[SimpleCountingBucket], classOf[CompactNode], classOf[PathNode],
       classOf[Array[SimpleCountingBucket]], classOf[Array[CompactNode]], classOf[Array[PathNode]],
 
-      classOf[String], classOf[Array[String]], classOf[Array[Int]], classOf[Array[Array[Int]]],
+      classOf[String], classOf[Array[String]], classOf[Array[Short]], classOf[Array[Array[Short]]],
       classOf[Array[Byte]], classOf[Array[Array[Byte]]], classOf[Tuple2[Any, Any]],
 
       //Hidden or inaccessible classes
@@ -270,26 +282,48 @@ object BuildGraph {
       Class.forName("scala.reflect.ManifestFactory$$anon$9"),
       Class.forName("scala.reflect.ManifestFactory$$anon$10"),
       Class.forName("org.apache.spark.sql.execution.columnar.CachedBatch"),
+      Class.forName("org.apache.spark.graphx.impl.ShippableVertexPartition"),
       Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$mcJI$sp"),
       Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$$anonfun$1"),
+      Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$$anonfun$2"),
+      Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
+      Class.forName("org.apache.spark.util.collection.OpenHashSet$LongHasher"),
+      Class.forName("scala.reflect.ClassTag$$anon$1"),
 
-      classOf[org.apache.spark.sql.catalyst.expressions.GenericInternalRow]
-      ))
+      classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
+      classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
+      classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
+      classOf[org.apache.spark.sql.catalyst.expressions.GenericInternalRow]))
     GraphXUtils.registerKryoClasses(conf)
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     conf.set("spark.kryo.registrationRequired", "true")
     conf
   }
 
-  def main(args: Array[String]) {
-    val spark = SparkSession.builder().appName("Hypercut").
+  lazy val spark = SparkSession.builder().appName(appName).
       master("spark://localhost:7077").config(conf).getOrCreate()
+}
+
+object BuildGraph extends SparkTool("Hypercut-BuildGraph") {
+  def main(args: Array[String]) {
     val input = args(0)
     val routines = new Routines(spark)
     val output = args(1)
     val k = args(2).toInt
-    val minCoverage = Some(args(3).toInt)
+    val minCoverage = Some(args(3).toShort)
     val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
     routines.assembleFiles(input, ext, minCoverage, output)
+  }
+}
+
+object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
+   def main(args: Array[String]) {
+    val input = args(0)
+    val routines = new Routines(spark)
+    val output = args(1)
+    val k = args(2).toInt
+    val minCoverage = Some(args(3).toShort)
+    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
+    val bkts = routines.buildBuckets(input, ext, minCoverage, Some(output))
   }
 }

@@ -17,7 +17,7 @@ object StringCovBucket {
   }
 
   def fromCoverages(coverages: Seq[Array[Coverage]]): StringCovBucket =
-    new StringCovBucket(coverages.map(x => new String(x.map(asChar).toArray)).toArray)
+    new StringCovBucket(coverages.map(x => new String(x.map(asChar(_)).toArray)).toArray)
 }
 
 /**
@@ -33,7 +33,7 @@ final case class StringCovBucket(val coverageData: Array[String]) extends Covera
   import PackedSeqBucket._
   import StringCovBucket._
 
-  def coverages: Array[Array[Coverage]] = coverageData.map(_.toArray.map(charToInt))
+  def coverages: Array[Array[Coverage]] = coverageData.map(_.toArray.map(x => charToInt(x).toShort))
 
   def pack: String = coverages.mkString(separator)
 }

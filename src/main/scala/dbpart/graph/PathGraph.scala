@@ -22,7 +22,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
   println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
   addNodes(nodes)
 
-  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], covs: Iterator[Int]) =
+  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], covs: Iterator[Coverage]) =
     (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
 
   /**
