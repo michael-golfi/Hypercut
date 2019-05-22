@@ -32,6 +32,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   def kmers = kmersBySequence.flatten
   def kmersBySequence = sequences.toSeq.map(Read.kmers(_, k))
 
+  def numKmers = sequences.map(_.length() - (k-1)).sum
+
   def sequencesWithCoverage =
     sequences zip sequenceAvgCoverages
 

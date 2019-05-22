@@ -28,6 +28,7 @@ abstract class SparkTool(appName: String) {
       Class.forName("org.apache.spark.sql.types.IntegerType$"),
       Class.forName("org.apache.spark.sql.types.StringType$"),
       Class.forName("org.apache.spark.graphx.impl.ShippableVertexPartition"),
+      Class.forName("org.apache.spark.graphx.impl.RoutingTablePartition"),
       Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$mcJI$sp"),
       Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$$anonfun$1"),
       Class.forName("org.apache.spark.graphx.util.collection.GraphXPrimitiveKeyOpenHashMap$$anonfun$2"),

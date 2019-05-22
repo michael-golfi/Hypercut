@@ -27,12 +27,15 @@ class Routines(spark: SparkSession) {
   import org.apache.spark.sql._
   import InnerRoutines._
 
+  //For graph partitioning, it may help if this number is a square
+  val NUM_PARTITIONS = 256
+
   /**
    * Load reads and their reverse complements from DNA files.
    */
   def getReads(fileSpec: String): Dataset[String] = {
     val reads = sc.textFile(fileSpec).toDS
-    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))    
+    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
   }
 
   def countFeatures(reads: Dataset[String], space: MarkerSpace) = {
@@ -94,6 +97,7 @@ class Routines(spark: SparkSession) {
 
   type BucketGraph = Graph[SimpleCountingBucket, Int]
   type PathGraph = Graph[PathNode, Int]
+  type PathGraph2 = Graph[Int, PathNode]
 
   /**
    * Construct a GraphX graph where the buckets are vertices.
@@ -133,24 +137,33 @@ class Routines(spark: SparkSession) {
     r
   }
 
-  def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)]) {
-    def sm(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
-    
+  def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)],
+                  edges: Dataset[(Long, Long)]) {
+    def smi(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
+    def sms(ds: Dataset[Short]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
+
     val fileStream = new PrintStream("bucketStats.txt")
 
     try {
       Console.withOut(fileStream) {
         val count = bkts.count()
         val sequenceCount = bkts.map(_._2.sequences.size).cache
-        val kmerCount = bkts.map(_._2.kmers.size).cache
-        val coverage = bkts.flatMap(_._2.coverages.flatten.map(_.toInt)).cache
+        val kmerCount = bkts.map(_._2.numKmers).cache
+        val coverage = bkts.flatMap(_._2.coverages.toSeq.flatten).cache
         println(s"Bucket count: $count")
-        println("Sequence count: sum " + sm(sequenceCount))
+        println("Sequence count: sum " + smi(sequenceCount))
         sequenceCount.describe().show()
-        println("k-mer count: sum " + sm(kmerCount))
+        println("k-mer count: sum " + smi(kmerCount))
         kmerCount.describe().show()
-        println("k-mer coverage: sum " + sm(coverage))
+        println("k-mer coverage: sum " + sms(coverage))
         coverage.describe().show()
+
+        val outDeg = edges.groupByKey(_._1).count()
+        println("Outdegree: ")
+        outDeg.describe().show()
+        println("Indegree: ")
+        val inDeg = edges.groupByKey(_._2).count()
+        inDeg.describe().show()
       }
     } finally {
       fileStream.close()
@@ -174,7 +187,8 @@ class Routines(spark: SparkSession) {
     val r = Graph.fromEdgeTuples(edges, 0, edgeStorageLevel = StorageLevel.MEMORY_AND_DISK,
       vertexStorageLevel = StorageLevel.MEMORY_AND_DISK).
       outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
-    r.cache
+      .partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS)
+      .cache
     r
   }
 
@@ -319,7 +333,8 @@ object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
     val input = args(0)
     val output = args(1)
     val k = args(2).toInt
-    val minCoverage = Some(args(3).toShort)
+//    val minCoverage = Some(args(3).toShort)
+    val minCoverage = None
     val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
     val bkts = routines.buildBuckets(input, ext, minCoverage, Some(output))
   }
@@ -329,7 +344,9 @@ object BucketStats extends SparkTool("Hypercut-BucketStats") {
   def main(args: Array[String]) {
     val input = args(0)
     val (verts, edges) = routines.loadBucketsEdges(input)
-    routines.bucketStats(verts)
+    verts.cache
+    edges.cache
+    routines.bucketStats(verts, edges)
   }
 }
 
