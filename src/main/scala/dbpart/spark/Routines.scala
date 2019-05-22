@@ -15,6 +15,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SaveMode
 import java.io.PrintStream
+import java.io.File
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -65,29 +66,42 @@ class Routines(spark: SparkSession) {
   def splitReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      val (hash, segment) = ext.splitRead(r, buckets).toList.unzip
+      val (hash, segment) = ext.splitRead(r, buckets).unzip
       (hash.map(x => longId(x.compact)).toArray, segment.toArray)
     })
   }
 
-  def hashToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
-                       minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
+  def countKmers(reads: Dataset[String], ext: MarkerSetExtractor) = {
+    val segments = reads.flatMap(r => {
+      val buckets = ext.markerSetsInRead(r)._2
+      ext.splitRead(r, buckets).map(_._2)
+    })
+    val minCoverage = None
+    hashToBuckets(segments, ext, minCoverage)
+  }
 
-    val readsOnly = reads.flatMap(_._2)
+  def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
+                       minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] =
+    hashToBuckets(reads.flatMap(_._2), ext, minCoverage)
+
+  def hashToBuckets[A](segments: Dataset[String], ext: MarkerSetExtractor,
+                       minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
     val countedSegments =
-      readsOnly.groupByKey(x => x).count
+      segments.groupByKey(x => x).count
     //Restore hash by recomputing it
     val withHash = countedSegments.map(x =>
       (longId(ext.markerSetFor(x._1.substring(0, ext.k)).compact), x._1, x._2))
 
     val byBucket = withHash.groupByKey({ case (key, _, _) => key }).
       mapValues({ case (_, read, count) => (read, count) })
+
+    //Note: reduce, or an aggregator, may work better than mapGroups here.
+    //mapGroups may cause high memory usage.
     val buckets = byBucket.mapGroups(
       {
-        case (key, data) => {
-          val segmentsCounts = data.toSeq
+        case (key, segmentsCounts) => {
           val empty = SimpleCountingBucket.empty(ext.k)
-          val bkt = empty.insertBulkSegments(segmentsCounts.map(_._1), segmentsCounts.map(c => clipCov(c._2))).
+          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipCov(x._2)))).
             atMinCoverage(minCoverage)
           (key, bkt)
         }
@@ -107,13 +121,13 @@ class Routines(spark: SparkSession) {
                   writeLocation: Option[String] = None): BucketGraph = {
     reads.cache
     val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r._1.toList)).distinct()
-    val verts = hashToBuckets(reads, ext, minCoverage)
+    val verts = processedToBuckets(reads, ext, minCoverage)
 
     edges.cache
     verts.cache
     for (output <- writeLocation) {
       edges.write.mode(SaveMode.Overwrite).parquet(s"${output}_edges")
-      verts.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
+      writeBuckets(verts, output)
       reads.unpersist()
     }
 
@@ -123,9 +137,16 @@ class Routines(spark: SparkSession) {
     r
   }
 
+  def writeBuckets(bkts: Dataset[(Long, SimpleCountingBucket)], writeLocation: String) {
+    bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
+  }
+
+  def loadBuckets(readLocation: String) =
+     spark.read.parquet(s"${readLocation}_buckets").as[(Long, SimpleCountingBucket)]
+
   def loadBucketsEdges(readLocation: String) = {
     val edges = spark.read.parquet(s"${readLocation}_edges").as[(Long, Long)]
-    val bkts = spark.read.parquet(s"${readLocation}_buckets").as[(Long, SimpleCountingBucket)]
+    val bkts = loadBuckets(readLocation)
     (bkts, edges)
   }
 
@@ -138,7 +159,7 @@ class Routines(spark: SparkSession) {
   }
 
   def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)],
-                  edges: Dataset[(Long, Long)]) {
+                  edges: Option[Dataset[(Long, Long)]]) {
     def smi(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
     def sms(ds: Dataset[Short]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
 
@@ -158,12 +179,14 @@ class Routines(spark: SparkSession) {
         println("k-mer coverage: sum " + sms(coverage))
         coverage.describe().show()
 
-        val outDeg = edges.groupByKey(_._1).count()
-        println("Outdegree: ")
-        outDeg.describe().show()
-        println("Indegree: ")
-        val inDeg = edges.groupByKey(_._2).count()
-        inDeg.describe().show()
+        for (e <- edges) {
+          val outDeg = e.groupByKey(_._1).count()
+          println("Outdegree: ")
+          outDeg.describe().show()
+          println("Indegree: ")
+          val inDeg = e.groupByKey(_._2).count()
+          inDeg.describe().show()
+        }
       }
     } finally {
       fileStream.close()
@@ -343,9 +366,15 @@ object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
 object BucketStats extends SparkTool("Hypercut-BucketStats") {
   def main(args: Array[String]) {
     val input = args(0)
-    val (verts, edges) = routines.loadBucketsEdges(input)
+    val (verts, edges) = if ((new File(s"${input}_edges")).exists) {
+      routines.loadBucketsEdges(input) match {
+        case (b,e) => (b, Some(e))
+      }
+    } else {
+      (routines.loadBuckets(input), None)
+    }
     verts.cache
-    edges.cache
+    for (e <- edges) e.cache
     routines.bucketStats(verts, edges)
   }
 }
@@ -357,5 +386,17 @@ object AssembleBuckets extends SparkTool("Hypercut-AssembleBuckets") {
     val k = args(2).toInt
     val pg = routines.toPathGraph(routines.loadBucketGraph(input), k)
     routines.assemble(pg, k, None, output)
+  }
+}
+
+object CountKmers extends SparkTool("Hypercut-CountKmers") {
+    def main(args: Array[String]) {
+    val input = args(0)
+    val output = args(1)
+    val k = args(2).toInt
+    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
+    val reads = routines.getReads(input)
+    val bkts = routines.countKmers(reads, ext)
+    routines.writeBuckets(bkts, output)
   }
 }

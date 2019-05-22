@@ -160,6 +160,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   /**
    * Insert a new sequence into a set of pre-existing sequences, by merging if possible.
    * Returns the new updated sequence count (may decrease due to merging).
+   * The sequence must be a k-mer.
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[String],
                      intoCov: ArrayBuffer[Vector[Coverage]], numSequences: Int,
@@ -226,10 +227,10 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * NB this implementation will cause a lot of temporary object allocations.
    * An expanded version would probably be more efficient.
    */
-  def insertBulkSegments(values: Iterable[String], coverages: Iterable[Coverage]): Self = {
+  def insertBulkSegments(segmentsCoverages: Iterator[(String, Coverage)]): Self = {
     var r = this
     for {
-      (segment, cov) <- values.iterator zip coverages.iterator
+      (segment, cov) <- segmentsCoverages
       numKmers = segment.length() - (k - 1)
       segmentCoverages = (0 until numKmers).map(i => cov).iterator
       kmers = Read.kmers(segment, k).toSeq
