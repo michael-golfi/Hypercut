@@ -119,7 +119,6 @@ class Routines(spark: SparkSession) {
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Coverage],
                   writeLocation: Option[String] = None): BucketGraph = {
-    reads.cache
     val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r._1.toList)).distinct()
     val verts = processedToBuckets(reads, ext, minCoverage)
 
