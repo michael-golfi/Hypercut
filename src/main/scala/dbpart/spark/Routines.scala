@@ -55,9 +55,8 @@ class Routines(spark: SparkSession) {
   /*
    * The marker sets in a read, in sequence (in md5-hashed form),
    * and the corresponding segments that were discovered, in sequence.
-   * The two arrays will have equal length.
    */
-  type ProcessedRead = (Array[Long], Array[String])
+  type ProcessedRead = (Array[(Long, String)])
 
   /**
    * Process a set of reads, generating an intermediate dataset that contains both read segments
@@ -66,34 +65,25 @@ class Routines(spark: SparkSession) {
   def splitReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      val (hash, segment) = ext.splitRead(r, buckets).unzip
-      (hash.map(x => longId(x.compact)).toArray, segment.toArray)
+      val hashesSegments = ext.splitRead(r, buckets)
+      hashesSegments.map(x => (longId(x._1.compact), x._2)).toArray
     })
   }
 
   def countKmers(reads: Dataset[String], ext: MarkerSetExtractor) = {
-    val segments = reads.flatMap(r => {
-      val buckets = ext.markerSetsInRead(r)._2
-      ext.splitRead(r, buckets).map(_._2)
-    })
     val minCoverage = None
-    hashToBuckets(segments, ext, minCoverage)
+    val segments = splitReads(reads, ext)
+    processedToBuckets(segments, ext, minCoverage)
   }
 
   def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
-                       minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] =
-    hashToBuckets(reads.flatMap(_._2), ext, minCoverage)
-
-  def hashToBuckets[A](segments: Dataset[String], ext: MarkerSetExtractor,
                        minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
+    val segments = reads.flatMap(x => x)
     val countedSegments =
       segments.groupByKey(x => x).count
-    //Restore hash by recomputing it
-    val withHash = countedSegments.map(x =>
-      (longId(ext.markerSetFor(x._1.substring(0, ext.k)).compact), x._1, x._2))
 
-    val byBucket = withHash.groupByKey({ case (key, _, _) => key }).
-      mapValues({ case (_, read, count) => (read, count) })
+    val byBucket = countedSegments.groupByKey({ case ((key, _), _) => key }).
+      mapValues({ case ((_, read), count) => (read, count) })
 
     //Note: reduce, or an aggregator, may work better than mapGroups here.
     //mapGroups may cause high memory usage.
@@ -119,7 +109,7 @@ class Routines(spark: SparkSession) {
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Coverage],
                   writeLocation: Option[String] = None): BucketGraph = {
-    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r._1.toList)).distinct()
+    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_._1).toList)).distinct()
     val verts = processedToBuckets(reads, ext, minCoverage)
 
     edges.cache

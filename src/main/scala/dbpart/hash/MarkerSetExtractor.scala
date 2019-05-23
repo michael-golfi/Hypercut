@@ -106,12 +106,6 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   }
 
   /**
-   *  Marker set for a single k-mer.
-   */
-  def markerSetFor(kmer: String): MarkerSet =
-    markerSetsInRead(kmer)._1.head
-
-  /**
    * Convert extracted buckets into overlapping substrings of a read,
    * overlapping by (k-1) bases. The ordering is not guaranteed.
    * Designed to operate on the second list produced by the markerSetsInRead function.
