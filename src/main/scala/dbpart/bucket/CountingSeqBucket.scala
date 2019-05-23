@@ -235,7 +235,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       segmentCoverages = (0 until numKmers).map(i => cov).iterator
       kmers = Read.kmers(segment, k).toSeq
     } {
-      r = insertBulk(kmers, segmentCoverages)
+      r = r.insertBulk(kmers, segmentCoverages)
     }
     r
   }
