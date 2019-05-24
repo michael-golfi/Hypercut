@@ -91,7 +91,7 @@ class Routines(spark: SparkSession) {
       {
         case (key, segmentsCounts) => {
           val empty = SimpleCountingBucket.empty(ext.k)
-          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipCov(x._2)))).
+          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipCov(x._2))).toList).
             atMinCoverage(minCoverage)
           (key, bkt)
         }

@@ -28,7 +28,7 @@ class SimpleCountingBucketTest extends FunSuite with Matchers {
   test("segments") {
     var b = SimpleCountingBucket.empty(k)
     val segCov = Seq(("ACTGGTT", 2.toShort), ("TTTATT", 1.toShort))
-    b = b.insertBulkSegments(segCov.iterator)
+    b = b.insertBulkSegments(segCov)
     b.sequences.size should equal(2)
     b.coverages should equal(Array(Array(2, 2, 2), Array(1, 1)))
 

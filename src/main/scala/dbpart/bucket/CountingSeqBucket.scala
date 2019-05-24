@@ -200,23 +200,23 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Insert k-mers with corresponding coverages. Each value is a single k-mer.
    */
   def insertBulk(values: Iterable[String], coverages: Iterator[Coverage]): Self = {
-    var r: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+    var seqR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
     var covR: ArrayBuffer[Vector[Coverage]] = new ArrayBuffer(values.size + sequences.size)
 
     var sequencesUpdated = false
     var n = sequences.size
-    r ++= sequences
+    seqR ++= sequences
     covR ++= this.coverages.map(_.toVector)
 
     for {
       (v, cov) <- values.iterator zip coverages
-      if !findAndIncrement(v, r, covR, n, cov)
+      if !findAndIncrement(v, seqR, covR, n, cov)
     } {
-      n = insertSequence(v, r, covR, n, cov)
+      n = insertSequence(v, seqR, covR, n, cov)
       sequencesUpdated = true
     }
 
-    copy(r.toArray, covR.map(_.toArray).toArray, sequencesUpdated)
+    copy(seqR.toArray, covR.map(_.toArray).toArray, sequencesUpdated)
   }
 
   /**
@@ -224,20 +224,28 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Each value is a segment with some number of overlapping k-mers. Each coverage item
    * applies to the whole of each such segments (all k-mers in a segment have the same coverage).
    *
-   * NB this implementation will cause a lot of temporary object allocations.
-   * An expanded version would probably be more efficient.
+   * This method is optimised for insertion of a larger number of distinct segments.
    */
-  def insertBulkSegments(segmentsCoverages: Iterator[(String, Coverage)]): Self = {
+  def insertBulkSegments(segmentsCoverages: Iterable[(String, Coverage)]): Self = {
     var r = this
+    val insertAmt = segmentsCoverages.size
+
+    var seqR: ArrayBuffer[String] = new ArrayBuffer(insertAmt + sequences.size)
+    var covR: ArrayBuffer[Vector[Coverage]] = new ArrayBuffer(insertAmt + sequences.size)
+    var n = sequences.size
+    seqR ++= sequences
+    covR ++= this.coverages.map(_.toVector)
+
     for {
       (segment, cov) <- segmentsCoverages
       numKmers = segment.length() - (k - 1)
-      segmentCoverages = (0 until numKmers).map(i => cov).iterator
-      kmers = Read.kmers(segment, k).toSeq
+      kmer <- Read.kmers(segment, k).toSeq
+      if !findAndIncrement(kmer, seqR, covR, n, cov)
     } {
-      r = r.insertBulk(kmers, segmentCoverages)
+      n = insertSequence(kmer, seqR, covR, n, cov)
     }
-    r
+
+    copy(seqR.toArray, covR.map(_.toArray).toArray, true)
   }
 
   /**
