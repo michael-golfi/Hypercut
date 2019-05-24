@@ -2,6 +2,7 @@ package dbpart.bucket
 import dbpart._
 import dbpart.shortread.Read
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Buffer
 
 object CountingSeqBucket {
   val coverageCutoff = 5000.toShort
@@ -12,7 +13,7 @@ object CountingSeqBucket {
 
   def clipCov(cov: Short): Coverage = if (cov > coverageCutoff) coverageCutoff else cov
 
-  def incrementCoverage(covSeq: Vector[Coverage], pos: Int, amt: Coverage) = {
+  def incrementCoverage(covSeq: Buffer[Coverage], pos: Int, amt: Coverage) = {
     covSeq.updated(pos, clipCov(covSeq(pos) + amt))
   }
 
@@ -114,7 +115,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * @return true iff the sequence was found.
    */
   def findAndIncrement(data: String, inSeq: Seq[String],
-                inCov: ArrayBuffer[Vector[Coverage]], numSequences: Int,
+                inCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int,
                 amount: Coverage = 1): Boolean = {
     var i = 0
     while (i < numSequences) {
@@ -135,7 +136,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * @return
    */
   def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[String],
-                     intoCov: ArrayBuffer[Vector[Coverage]], numSequences: Int): Int = {
+                     intoCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int): Int = {
     val prefix = intoSeq(atOffset).substring(0, k - 1)
     var i = 0
     while (i < numSequences) {
@@ -163,7 +164,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * The sequence must be a k-mer.
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[String],
-                     intoCov: ArrayBuffer[Vector[Coverage]], numSequences: Int,
+                     intoCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int,
                      coverage: Coverage = 1): Int = {
     val suffix = data.substring(1)
     val prefix = data.substring(0, k - 1)
@@ -186,7 +187,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       i += 1
     }
     intoSeq += data
-    intoCov += Vector(clipCov(coverage))
+    intoCov += Buffer(clipCov(coverage))
     numSequences + 1
   }
 
@@ -201,12 +202,12 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    */
   def insertBulk(values: Iterable[String], coverages: Iterator[Coverage]): Self = {
     var seqR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
-    var covR: ArrayBuffer[Vector[Coverage]] = new ArrayBuffer(values.size + sequences.size)
+    var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(values.size + sequences.size)
 
     var sequencesUpdated = false
     var n = sequences.size
     seqR ++= sequences
-    covR ++= this.coverages.map(_.toVector)
+    covR ++= this.coverages.map(_.toBuffer)
 
     for {
       (v, cov) <- values.iterator zip coverages
@@ -231,10 +232,10 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     val insertAmt = segmentsCoverages.size
 
     var seqR: ArrayBuffer[String] = new ArrayBuffer(insertAmt + sequences.size)
-    var covR: ArrayBuffer[Vector[Coverage]] = new ArrayBuffer(insertAmt + sequences.size)
+    var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(insertAmt + sequences.size)
     var n = sequences.size
     seqR ++= sequences
-    covR ++= this.coverages.map(_.toVector)
+    covR ++= this.coverages.map(_.toBuffer)
 
     for {
       (segment, cov) <- segmentsCoverages
