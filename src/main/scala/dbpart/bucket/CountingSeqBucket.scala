@@ -3,9 +3,16 @@ import dbpart._
 import dbpart.shortread.Read
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
+import scala.collection.mutable.{Map => MMap}
 
 object CountingSeqBucket {
   val coverageCutoff = 5000.toShort
+
+  //At more than this many sequences, we build a map to speed up the insertion process.
+  val helperMapThreshold = 16
+
+  //If the number of sequences goes above this limit, we emit a warning.
+  val warnBucketSize = 1000
 
   def clipCov(cov: Long): Coverage = if (cov > coverageCutoff) coverageCutoff else cov.toShort
 
@@ -14,7 +21,7 @@ object CountingSeqBucket {
   def clipCov(cov: Short): Coverage = if (cov > coverageCutoff) coverageCutoff else cov
 
   def incrementCoverage(covSeq: Buffer[Coverage], pos: Int, amt: Coverage) = {
-    covSeq.updated(pos, clipCov(covSeq(pos) + amt))
+    covSeq(pos) = clipCov(covSeq(pos) + amt)
   }
 
   @volatile
@@ -117,12 +124,24 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   def findAndIncrement(data: String, inSeq: Seq[String],
                 inCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int,
                 amount: Coverage = 1): Boolean = {
+    helperMap match {
+      case Some(m) =>
+        m.get(data) match {
+          case Some((i, j)) =>
+            incrementCoverage(inCov(i), j, amount)
+            return true
+          case None =>
+            return false
+        }
+      case _ =>
+    }
+
     var i = 0
     while (i < numSequences) {
       val s = inSeq(i)
       val index = s.indexOf(data)
       if (index != -1) {
-        inCov(i) = incrementCoverage(inCov(i), index, amount)
+        incrementCoverage(inCov(i), index, amount)
         return true
       }
       i += 1
@@ -139,22 +158,30 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
                      intoCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int): Int = {
     val prefix = intoSeq(atOffset).substring(0, k - 1)
     var i = 0
-    while (i < numSequences) {
+    while (i < numSequences && i != atOffset) {
       val existingSeq = intoSeq(i)
       if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = intoSeq(i).substring(0, intoSeq(i).length - (k - 1)) ++ intoSeq(atOffset)
         intoCov(i) = intoCov(i) ++ intoCov(atOffset)
         intoSeq.remove(atOffset)
         intoCov.remove(atOffset)
+
         mergeCount += 1
 //        if (mergeCount % 1000 == 0) {
 //          println(s"$mergeCount merged sequences")
 //        }
+
+        //Various sequences and their offsets may have changed
+        if (helperMap != None) {
+          initHelperMap()
+        }
         return numSequences - 1
       }
       i += 1
     }
+
     //No merge
+    updateHelperMap(intoSeq(atOffset), atOffset)
     numSequences
   }
 
@@ -181,12 +208,14 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
         return tryMerge(i, intoSeq, intoCov, numSequences)
       } else if (existingSeq.endsWith(prefix)) {
         intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
-        intoCov(i) = intoCov(i) :+ clipCov(coverage)
+        intoCov(i) += clipCov(coverage)
+        updateHelperMap(intoSeq(i), i)
         return numSequences
       }
       i += 1
     }
     intoSeq += data
+    updateHelperMap(intoSeq(numSequences), numSequences)
     intoCov += Buffer(clipCov(coverage))
     numSequences + 1
   }
@@ -233,6 +262,10 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 
     var seqR: ArrayBuffer[String] = new ArrayBuffer(insertAmt + sequences.size)
     var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(insertAmt + sequences.size)
+    if (seqR.size > helperMapThreshold) {
+     initHelperMap()
+    }
+
     var n = sequences.size
     seqR ++= sequences
     covR ++= this.coverages.map(_.toBuffer)
@@ -246,6 +279,11 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       n = insertSequence(kmer, seqR, covR, n, cov)
     }
 
+    if (n >= warnBucketSize) {
+      Console.err.println(s"WARNING: bucket of size $n, sample sequences:")
+      Console.err.println(seqR.take(10).mkString(" "))
+    }
+
     copy(seqR.toArray, covR.map(_.toArray).toArray, true)
   }
 
@@ -254,6 +292,33 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    */
   def mergeBucket(other: CountingSeqBucket[_]): Self = {
     insertBulk(other.kmers, other.kmerCoverages)
+  }
+
+  //If assigned, maps k-mers to their sequence and position in that sequence.
+  @transient
+  var helperMap: Option[MMap[String, (Int, Int)]] = None
+
+  private def initHelperMap() {
+    val r = MMap[NTSeq, (Int, Int)]()
+    for {
+      (seq, seqIdx) <- kmersBySequence.zipWithIndex
+      (kmer, kmerIdx) <- seq.zipWithIndex
+    } {
+      r += (kmer -> (seqIdx, kmerIdx))
+    }
+    helperMap = Some(r)
+  }
+
+  private def updateHelperMap(sequence: NTSeq, i: Int) {
+    helperMap match {
+      case Some(m) =>
+        for {
+          (kmer, j) <- Read.kmers(sequence, k).zipWithIndex
+        } {
+          m += (kmer -> (i, j))
+        }
+      case _ =>
+    }
   }
 }
 
