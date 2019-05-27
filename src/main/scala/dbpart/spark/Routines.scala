@@ -149,24 +149,26 @@ class Routines(spark: SparkSession) {
 
   def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)],
                   edges: Option[Dataset[(Long, Long)]]) {
-    def smi(ds: Dataset[Int]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
-    def sms(ds: Dataset[Short]) = ds.agg(sum(ds.columns(0))).collect()(0).get(0)
+    def smi(ds: Dataset[Int]) = ds.map(_.toLong).reduce(_ + _)
+    def sms(ds: Dataset[Short]) = ds.map(_.toLong).reduce(_ + _)
 
     val fileStream = new PrintStream("bucketStats.txt")
 
     try {
       Console.withOut(fileStream) {
-        val count = bkts.count()
         val sequenceCount = bkts.map(_._2.sequences.size).cache
         val kmerCount = bkts.map(_._2.numKmers).cache
         val coverage = bkts.flatMap(_._2.coverages.toSeq.flatten).cache
-        println(s"Bucket count: $count")
-        println("Sequence count: sum " + smi(sequenceCount))
+        println("Sequence count in buckets: sum " + smi(sequenceCount))
         sequenceCount.describe().show()
-        println("k-mer count: sum " + smi(kmerCount))
+        sequenceCount.unpersist
+        println("k-mer count in buckets")
+        //k-mer count sum can be seen in "count" from coverage.describe
         kmerCount.describe().show()
+        kmerCount.unpersist
         println("k-mer coverage: sum " + sms(coverage))
         coverage.describe().show()
+        coverage.unpersist
 
         for (e <- edges) {
           val outDeg = e.groupByKey(_._1).count()
@@ -248,7 +250,6 @@ class Routines(spark: SparkSession) {
     split.unpersist
     r
   }
-
 }
 
 object InnerRoutines {
@@ -362,8 +363,6 @@ object BucketStats extends SparkTool("Hypercut-BucketStats") {
     } else {
       (routines.loadBuckets(input), None)
     }
-    verts.cache
-    for (e <- edges) e.cache
     routines.bucketStats(verts, edges)
   }
 }
