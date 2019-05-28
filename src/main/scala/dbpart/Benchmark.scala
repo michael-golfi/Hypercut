@@ -28,23 +28,47 @@ object Benchmark {
     ext.markerSetsInRead(x)
   }
 
+  import scala.language.postfixOps
+
+  val reg = "ATA|CCT|AGG|GT|AC|GC|CC|GG|AT"r
+  def regex(x: String) = {
+    var i = 0
+    val n = x.length() - 3
+    while (i < n) {
+      val r = reg.findFirstIn(x.substring(i, i + 3))
+      i += 1
+    }
+  }
+
+  def indexOf(x: String) = {
+    var i = 0
+    i = x.indexOf("AT")
+    while (i != -1) {
+      i = x.indexOf("AT", i + 1)
+    }
+  }
+
   def measure[A](conf: BenchConf, f: String => A) {
     val n = conf.n.toOption.get
     val thr = conf.threads.toOption.get
 
     val fs = (1 to thr).map(i => Future {
-      val it = ReadFiles.iterator(conf.input.toOption.get).take(n)
-      val start = System.currentTimeMillis()
-      for (i <- it) {
-        f(i)
+      try {
+        val it = ReadFiles.iterator(conf.input.toOption.get).take(n)
+        val start = System.currentTimeMillis()
+        for (i <- it) {
+          f(i)
+        }
+        val end = System.currentTimeMillis()
+        val elapsed = end - start
+        println(s"Finished in ${elapsed} ms")
+        println("%.2f items/ms".format(n / elapsed.toDouble))
+      } catch {
+        case t => t.printStackTrace()
       }
-      val end = System.currentTimeMillis()
-      val elapsed = end - start
-      println(s"Finished in ${elapsed} ms")
-      println("%.2f items/ms".format(n / elapsed.toDouble))
     })
 
-    for (f <- fs) { Await.ready(f, Duration.Inf) }
+    for (f <- fs) Await.ready(f, Duration.Inf)
   }
 
   def main(args: Array[String]) {
@@ -60,6 +84,8 @@ object Benchmark {
       i match {
         case "hashCode" => measure(conf, hashCode(_, conf.k.toOption.get))
         case "dry"      => measure(conf, dry(_, conf.k.toOption.get))
+        case "regex"    => measure(conf, regex(_))
+        case "indexof"  => measure(conf, indexOf(_))
         case "extract" =>
           val space = conf.defaultSpace
           val ext = MarkerSetExtractor.apply(space, conf.k.toOption.get)
