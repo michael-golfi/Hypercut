@@ -1,10 +1,17 @@
 package dbpart.spark
 
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.GraphXUtils
+import org.apache.spark.sql.SparkSession
+import org.rogach.scallop.Subcommand
+
+import dbpart.Commands
+import dbpart.CoreConf
+import dbpart.HCCommand
+import dbpart.RunnableCommand
 import dbpart.bucket.SimpleCountingBucket
 import dbpart.hash.CompactNode
+import dbpart.hash.MarkerSetExtractor
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -59,4 +66,46 @@ abstract class SparkTool(appName: String) {
       master("spark://localhost:7077").config(conf).getOrCreate()
 
   lazy val routines = new Routines(spark)
+}
+
+class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(args) {
+  version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (Spark version)")
+  banner("Usage:")
+  footer("Also see the documentation (to be written).")
+
+  def routines = new Routines(spark)
+
+  val buckets = new Subcommand("buckets") {
+    val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
+
+    val build = new Subcommand("build") with RunnableCommand {
+      val input = opt[String](required = true, descr = "Path to input data files")
+      val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
+
+      def run() {
+         val ext = new MarkerSetExtractor(defaultSpace, k.toOption.get)
+         val minCoverage = None
+         if (edges.toOption.get) {
+           routines.buildBuckets(input.toOption.get, ext, minCoverage, location.toOption)
+         } else {
+           routines.countKmers(input.toOption.get, ext, location.toOption.get)
+         }
+      }
+    }
+    addSubcommand(build)
+
+    val stats = new HCCommand("stats") (
+      routines.bucketStats(location.toOption.get)
+    )
+    addSubcommand(stats)
+  }
+  addSubcommand(buckets)
+
+  verify()
+}
+
+object Hypercut extends SparkTool("Hypercut") {
+  def main(args: Array[String]) {
+    Commands.run(new HCSparkConf(args, spark))
+  }
 }

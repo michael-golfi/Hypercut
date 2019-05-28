@@ -52,7 +52,7 @@ class Routines(spark: SparkSession) {
     reads.flatMap(r => ext.compactMarkers(r))
   }
 
-  /*
+  /**
    * The marker sets in a read, in sequence (in md5-hashed form),
    * and the corresponding segments that were discovered, in sequence.
    */
@@ -70,10 +70,19 @@ class Routines(spark: SparkSession) {
     })
   }
 
+  /**
+   * Simplified version that only builds buckets (thus counting k-mers), not collecting edges.
+   */
   def countKmers(reads: Dataset[String], ext: MarkerSetExtractor) = {
     val minCoverage = None
     val segments = splitReads(reads, ext)
     processedToBuckets(segments, ext, minCoverage)
+  }
+
+  def countKmers(input: String, ext: MarkerSetExtractor, output: String) {
+    val reads = getReads(input)
+    val bkts = countKmers(reads, ext)
+    writeBuckets(bkts, output)
   }
 
   def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
@@ -182,6 +191,17 @@ class Routines(spark: SparkSession) {
     } finally {
       fileStream.close()
     }
+  }
+
+  def bucketStats(input: String) {
+    val (verts, edges) = if ((new File(s"${input}_edges")).exists) {
+      loadBucketsEdges(input) match {
+        case (b, e) => (b, Some(e))
+      }
+    } else {
+      (loadBuckets(input), None)
+    }
+    bucketStats(verts, edges)
   }
 
   def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
@@ -341,32 +361,6 @@ object AssembleRaw extends SparkTool("Hypercut-AssembleRaw") {
   }
 }
 
-object BuildBuckets extends SparkTool("Hypercut-BuildBuckets") {
-  def main(args: Array[String]) {
-    val input = args(0)
-    val output = args(1)
-    val k = args(2).toInt
-//    val minCoverage = Some(args(3).toShort)
-    val minCoverage = None
-    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
-    val bkts = routines.buildBuckets(input, ext, minCoverage, Some(output))
-  }
-}
-
-object BucketStats extends SparkTool("Hypercut-BucketStats") {
-  def main(args: Array[String]) {
-    val input = args(0)
-    val (verts, edges) = if ((new File(s"${input}_edges")).exists) {
-      routines.loadBucketsEdges(input) match {
-        case (b,e) => (b, Some(e))
-      }
-    } else {
-      (routines.loadBuckets(input), None)
-    }
-    routines.bucketStats(verts, edges)
-  }
-}
-
 object AssembleBuckets extends SparkTool("Hypercut-AssembleBuckets") {
   def main(args: Array[String]) {
     val input = args(0)
@@ -374,17 +368,5 @@ object AssembleBuckets extends SparkTool("Hypercut-AssembleBuckets") {
     val k = args(2).toInt
     val pg = routines.toPathGraph(routines.loadBucketGraph(input), k)
     routines.assemble(pg, k, None, output)
-  }
-}
-
-object CountKmers extends SparkTool("Hypercut-CountKmers") {
-    def main(args: Array[String]) {
-    val input = args(0)
-    val output = args(1)
-    val k = args(2).toInt
-    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
-    val reads = routines.getReads(input)
-    val bkts = routines.countKmers(reads, ext)
-    routines.writeBuckets(bkts, output)
   }
 }

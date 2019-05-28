@@ -8,6 +8,18 @@ import dbpart.bucketdb.SeqBucketDB
 import dbpart.hash.MarkerSpace
 import dbpart.hash.MarkerSetExtractor
 
+object Commands {
+  def run(conf: ScallopConf) {
+    for (com <- conf.subcommands) {
+      com match {
+      case command: RunnableCommand =>
+        command.run
+      case _ =>
+      }
+    }
+  }
+}
+
 trait RunnableCommand {
   this: Subcommand =>
 
@@ -31,7 +43,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 }
 
 class Conf(args: Seq[String]) extends CoreConf(args) {
-  version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson")
+  version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (standalone)")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
 
@@ -166,14 +178,6 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
 object Hypercut {
 
   def main(args: Array[String]) {
-    val conf = new Conf(args)
-
-    for (com <- conf.subcommands) {
-      com match {
-      case command: RunnableCommand =>
-        command.run
-      case _ =>
-      }
-    }
+    Commands.run(new Conf(args))
   }
 }
