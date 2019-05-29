@@ -73,6 +73,10 @@ final case class MarkerSpace(val byPriority: Seq[String], val n: Int) {
     Marker(pos, getFeatures(pattern, sortValue))
   }
 
+  def create(pattern: String, pos: Int, sortValue: Int = 0): Marker = {
+    Marker(pos, new Features(pattern, priorityOf(pattern), sortValue))
+  }
+
   val priorityMap = Map() ++ byPriority.zipWithIndex
   def priorityOf(mk: String) = priorityMap(mk)
 

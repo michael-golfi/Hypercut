@@ -14,23 +14,36 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
 
   val n = space.n
 
+  @volatile
+  lazy val scanner = new ScannerFSM(space.byPriority)
+
   /**
    * Scans a single read, using mutable state to track the current marker set
    * in a window.
    */
   final class MarkerExtractor(read: String) {
+    var matches = scanner.allMatches(read).reverse
     var scannedToPos: Int = space.maxMotifLength - 2
 
     var windowMarkers = new TopRankCache(PosRankList(), n)
 
     def markerAt(pos: Int): Option[Marker] = {
-      //rely on these also being rank sorted
-      val candidates = space.byFirstChar.get(read.charAt(pos))
-      candidates match {
-        case Some(map) =>
-          map.find(m => read.regionMatches(pos + 1, m, 1, m.length() - 1)).map(m => space.get(m, pos))
-        case None => None
+      matches = matches.dropWhile(_._1 < pos)
+      if (!matches.isEmpty && matches.head._1 == pos) {
+        //Space.create allocates a new object each time, as opposed to space.get which
+        //saves markers and reuses them
+        Some(space.create(matches.head._2, matches.head._1))
+      } else {
+        None
       }
+
+      //rely on these also being rank sorted
+//      val candidates = space.byFirstChar.get(read.charAt(pos))
+//      candidates match {
+//        case Some(map) =>
+//          map.find(m => read.regionMatches(pos + 1, m, 1, m.length() - 1)).map(m => space.get(m, pos))
+//        case None => None
+//      }
     }
 
     /**
