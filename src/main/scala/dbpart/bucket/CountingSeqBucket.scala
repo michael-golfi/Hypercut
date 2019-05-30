@@ -121,7 +121,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Find a k-mer in the bucket, incrementing its coverage.
    * @return true iff the sequence was found.
    */
-  def findAndIncrement(data: String, inSeq: Seq[String],
+  def findAndIncrement(data: String, inSeq: Seq[StringBuilder],
                 inCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int,
                 amount: Coverage = 1): Boolean = {
     helperMap match {
@@ -154,15 +154,16 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * @param atOffset use the prefix of this sequence as the basis for the merge.
    * @return
    */
-  def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[String],
+  def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[StringBuilder],
                      intoCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int): Int = {
     val prefix = intoSeq(atOffset).substring(0, k - 1)
     var i = 0
     while (i < numSequences && i != atOffset) {
       val existingSeq = intoSeq(i)
       if (existingSeq.endsWith(prefix)) {
-        intoSeq(i) = intoSeq(i).substring(0, intoSeq(i).length - (k - 1)) ++ intoSeq(atOffset)
-        intoCov(i) = intoCov(i) ++ intoCov(atOffset)
+        intoSeq(i) = intoSeq(atOffset).insert(0,
+            intoSeq(i).substring(0, intoSeq(i).length - (k - 1)))
+        intoCov(i) ++= intoCov(atOffset)
         intoSeq.remove(atOffset)
         intoCov.remove(atOffset)
 
@@ -190,7 +191,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Returns the new updated sequence count (may decrease due to merging).
    * The sequence must be a k-mer.
    */
-  def insertSequence(data: String, intoSeq: ArrayBuffer[String],
+  def insertSequence(data: String, intoSeq: ArrayBuffer[StringBuilder],
                      intoCov: ArrayBuffer[Buffer[Coverage]], numSequences: Int,
                      coverage: Coverage = 1): Int = {
     val suffix = data.substring(1)
@@ -199,22 +200,22 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     while (i < numSequences) {
       val existingSeq = intoSeq(i)
       if (existingSeq.startsWith(suffix)) {
-        intoSeq(i) = (data.charAt(0) + existingSeq)
-        intoCov(i) = clipCov(coverage) +: intoCov(i)
+        intoSeq(i) = existingSeq.insert(0, data.charAt(0))
+        intoCov(i).insert(0, clipCov(coverage))
 
         //A merge is possible if a k-mer has both a prefix and a suffix match.
         //So it is sufficient to check for it here, as it would never hit the
         //append case below.
         return tryMerge(i, intoSeq, intoCov, numSequences)
       } else if (existingSeq.endsWith(prefix)) {
-        intoSeq(i) = (existingSeq + data.charAt(data.length() - 1))
+        intoSeq(i) = (existingSeq += data.charAt(data.length() - 1))
         intoCov(i) += clipCov(coverage)
         updateHelperMap(intoSeq(i), i)
         return numSequences
       }
       i += 1
     }
-    intoSeq += data
+    intoSeq += new StringBuilder(data)
     updateHelperMap(intoSeq(numSequences), numSequences)
     intoCov += Buffer(clipCov(coverage))
     numSequences + 1
@@ -230,12 +231,12 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Insert k-mers with corresponding coverages. Each value is a single k-mer.
    */
   def insertBulk(values: Iterable[String], coverages: Iterator[Coverage]): Self = {
-    var seqR: ArrayBuffer[String] = new ArrayBuffer(values.size + sequences.size)
+    var seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(values.size + sequences.size)
     var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(values.size + sequences.size)
 
     var sequencesUpdated = false
     var n = sequences.size
-    seqR ++= sequences
+    seqR ++= sequences.iterator.map(s => new StringBuilder(s))
     covR ++= this.coverages.map(_.toBuffer)
 
     for {
@@ -246,7 +247,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       sequencesUpdated = true
     }
 
-    copy(seqR.toArray, covR.map(_.toArray).toArray, sequencesUpdated)
+    copy(seqR.map(_.toString).toArray, covR.map(_.toArray).toArray, sequencesUpdated)
   }
 
   /**
@@ -260,14 +261,15 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     var r = this
     val insertAmt = segmentsCoverages.size
 
-    var seqR: ArrayBuffer[String] = new ArrayBuffer(insertAmt + sequences.size)
-    var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(insertAmt + sequences.size)
-    if (seqR.size > helperMapThreshold) {
+    val bufSize = insertAmt + sequences.size
+    var seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(bufSize)
+    var covR: ArrayBuffer[Buffer[Coverage]] = new ArrayBuffer(bufSize)
+    if (bufSize > helperMapThreshold) {
      initHelperMap()
     }
 
     var n = sequences.size
-    seqR ++= sequences
+    seqR ++= sequences.map(x => new StringBuilder(x))
     covR ++= this.coverages.map(_.toBuffer)
 
     for {
@@ -284,7 +286,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       Console.err.println(seqR.take(10).mkString(" "))
     }
 
-    copy(seqR.toArray, covR.map(_.toArray).toArray, true)
+    copy(seqR.map(_.toString).toArray,
+      covR.map(_.toArray).toArray, true)
   }
 
   /**
@@ -307,6 +310,10 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       r += (kmer -> (seqIdx, kmerIdx))
     }
     helperMap = Some(r)
+  }
+
+  private def updateHelperMap(sequence: StringBuilder, i: Int) {
+    updateHelperMap(sequence.toString, i)
   }
 
   private def updateHelperMap(sequence: NTSeq, i: Int) {
