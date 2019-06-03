@@ -134,8 +134,8 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
 
   val analyse = new Subcommand("analyse") with RunnableCommand {
     banner("Analyse reads and display their fingerprints.")
-    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace,
-      numMarkers.toOption.get)
+
+    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace, k.toOption.get)
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
