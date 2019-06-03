@@ -15,7 +15,7 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   val n = space.n
 
   @volatile
-  lazy val scanner = new ScannerFSM(space.byPriority)
+  lazy val scanner = new FSMScanner(space.byPriority)
 
   /**
    * Scans a single read, using mutable state to track the current marker set

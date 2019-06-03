@@ -1,14 +1,14 @@
 package dbpart.hash
 
 import scala.annotation.tailrec
-import scala.collection.mutable.Buffer
-import miniasm.genome.util.DNAHelpers
 
 /**
- * In the 'following' array the next state will be looked up through the value of the seen character.
+ * In the 'transitions' array the next state will be looked up through the value of the seen character.
  */
 final case class ScannerState(val seenString: String, foundMarker: Option[String] = None,
   var transitions: Array[ScannerState]) {
+
+  val startOffset = (seenString.length - 1)
 
   override def toString = s"State[$seenString]"
 
@@ -24,9 +24,10 @@ final case class ScannerState(val seenString: String, foundMarker: Option[String
  * We expect to match on short markers, so we are not too worried about wasted memory
  * (most of the positions in the transitions arrays will be unused).
  */
-final class ScannerFSM(val markersByPriority: Seq[String]) {
-  val initState = ScannerState("", None, Array())
+final class FSMScanner(val markersByPriority: Seq[String]) {
   val alphabet = (0.toChar to 'T').toArray //includes ACTG
+  val initState = ScannerState("", None, alphabet.map(a => null))
+  val usedCharSet = Seq('A', 'C', 'T', 'G')
 
   val maxPtnLength = markersByPriority.map(_.length).max
   def padToLength(ptn: String): Seq[String] = {
@@ -56,21 +57,40 @@ final class ScannerFSM(val markersByPriority: Seq[String]) {
     }).toArray
   }
 
-  initState.transitions = buildStatesFrom("", trueMatches.keys.toSeq)
+  def buildStates() {
+    val matchKeys = trueMatches.keys.toSeq
+    var tmpMap = Map[String, ScannerState]("" -> initState)
+    var i = 1
+    var strings = usedCharSet.map(_.toString)
+    while (i <= maxPtnLength) {
+      //Set up the states for seen strings of a certain length
+      //Not all will be needed.
+      tmpMap ++= strings.map(s => (s -> ScannerState(s, trueMatches.get(s),
+        alphabet.map(a => initState))))
 
-  def propagateTransitions(from: ScannerState, seen: String, visitedStrings: Set[String] = Set()) {
-    if (from.isTerminal(initState) && !(from eq initState) && seen.length > 1) {
-      from.transitions = getState(seen.substring(1)).transitions
-    }
-    for (a <- alphabet) {
-      //Check string length to avoid infinite loop
-      if (from.transitions(a) != initState && from.transitions(a).seenString.length() > seen.length()) {
-        propagateTransitions(from.transitions(a), seen + a)
+      for {
+        s <- strings;
+        a <- usedCharSet
+      } {
+        //Transition into same length, e.g. AGG into GGT
+        tmpMap(s).transitions(a) = tmpMap(s.substring(1) + a)
+        //Transition into longer, e.g. AG into AGG, when a match is possible
+        if (matchKeys.exists(_.startsWith(s))) {
+          tmpMap(s.dropRight(1)).transitions(s.last) = tmpMap(s)
+        }
       }
+      i += 1
+      strings = strings.flatMap(s => usedCharSet.map(a => s + a))
+    }
+    for {
+      a <- usedCharSet
+    } {
+      //Initial transitions from the init state
+      initState.transitions(a) = tmpMap(a.toString)
     }
   }
 
-  propagateTransitions(initState, "")
+  buildStates()
 
   @tailrec
   def getState(seq: String, from: ScannerState = initState): ScannerState = {
@@ -88,8 +108,11 @@ final class ScannerFSM(val markersByPriority: Seq[String]) {
     while (i < data.length) {
       state = state.advance(data.charAt(i))
       state.foundMarker match {
-        case Some(m) => r ::= (((i - m.length() + 1), m))
+        case Some(m) =>
+//          println(s"$i $m ${state.seenString} ${state.startOffset}")
+          r ::= (((i - state.startOffset), m))
         case _ =>
+//          println(s"$i ${state.seenString}")
       }
       i += 1
     }
