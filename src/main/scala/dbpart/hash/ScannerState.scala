@@ -38,7 +38,8 @@ final class ScannerFSM(val markersByPriority: Seq[String]) {
     }
   }
 
-  //Construct padded versions such as ACT, ACG, ACT from AC when ACA is also a pattern
+  //Construct padded states such as ACT, ACG, ACT from AC when ACA is also a pattern
+  //This map will match an extended marker such as ACT to its "true match" AC
   val trueMatches = Map() ++ markersByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
 
   def buildStatesFrom(seen: String, filtered: Seq[String]): Array[ScannerState] = {
@@ -94,5 +95,4 @@ final class ScannerFSM(val markersByPriority: Seq[String]) {
     }
     r
   }
-
 }
