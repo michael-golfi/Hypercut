@@ -64,7 +64,7 @@ object Benchmark {
         println(s"Finished in ${elapsed} ms")
         println("%.2f items/ms".format(n / elapsed.toDouble))
       } catch {
-        case t => t.printStackTrace()
+        case e: Exception => e.printStackTrace()
       }
     })
 
