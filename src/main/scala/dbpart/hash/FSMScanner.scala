@@ -27,7 +27,7 @@ final case class ScannerState(val seenString: String, foundMarker: Option[String
 final class FSMScanner(val markersByPriority: Seq[String]) {
   val alphabet = (0.toChar to 'T').toArray //includes ACTG
   val initState = ScannerState("", None, alphabet.map(a => null))
-  val usedCharSet = Seq('A', 'C', 'T', 'G')
+  val usedCharSet = Seq('A', 'C', 'T', 'G', 'N')
 
   val maxPtnLength = markersByPriority.map(_.length).max
   def padToLength(ptn: String): Seq[String] = {
