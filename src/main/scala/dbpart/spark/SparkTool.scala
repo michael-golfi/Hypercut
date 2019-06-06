@@ -18,8 +18,8 @@ abstract class SparkTool(appName: String) {
     val conf = new SparkConf
 
     conf.registerKryoClasses(Array(
-      classOf[SimpleCountingBucket], classOf[CompactNode], classOf[PathNode],
-      classOf[Array[SimpleCountingBucket]], classOf[Array[CompactNode]], classOf[Array[PathNode]],
+      classOf[SimpleCountingBucket], classOf[CompactNode], classOf[BucketNode],
+      classOf[Array[SimpleCountingBucket]], classOf[Array[CompactNode]], classOf[Array[BucketNode]],
 
       classOf[String], classOf[Array[String]], classOf[Array[Short]], classOf[Array[Array[Short]]],
       classOf[Array[Byte]], classOf[Array[Array[Byte]]], classOf[Tuple2[Any, Any]],

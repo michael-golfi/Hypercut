@@ -109,8 +109,7 @@ class Routines(spark: SparkSession) {
   }
 
   type BucketGraph = Graph[SimpleCountingBucket, Int]
-  type PathGraph = Graph[PathNode, Int]
-  type PathGraph2 = Graph[Int, PathNode]
+  type CompactGraph = Graph[BucketNode, Int]
 
   /**
    * Construct a GraphX graph where the buckets are vertices.
@@ -204,63 +203,36 @@ class Routines(spark: SparkSession) {
     bucketStats(verts, edges)
   }
 
-  def toPathGraph(graph: BucketGraph, k: Int): PathGraph = {
-    val edges = graph.triplets.flatMap(tr => {
-      val fromNodes = tr.srcAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
-      val toNodes = tr.dstAttr.sequencesWithCoverage.map(x => new PathNode(x._1, x._2))
-      val edges = (for {
-        from <- fromNodes; to <- toNodes
-        if from.end(k) == to.begin(k)
-        edge = (longId(from), longId(to))
-      } yield edge)
-      edges
-    })
-
-    val verts = graph.vertices.flatMap(v => v._2.sequencesWithCoverage.map(x =>
-      (longId(x._1), new PathNode(x._1, x._2, seenId = longId(x._1)))))
-    val r = Graph.fromEdgeTuples(edges, 0, edgeStorageLevel = StorageLevel.MEMORY_AND_DISK,
-      vertexStorageLevel = StorageLevel.MEMORY_AND_DISK).
-      outerJoinVertices(verts)((vid, data, optNode) => optNode.get)
-      .partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS)
-      .cache
-    r
-  }
-
   /**
-   * Traverse the graph in forward direction, merging unambiguous paths.
+   * Partition buckets using a BFS search. 
+   * @param modulo Starting points for partitions. The number of partitions will be inversely proportional to this. 
    */
-  def mergePaths(graph: PathGraph, k: Int): RDD[String] = {
-
+  def partitionBuckets(graph: BucketGraph)(modulo: Long = 10000): CompactGraph = {
     val nodeIn = graph.inDegrees
     val nodeOut = graph.outDegrees
-    var current = graph.joinVertices(nodeIn)((id, node, deg) => node.
-      copy(inDeg = deg)).
-      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg)).
-      removeSelfEdges()
+    var current = graph.mapVertices { case(id, b) => new BucketNode() }
+//      joinVertices(nodeIn)((id, node, deg) => node.copy(inDeg = deg)).
+//      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
 
-    current.cache
+    val result = current.pregel(-1L, Int.MaxValue, EdgeDirection.Either)(bfsProg(modulo),
+        bfsMsg, (x, y) => x)
 
-    current.pregel(List[(VertexId, Int)](), Int.MaxValue,
-      EdgeDirection.Out)(mergeProg(k), sendMsg(k), _ ++ _)
-
-    current.vertices.groupBy(_._2.seenId).mapValues(joinPath(_, k)).values
+    //Some nodes may not have been reached - will be left in partition "-1".
+        
+    result
   }
 
-  def readsToPathGraph(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage]) = {
-    toPathGraph(buildBuckets(input, ext, minCoverage), ext.k)
-  }
-
-  def assemble(pg: PathGraph, k: Int, minCoverage: Option[Coverage], output: String) {
-    val merged = mergePaths(pg, k)
-    merged.cache
-
-    val printer = new PathPrinter(output, false)
-    for (contig <- merged.toLocalIterator) {
-      printer.printSequence("hypercut-gx", contig, None)
-    }
-
-    printer.close()
-  }
+//  def assemble(pg: PathGraph, k: Int, minCoverage: Option[Coverage], output: String) {
+//    val merged = mergePaths(pg, k)
+//    merged.cache
+//
+//    val printer = new PathPrinter(output, false)
+//    for (contig <- merged.toLocalIterator) {
+//      printer.printSequence("hypercut-gx", contig, None)
+//    }
+//
+//    printer.close()
+//  }
 
   def buildBuckets(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage],
                    outputLocation: Option[String] = None) = {
@@ -281,92 +253,27 @@ object InnerRoutines {
 
   def longId(n: CompactNode): Long = longId(n.data)
 
-  def longId(node: PathNode): Long =
-    longId(node.seq)
-
-  //Either start a path, or merge into one that we received a message from.
-  def mergeProg(k: Int)(id: VertexId, node: PathNode, incoming: PathMsg): PathNode = {
-    incoming match {
-      case (seenId, seqPos) :: Nil =>
-        if (seenId == node.seenId) {
-          println(s"Loop detected at $id")
-          node.copy(inLoop = true)
-        } else {
-          node.copy(seenId = seenId, seqPos = seqPos)
-        }
-      case Nil =>
-        //Initial message
-        if (node.startPoint) {
-          node.copy(seqPos = 1)
-        } else {
-          node
-        }
-      case _ => node
+  def bfsProg(mod: Long)(id: VertexId, node: BucketNode, incoming: Long): BucketNode = {
+    if (incoming == -1) {
+      //Initial message
+      if (id % mod == 0) {
+        node.copy(partition = id / mod)
+      } else {
+        node
+      }
+    } else {
+      //partition should be -1
+      node.copy(partition = incoming)
     }
   }
 
-  def sendMsg(k: Int)(triplet: EdgeTriplet[PathNode, Int]): Iterator[(VertexId, PathMsg)] = {
+  def bfsMsg(triplet: EdgeTriplet[BucketNode, Int]): Iterator[(VertexId, Long)] = {
     val src = triplet.srcAttr
     val dst = triplet.dstAttr
-
-    if (!dst.startPoint &&
-      src.inPath &&
-      (src.startPoint || !dst.stopPoint)) {
-      Iterator((triplet.dstId, List(src.msg)))
-    } else {
-      Iterator.empty
-    }
-  }
-
-  /**
-   * Simple algorithm for concatenating a small number of unsorted path nodes.
-   */
-  def joinPath(nodes: Iterable[(VertexId, PathNode)], k: Int): String = {
-    //TODO handling of coverage etc
-
-    import scala.collection.mutable.{ Set => MSet }
-    var rem = MSet() ++ nodes.map(_._2.seq)
-    var build = rem.head
-    rem -= build
-    while (!rem.isEmpty) {
-      val buildPre = DNAHelpers.kmerPrefix(build, k)
-      val buildSuf = DNAHelpers.kmerSuffix(build, k)
-      rem.find(_.endsWith(buildPre)) match {
-        case Some(front) =>
-          rem -= front
-          build = DNAHelpers.withoutSuffix(front, k) + build
-        case _ =>
-      }
-
-      rem.find(_.startsWith(buildSuf)) match {
-        case Some(back) =>
-          rem -= back
-          build = build + DNAHelpers.withoutPrefix(back, k)
-        case _ =>
-      }
-    }
-    build
-  }
-}
-
-object AssembleRaw extends SparkTool("Hypercut-AssembleRaw") {
-  def main(args: Array[String]) {
-    val input = args(0)
-    val output = args(1)
-    val k = args(2).toInt
-    val minCoverage = Some(args(3).toShort)
-    val ext = MarkerSetExtractor.fromSpace("mixedTest", 5, k)
-    val pg = routines.readsToPathGraph(input, ext, minCoverage)
-    routines.assemble(pg, k, minCoverage, output)
-  }
-}
-
-object AssembleBuckets extends SparkTool("Hypercut-AssembleBuckets") {
-  def main(args: Array[String]) {
-    val input = args(0)
-    val output = args(1)
-    val k = args(2).toInt
-    val pg = routines.toPathGraph(routines.loadBucketGraph(input), k)
-    routines.assemble(pg, k, None, output)
+    val it1 = if (src.partition != -1 && dst.partition == -1) Iterator((triplet.dstId, src.partition))
+      else Iterator.empty
+    val it2 = if (dst.partition != -1 && src.partition == -1) Iterator((triplet.srcId, dst.partition))
+      else Iterator.empty
+    it1 ++ it2
   }
 }
