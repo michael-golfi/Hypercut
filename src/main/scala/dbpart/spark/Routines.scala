@@ -155,8 +155,9 @@ class Routines(spark: SparkSession) {
     r
   }
 
-  def bucketStats(bkts: Dataset[(Long, SimpleCountingBucket)],
-                  edges: Option[Dataset[(Long, Long)]]) {
+  def bucketStats(
+    bkts:  Dataset[(Long, SimpleCountingBucket)],
+    edges: Option[Dataset[(Long, Long)]]) {
     def smi(ds: Dataset[Int]) = ds.map(_.toLong).reduce(_ + _)
     def sms(ds: Dataset[Short]) = ds.map(_.toLong).reduce(_ + _)
 
@@ -179,12 +180,15 @@ class Routines(spark: SparkSession) {
         coverage.unpersist
 
         for (e <- edges) {
-          val outDeg = e.groupByKey(_._1).count()
+          println(s"Total number of edges: " + e.count())
+          val outDeg = e.groupByKey(_._1).count().cache
           println("Outdegree: ")
           outDeg.describe().show()
+          outDeg.unpersist
           println("Indegree: ")
-          val inDeg = e.groupByKey(_._2).count()
+          val inDeg = e.groupByKey(_._2).count().cache
           inDeg.describe().show()
+          inDeg.unpersist
         }
       }
     } finally {
@@ -204,8 +208,8 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Partition buckets using a BFS search. 
-   * @param modulo Starting points for partitions. The number of partitions will be inversely proportional to this. 
+   * Partition buckets using a BFS search.
+   * @param modulo Starting points for partitions. The number of partitions will be inversely proportional to this.
    */
   def partitionBuckets(graph: BucketGraph)(modulo: Long = 10000): CompactGraph = {
     val nodeIn = graph.inDegrees
@@ -218,7 +222,7 @@ class Routines(spark: SparkSession) {
         bfsMsg, (x, y) => x)
 
     //Some nodes may not have been reached - will be left in partition "-1".
-        
+
     result
   }
 
