@@ -29,7 +29,7 @@ class Routines(spark: SparkSession) {
   import InnerRoutines._
 
   //For graph partitioning, it may help if this number is a square
-  val NUM_PARTITIONS = 256
+  val NUM_PARTITIONS = 400
 
   /**
    * Load reads and their reverse complements from DNA files.
@@ -109,7 +109,7 @@ class Routines(spark: SparkSession) {
   }
 
   type BucketGraph = Graph[SimpleCountingBucket, Int]
-  type CompactGraph = Graph[BucketNode, Int]
+  type CompactGraph = Graph[BucketNode, _]
 
   /**
    * Construct a GraphX graph where the buckets are vertices.
@@ -128,7 +128,8 @@ class Routines(spark: SparkSession) {
       reads.unpersist()
     }
 
-    val r = Graph.fromEdgeTuples(edges.rdd, 0).
+    val r = Graph.fromEdgeTuples(edges.rdd, 0, None,
+      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK).
       outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
@@ -147,9 +148,26 @@ class Routines(spark: SparkSession) {
     (bkts, edges)
   }
 
+  /**
+   * Build graph with edges only, setting all vertex attributes to 0.
+   */
+  def loadEdgeGraph(readLocation: String) = {
+    //Note: probably better to repartition buckets and edges at an earlier stage, before
+    //saving to parquet
+    val (_, edges) = loadBucketsEdges(readLocation)
+    Graph.fromEdgeTuples(edges.repartition(NUM_PARTITIONS).rdd, 0, None,
+      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK)
+      .partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS)
+  }
+
+  /**
+   * Build graph with edges and buckets (as vertices).
+   */
   def loadBucketGraph(readLocation: String): BucketGraph = {
     val (verts, edges) = loadBucketsEdges(readLocation)
-    val r = Graph.fromEdgeTuples(edges.rdd, 0).
+    val r = Graph.fromEdgeTuples(edges.rdd, 0, None,
+      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK).
+      partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS).
       outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
     r.cache
     r
@@ -209,12 +227,13 @@ class Routines(spark: SparkSession) {
 
   /**
    * Partition buckets using a BFS search.
-   * @param modulo Starting points for partitions. The number of partitions will be inversely proportional to this.
+   * @param modulo Starting points for partitions (id % modulo == 0).
+   * The number of partitions will be inversely proportional to this number.
    */
-  def partitionBuckets(graph: BucketGraph)(modulo: Long = 10000): CompactGraph = {
+  def partitionBuckets(graph: Graph[Int, _])(modulo: Long = 10000): CompactGraph = {
     val nodeIn = graph.inDegrees
     val nodeOut = graph.outDegrees
-    var current = graph.mapVertices { case(id, b) => new BucketNode() }
+    var current = graph.mapVertices { case(id, _) => new BucketNode() }
 //      joinVertices(nodeIn)((id, node, deg) => node.copy(inDeg = deg)).
 //      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
 
@@ -271,7 +290,7 @@ object InnerRoutines {
     }
   }
 
-  def bfsMsg(triplet: EdgeTriplet[BucketNode, Int]): Iterator[(VertexId, Long)] = {
+  def bfsMsg(triplet: EdgeTriplet[BucketNode, _]): Iterator[(VertexId, Long)] = {
     val src = triplet.srcAttr
     val dst = triplet.dstAttr
     val it1 = if (src.partition != -1 && dst.partition == -1) Iterator((triplet.dstId, src.partition))

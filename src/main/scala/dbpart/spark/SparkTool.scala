@@ -94,6 +94,16 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(build)
 
+    val partition = new Subcommand("partition") with RunnableCommand {
+      val modulo = opt[Long](required = false, default = Some(10000), descr = "Modulo for BFS starting points")
+
+      def run() {
+        val eg = routines.loadEdgeGraph(location.toOption.get)
+        routines.partitionBuckets(eg)(modulo.toOption.get)
+      }
+    }
+    addSubcommand(partition)
+
     val stats = new HCCommand("stats") (
       routines.bucketStats(location.toOption.get)
     )
