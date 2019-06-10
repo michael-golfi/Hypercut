@@ -89,10 +89,11 @@ class Routines(spark: SparkSession) {
                        minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
     val segments = reads.flatMap(x => x)
     val countedSegments =
-      segments.groupByKey(x => x).count
+      segments.groupBy(segments.columns(0), segments.columns(1)).count.
+      as[(Long, String, Long)]
 
-    val byBucket = countedSegments.groupByKey({ case ((key, _), _) => key }).
-      mapValues({ case ((_, read), count) => (read, count) })
+    val byBucket = countedSegments.groupByKey({ case (key, _, _) => key }).
+      mapValues({ case (_, read, count) => (read, count) })
 
     //Note: reduce, or an aggregator, may work better than mapGroups here.
     //mapGroups may cause high memory usage.
