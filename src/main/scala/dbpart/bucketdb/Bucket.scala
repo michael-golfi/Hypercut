@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuilder
 import java.util.Arrays
 import dbpart.shortread.Read
-import dbpart.bucket.CoverageBucket
+import dbpart.bucket.AbundanceBucket
 import dbpart.bucket.CountingSeqBucket
 
 trait Unpacker[Packed, B <: Bucket[Packed, B]] {
@@ -130,26 +130,28 @@ object PackedSeqBucket {
   def newBucket(kmers: List[String], k: Int) =
     new PackedSeqBucket(Array(), Array(), k).insertBulk(kmers).get
 
-  class Unpacker(dbLocation: String, minCoverage: Option[Coverage], buckets: Int)
+  class Unpacker(dbLocation: String, minAbundance: Option[Abundance], buckets: Int)
     extends dbpart.bucketdb.Unpacker[String, PackedSeqBucket] {
 
-    val covDB = new CoverageDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
+    //Keeping the old _cov suffix name for legacy reasons -
+    //may eventually rename this
+    val abundDB = new AbundanceDB(dbLocation.replace(".kch", "_cov.kch"), buckets)
 
     def unpack(key: String, value: String, k: Int): PackedSeqBucket = {
-      val cov = covDB.get(key).coverages.toArray
-      new PackedSeqBucket(value.split(separator, -1), cov, k).atMinCoverage(minCoverage)
+      val abund = abundDB.get(key).abundances.toArray
+      new PackedSeqBucket(value.split(separator, -1), abund, k).atMinAbundance(minAbundance)
     }
   }
 }
 
 /**
- * A bucket that counts the coverage of each k-mer.
+ * A bucket that counts the abundance of each k-mer.
  */
 final case class PackedSeqBucket(override val sequences: Array[String],
-  override val coverages: Array[Array[Coverage]], 
+  override val abundances: Array[Array[Abundance]],
   override val k: Int,
   var sequencesUpdated: Boolean = false)
-  extends CountingSeqBucket[PackedSeqBucket](sequences, coverages, k) with Bucket[String, PackedSeqBucket] {
+  extends CountingSeqBucket[PackedSeqBucket](sequences, abundances, k) with Bucket[String, PackedSeqBucket] {
 
   import CountingSeqBucket._
   import PackedSeqBucket._
@@ -164,12 +166,12 @@ final case class PackedSeqBucket(override val sequences: Array[String],
     insertBulk(Seq(value))
 
   /**
-   * Insert a number of k-mers, each with coverage 1.
+   * Insert a number of k-mers, each with abundance 1.
    */
   override def insertBulk(values: Iterable[String]): Option[PackedSeqBucket] =
     Some(insertBulk(values, values.iterator.map(x => 1)))
 
-  def copy(sequences: Array[String], coverage: Array[Array[Coverage]],
+  def copy(sequences: Array[String], abundance: Array[Array[Abundance]],
            sequencesUpdated: Boolean): PackedSeqBucket =
-    new PackedSeqBucket(sequences, coverage, k, sequencesUpdated)
+    new PackedSeqBucket(sequences, abundance, k, sequencesUpdated)
 }

@@ -348,22 +348,22 @@ object SeqBucketDB {
 /**
  * BucketDB that merges k-mers into contiguous paths.
  * Buckets will contain lists of paths, not KMers.
- * The coverage of each k-mer is also tracked in an auxiliary database (covDB).
+ * The abundance of each k-mer is also tracked in an auxiliary database (AbundanceDB).
  *
- * The coverage filter, if present, affects some of the accessor methods.
+ * The abundance filter, if present, affects some of the accessor methods.
  */
-final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minCoverage: Option[Coverage])
+final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minAbundance: Option[Abundance])
 extends StringBucketDB[PackedSeqBucket](location, options,
-    new PackedSeqBucket.Unpacker(location, minCoverage, buckets), k) {
+    new PackedSeqBucket.Unpacker(location, minAbundance, buckets), k) {
 
-  def covDB = unpacker.asInstanceOf[PackedSeqBucket.Unpacker].covDB
+  def abundDB = unpacker.asInstanceOf[PackedSeqBucket.Unpacker].abundDB
 
-  //Traversing the coverages should be cheaper than traversing the full buckets
+  //Traversing the abundances should be cheaper than traversing the full buckets
   //for counting the number of sequences
   override def bucketSizeHistogram(limitMax: Option[Long] = None) = {
     var sizes = Vector[Int]()
-    covDB.visitBucketsReadonly((key, bucket) => {
-      sizes :+= bucket.coverages.size
+    abundDB.visitBucketsReadonly((key, bucket) => {
+      sizes :+= bucket.abundances.size
     })
     new Histogram(sizes, 10, limitMax)
   }
@@ -372,18 +372,18 @@ extends StringBucketDB[PackedSeqBucket](location, options,
     new PackedSeqBucket(Array(), Array(), k).insertBulk(values).get
 
   /*
-   * Going purely through the coverage DB is cheaper than unpacking all sequences
+   * Going purely through the abundance DB is cheaper than unpacking all sequences
    */
   def visitKeysReadonly(f: (String) => Unit) {
-    minCoverage match {
+    minAbundance match {
       case Some(m) =>
-        covDB.visitBucketsReadonly((key, b) => {
-          if (b.hasMinCoverage(m)) {
+        abundDB.visitBucketsReadonly((key, b) => {
+          if (b.hasMinAbundance(m)) {
             f(key)
           }
         })
       case None =>
-        covDB.visitBucketsReadonly((key, b) => f(key))
+        abundDB.visitBucketsReadonly((key, b) => f(key))
     }
   }
 
@@ -394,28 +394,28 @@ extends StringBucketDB[PackedSeqBucket](location, options,
     bucket.sequencesUpdated
 
   override protected def beforeBulkLoad(keys: Iterable[String]) {
-    covDB.bulkLoad(keys)
+    abundDB.bulkLoad(keys)
   }
 
   /**
-   * Always write back coverage when a bucket changes
+   * Always write back abundance when a bucket changes
    */
   override protected def afterBulkWrite(merged: Iterable[(String, PackedSeqBucket)]) {
-    covDB.setBulk(merged.map(x => (x._1 -> StringCovBucket.fromCoverages(x._2.coverages).pack)))
+    abundDB.setBulk(merged.map(x => (x._1 -> StringAbundanceBucket.fromAbundances(x._2.abundances).pack)))
   }
 
-  def kmerCoverageStats = {
+  def kmerAbundanceStats = {
     val d = new Distribution
-    covDB.visitBucketsReadonly((key, b) => {
-      d.observe(b.kmerCoverages.map(_.toInt))
+    abundDB.visitBucketsReadonly((key, b) => {
+      d.observe(b.kmerAbundances.map(_.toInt))
     })
     d
   }
 
   def kmerStats = {
     val r = new Distribution
-    covDB.visitBucketsReadonly((key, bucket) => {
-      r.observe(bucket.coverages.map(_.length).sum)
+    abundDB.visitBucketsReadonly((key, bucket) => {
+      r.observe(bucket.abundances.map(_.length).sum)
     })
     r
   }

@@ -9,6 +9,10 @@ import friedrich.util.formats.GraphViz
 import scala.collection.mutable.ArrayBuffer
 import dbpart.hash.MarkerSpace
 
+object PathGraphBuilder {
+  
+}
+
 /**
  * Builds a graph that contains edges between k-mers in a partition.
  */
@@ -22,8 +26,8 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
   println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
   addNodes(nodes)
 
-  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], covs: Iterator[Coverage]) =
-    (seqs zip covs).toList.map(s => new KmerNode(s._1, s._2))
+  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], abunds: Iterator[Abundance]) =
+    (seqs zip abunds).toList.map(s => new KmerNode(s._1, s._2))
 
   /**
    * Find edges by traversing two k-mer lists, one sorted by the first
@@ -63,7 +67,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
       (key, bucket) <- bulkData
       macroNode = partMap(key)._2
       id = partMap(key)._1
-      kmers = bucket.kmersBySequenceWithCoverage.toList.flatMap(x =>
+      kmers = bucket.kmersBySequenceWithAbundance.toList.flatMap(x =>
         sequenceToKmerNodes(macroNode, x._1, x._2.iterator))
     } yield (id, kmers))
   }
@@ -176,8 +180,8 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
    * *
    * Compute the average coverage of this path
    */
-  def computePathCov(path: Iterable[N]): Double =
-    path.map(p => p.coverage).sum.toDouble / path.size
+  def computePathAbundance(path: Iterable[N]): Double =
+    path.map(p => p.abundance).sum.toDouble / path.size
 
   final def transform(list: List[List[N]]): List[List[N]] = transform(Nil, list)
 
@@ -221,7 +225,7 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
         if (haveIntersection(paths)) {
           paths = paths.map(_.reverse)
           setAllNoise(paths)
-          unsetNoise(paths.sortWith((p, q) => computePathCov(p) > computePathCov(q)).head)
+          unsetNoise(paths.sortWith((p, q) => computePathAbundance(p) > computePathAbundance(q)).head)
           found = true
           reduced += 1
         }

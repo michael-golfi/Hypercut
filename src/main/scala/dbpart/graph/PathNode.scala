@@ -3,7 +3,7 @@ import dbpart._
 import dbpart.bucketdb.SeqBucketDB
 import dbpart.shortread.Read
 
-final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
+final class PathNode(val seq: NTSeq, val avgAbundance: Double) {
   def numKmers(k: Int): Int = seq.length() - (k-1)
   def kmers(k: Int): Iterator[String] =
     Read.kmers(seq, k)
@@ -11,7 +11,7 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
   var seen: Boolean = false
   var noise: Boolean = false
 
-  override def toString: String = s"$seq($avgCoverage)"
+  override def toString: String = s"$seq($avgAbundance)"
 }
 
 /**
@@ -19,14 +19,14 @@ final class PathNode(val seq: NTSeq, val avgCoverage: Double) {
  * and potentially has unknown edges into other partitions.
  * See MacroNode.boundary.
  */
-final class KmerNode(val seq: NTSeq, val coverage: Double) extends HasID {
+final class KmerNode(val seq: NTSeq, val abundance: Double) extends HasID {
   var seen: Boolean = false
   var noise: Boolean = false
 
   def boundary: Boolean = (boundaryPartition != None)
   var boundaryPartition: Option[Int] = None
 
-  override def toString: String = s"$seq($coverage)"
+  override def toString: String = s"$seq($abundance)"
 
   def k: Int = seq.length()
 

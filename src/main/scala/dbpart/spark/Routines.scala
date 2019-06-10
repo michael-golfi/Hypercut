@@ -74,9 +74,9 @@ class Routines(spark: SparkSession) {
    * Simplified version that only builds buckets (thus counting k-mers), not collecting edges.
    */
   def countKmers(reads: Dataset[String], ext: MarkerSetExtractor) = {
-    val minCoverage = None
+    val minAbundance = None
     val segments = splitReads(reads, ext)
-    processedToBuckets(segments, ext, minCoverage)
+    processedToBuckets(segments, ext, minAbundance)
   }
 
   def countKmers(input: String, ext: MarkerSetExtractor, output: String) {
@@ -86,7 +86,7 @@ class Routines(spark: SparkSession) {
   }
 
   def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
-                       minCoverage: Option[Coverage]): Dataset[(Long, SimpleCountingBucket)] = {
+                       minAbundance: Option[Abundance]): Dataset[(Long, SimpleCountingBucket)] = {
     val segments = reads.flatMap(x => x)
     val countedSegments =
       segments.groupBy(segments.columns(0), segments.columns(1)).count.
@@ -101,8 +101,8 @@ class Routines(spark: SparkSession) {
       {
         case (key, segmentsCounts) => {
           val empty = SimpleCountingBucket.empty(ext.k)
-          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipCov(x._2))).toList).
-            atMinCoverage(minCoverage)
+          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipAbundance(x._2))).toList).
+            atMinAbundance(minAbundance)
           (key, bkt)
         }
       })
@@ -116,10 +116,10 @@ class Routines(spark: SparkSession) {
    * Construct a GraphX graph where the buckets are vertices.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minCoverage: Option[Coverage],
+  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minAbundance: Option[Abundance],
                   writeLocation: Option[String] = None): BucketGraph = {
     val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_._1).toList)).distinct()
-    val verts = processedToBuckets(reads, ext, minCoverage)
+    val verts = processedToBuckets(reads, ext, minAbundance)
 
     edges.cache
     verts.cache
@@ -186,17 +186,17 @@ class Routines(spark: SparkSession) {
       Console.withOut(fileStream) {
         val sequenceCount = bkts.map(_._2.sequences.size).cache
         val kmerCount = bkts.map(_._2.numKmers).cache
-        val coverage = bkts.flatMap(_._2.coverages.toSeq.flatten).cache
+        val abundance = bkts.flatMap(_._2.abundances.toSeq.flatten).cache
         println("Sequence count in buckets: sum " + smi(sequenceCount))
         sequenceCount.describe().show()
         sequenceCount.unpersist
         println("k-mer count in buckets")
-        //k-mer count sum can be seen in "count" from coverage.describe
+        //k-mer count sum can be seen in "count" from abundance.describe
         kmerCount.describe().show()
         kmerCount.unpersist
-        println("k-mer coverage: sum " + sms(coverage))
-        coverage.describe().show()
-        coverage.unpersist
+        println("k-mer abundance: sum " + sms(abundance))
+        abundance.describe().show()
+        abundance.unpersist
 
         for (e <- edges) {
           println(s"Total number of edges: " + e.count())
@@ -246,7 +246,7 @@ class Routines(spark: SparkSession) {
     result
   }
 
-//  def assemble(pg: PathGraph, k: Int, minCoverage: Option[Coverage], output: String) {
+//  def assemble(pg: PathGraph, k: Int, minAbundance: Option[Abundance], output: String) {
 //    val merged = mergePaths(pg, k)
 //    merged.cache
 //
@@ -258,11 +258,11 @@ class Routines(spark: SparkSession) {
 //    printer.close()
 //  }
 
-  def buildBuckets(input: String, ext: MarkerSetExtractor, minCoverage: Option[Coverage],
+  def buildBuckets(input: String, ext: MarkerSetExtractor, minAbundance: Option[Abundance],
                    outputLocation: Option[String] = None) = {
     val reads = getReads(input)
     val split = splitReads(reads, ext)
-    val r = bucketGraph(split, ext, minCoverage, outputLocation)
+    val r = bucketGraph(split, ext, minAbundance, outputLocation)
     split.unpersist
     r
   }

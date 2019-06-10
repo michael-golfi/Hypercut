@@ -19,11 +19,11 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
       println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
     }
 
-    val numCoverages = bucket.coverages.size
+    val numAbundances = bucket.abundances.size
     val numSeqs = bucket.sequences.size
 
-    if (numCoverages != numSeqs) {
-      Console.err.println(s"Error: bucket $key has $numSeqs sequences but $numCoverages coverages")
+    if (numAbundances != numSeqs) {
+      Console.err.println(s"Error: bucket $key has $numSeqs sequences but $numAbundances abundances")
       errors += 1
     }
 
@@ -49,9 +49,9 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
         }
       }
       val numKmers = bucket.kmers.size
-      val numCoverages = bucket.coverages.map(_.length).sum
-      if (numKmers != numCoverages) {
-        Console.err.println(s"Error: bucket $key has $numKmers kmers but $numCoverages coverage positions")
+      val numAbundances = bucket.abundances.map(_.length).sum
+      if (numKmers != numAbundances) {
+        Console.err.println(s"Error: bucket $key has $numKmers kmers but $numAbundances abundance positions")
         errors += 1
       }
     }

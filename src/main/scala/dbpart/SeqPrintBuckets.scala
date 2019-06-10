@@ -15,10 +15,10 @@ import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 
 final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
-  settings: Settings, dbOptions: String, minCov: Option[Coverage]) {
+  settings: Settings, dbOptions: String, minAbund: Option[Abundance]) {
 
   val extractor = new MarkerSetExtractor(space, k)
-  lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minCov)
+  lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minAbund)
   lazy val edgeDb = settings.edgeDb(space)
 
   import scala.concurrent.ExecutionContext.Implicits.global
@@ -101,10 +101,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     hist.print("Bucket size (sequences)")
     //hist = spb.db.kmerHistogram
     //hist.print("Bucket size (kmers)")
-    var dist = db.kmerCoverageStats
-    dist.print("Kmer coverage")
+    var dist = db.kmerAbundanceStats
+    dist.print("Kmer abundance")
     hist = edgeDb.bucketSizeHistogram()
-    hist.print("Macro graph node degree (no coverage threshold)")
+    hist.print("Macro graph node degree (no abundance threshold)")
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
@@ -199,10 +199,10 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
     val edges = edgeDb.getBulk(List(key.data))
 
     val ind = "  "
-    //Note: could also print sequence average coverage, integer coverages etc.
+    //Note: could also print sequence average abundance, integer abundances etc.
     for {
       b <- seqs.headOption
-      sc <- (b._2.sequences zip b._2.coverages)
+      sc <- (b._2.sequences zip b._2.abundances)
     } {
       println(ind + sc._1)
       println(ind + sc._2)

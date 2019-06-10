@@ -42,6 +42,10 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   def defaultSpace = MarkerSpace.named(space.toOption.get, numMarkers.toOption.get)
 }
 
+/**
+ * Configuration for the standalone version of Hypercut, which runs without Spark.
+ * Optionally writes data to a Kyoto Cabinet database.
+ */
 class Conf(args: Seq[String]) extends CoreConf(args) {
   version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (standalone)")
   banner("Usage:")
@@ -50,13 +54,13 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val dbfile = opt[String](required = false,
       descr = "Path to database file (.kch) where sequences are stored")
   val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
-  val minCov = opt[Coverage](descr = "Minimum coverage cutoff when reading databases")
+  val minAbund = opt[Abundance](descr = "Minimum abundance cutoff when reading databases")
 
   def defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
 
   lazy val defaultBuckets = new SeqPrintBuckets(
     defaultSpace, k.toOption.get, numMarkers.toOption.get,
-    defaultSettings, SeqBucketDB.options(bnum.toOption.get), minCov.toOption)
+    defaultSettings, SeqBucketDB.options(bnum.toOption.get), minAbund.toOption)
 
   val buckets = new Subcommand("buckets") {
     val build = new Subcommand("build") with RunnableCommand {
@@ -91,7 +95,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
     addSubcommand(list)
 
     val show = new Subcommand("show") with RunnableCommand {
-      banner("Show the sequences, coverages and edges contained in a bucket.")
+      banner("Show the sequences, abundances and edges contained in a bucket.")
       val buckets = trailArg[List[String]](required = true, descr = "Buckets to show")
       def run() {
         defaultBuckets.show(buckets.toOption.get)
@@ -100,7 +104,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
     addSubcommand(show)
 
     val copy = new Subcommand("copy", "filter") with RunnableCommand {
-      banner("Copy a bucket database into another one (appending), optionally applying coverage filtering. Edges are not coverage filtered.")
+      banner("Copy a bucket database into another one (appending), optionally applying abundance filtering. Edges are not abundance filtered.")
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
         val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options(bnum.toOption.get),

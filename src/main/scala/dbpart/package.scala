@@ -7,7 +7,10 @@ package object dbpart {
    */
   type NTSeq = String
 
-  type Coverage = Short
+  /**
+   * Abundance counts for k-mers.
+   */
+  type Abundance = Short
   
   /**
    * Type of edges between buckets in the macro graph.

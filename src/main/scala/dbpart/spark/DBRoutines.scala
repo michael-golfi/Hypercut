@@ -43,7 +43,7 @@ class DBRoutines(spark: SparkSession) extends Routines(spark) {
       g <- it.asScala.grouped(1000000)
       mg = g.map(x =>
         (MarkerSet.uncompactToString(x._1, ext.space) ->
-        PackedSeqBucket(x._2.sequences, x._2.coverages, x._2.k)))
+        PackedSeqBucket(x._2.sequences, x._2.abundances, x._2.k)))
       m = mg.toMap
     } {
       db.overwriteBulk(m)
