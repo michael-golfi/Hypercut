@@ -1,7 +1,6 @@
 package dbpart.spark
 
 import org.apache.spark.SparkConf
-import org.apache.spark.graphx._
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.SparkSession
 
@@ -16,6 +15,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SaveMode
 import java.io.PrintStream
 import java.io.File
+import org.graphframes.GraphFrame
+import org.graphframes.lib.Pregel
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -56,7 +57,7 @@ class Routines(spark: SparkSession) {
    * The marker sets in a read, in sequence (in md5-hashed form),
    * and the corresponding segments that were discovered, in sequence.
    */
-  type ProcessedRead = (Array[(Long, String)])
+  type ProcessedRead = (Array[(Array[Byte], String)])
 
   /**
    * Process a set of reads, generating an intermediate dataset that contains both read segments
@@ -66,7 +67,7 @@ class Routines(spark: SparkSession) {
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
       val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => (longId(x._1.compact), x._2)).toArray
+      hashesSegments.map(x => (x._1.compact.data, x._2)).toArray
     })
   }
 
@@ -86,11 +87,11 @@ class Routines(spark: SparkSession) {
   }
 
   def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
-                       minAbundance: Option[Abundance]): Dataset[(Long, SimpleCountingBucket)] = {
+                       minAbundance: Option[Abundance]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val segments = reads.flatMap(x => x)
     val countedSegments =
       segments.groupBy(segments.columns(0), segments.columns(1)).count.
-      as[(Long, String, Long)]
+      as[(Array[Byte], String, Long)]
 
     val byBucket = countedSegments.groupByKey({ case (key, _, _) => key }).
       mapValues({ case (_, read, count) => (read, count) })
@@ -109,15 +110,12 @@ class Routines(spark: SparkSession) {
     buckets
   }
 
-  type BucketGraph = Graph[SimpleCountingBucket, Int]
-  type CompactGraph = Graph[BucketNode, _]
-
   /**
-   * Construct a GraphX graph where the buckets are vertices.
+   * Construct a graph where the buckets are vertices.
    * Optionally save it in parquet format to a specified location.
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minAbundance: Option[Abundance],
-                  writeLocation: Option[String] = None): BucketGraph = {
+                  writeLocation: Option[String] = None): GraphFrame = {
     val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_._1).toList)).distinct()
     val verts = processedToBuckets(reads, ext, minAbundance)
 
@@ -129,22 +127,24 @@ class Routines(spark: SparkSession) {
       reads.unpersist()
     }
 
-    val r = Graph.fromEdgeTuples(edges.rdd, 0, None,
-      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK).
-      outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
-    r.cache
-    r
+    bucketGraph(verts, edges)
   }
 
-  def writeBuckets(bkts: Dataset[(Long, SimpleCountingBucket)], writeLocation: String) {
+  def bucketGraph(bkts: Dataset[(Array[Byte], SimpleCountingBucket)], edges: Dataset[(CompactEdge)]) = {
+    val vertDF = bkts.toDF("id", "bucket")
+    val edgeDF = edges.toDF("src", "dst")
+    GraphFrame(vertDF, edgeDF)
+  }
+
+  def writeBuckets(bkts: Dataset[(Array[Byte], SimpleCountingBucket)], writeLocation: String) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
   def loadBuckets(readLocation: String) =
-     spark.read.parquet(s"${readLocation}_buckets").as[(Long, SimpleCountingBucket)]
+     spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
 
   def loadBucketsEdges(readLocation: String) = {
-    val edges = spark.read.parquet(s"${readLocation}_edges").as[(Long, Long)]
+    val edges = spark.read.parquet(s"${readLocation}_edges").as[CompactEdge]
     val bkts = loadBuckets(readLocation)
     (bkts, edges)
   }
@@ -156,27 +156,21 @@ class Routines(spark: SparkSession) {
     //Note: probably better to repartition buckets and edges at an earlier stage, before
     //saving to parquet
     val (_, edges) = loadBucketsEdges(readLocation)
-    Graph.fromEdgeTuples(edges.repartition(NUM_PARTITIONS).rdd, 0, None,
-      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK)
-      .partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS)
+    val edgeDF = edges.toDF("src", "dst")
+    GraphFrame.fromEdges(edgeDF)
   }
 
   /**
    * Build graph with edges and buckets (as vertices).
    */
-  def loadBucketGraph(readLocation: String): BucketGraph = {
+  def loadBucketGraph(readLocation: String) = {
     val (verts, edges) = loadBucketsEdges(readLocation)
-    val r = Graph.fromEdgeTuples(edges.rdd, 0, None,
-      StorageLevel.MEMORY_AND_DISK, StorageLevel.MEMORY_AND_DISK).
-      partitionBy(PartitionStrategy.EdgePartition2D, NUM_PARTITIONS).
-      outerJoinVertices(verts.rdd)((vid, data, optBucket) => optBucket.get)
-    r.cache
-    r
+    bucketGraph(verts, edges)
   }
 
   def bucketStats(
-    bkts:  Dataset[(Long, SimpleCountingBucket)],
-    edges: Option[Dataset[(Long, Long)]]) {
+    bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
+    edges: Option[Dataset[CompactEdge]]) {
     def smi(ds: Dataset[Int]) = ds.map(_.toLong).reduce(_ + _)
     def sms(ds: Dataset[Short]) = ds.map(_.toLong).reduce(_ + _)
 
@@ -231,19 +225,31 @@ class Routines(spark: SparkSession) {
    * @param modulo Starting points for partitions (id % modulo == 0).
    * The number of partitions will be inversely proportional to this number.
    */
-  def partitionBuckets(graph: Graph[Int, _])(modulo: Long = 10000): CompactGraph = {
-    val nodeIn = graph.inDegrees
-    val nodeOut = graph.outDegrees
-    var current = graph.mapVertices { case(id, _) => new BucketNode() }
+  def partitionBuckets(graph: GraphFrame)(modulo: Long = 10000): GraphFrame = {
+//    val nodeIn = graph.inDegrees
+//    val nodeOut = graph.outDegrees
+//
+//    val nVert = graph.vertices.join(nodeIn, "id").join(nodeOut, "id").
+
+    val partitions = graph.pregel.
+      withVertexColumn("partition", lit(null),
+        coalesce(Pregel.msg, lit(null))).
+        sendMsgToDst(Pregel.src("partition")).
+        sendMsgToSrc(Pregel.dst("partition")).
+        aggMsgs(first(Pregel.msg)).
+        run
+
+//    var current = graph.mapVertices { case(id, _) => new BucketNode() }
 //      joinVertices(nodeIn)((id, node, deg) => node.copy(inDeg = deg)).
 //      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
-
-    val result = current.pregel(-1L, Int.MaxValue, EdgeDirection.Either)(bfsProg(modulo),
-        bfsMsg, (x, y) => x)
-
-    //Some nodes may not have been reached - will be left in partition "-1".
-
-    result
+//
+//    val result = current.pregel(-1L, Int.MaxValue, EdgeDirection.Either)(bfsProg(modulo),
+//        bfsMsg, (x, y) => x)
+//
+//    //Some nodes may not have been reached - will be left in partition "-1".
+//
+//    result
+        ???
   }
 
 //  def assemble(pg: PathGraph, k: Int, minAbundance: Option[Abundance], output: String) {
@@ -257,7 +263,7 @@ class Routines(spark: SparkSession) {
 //
 //    printer.close()
 //  }
-
+//
   def buildBuckets(input: String, ext: MarkerSetExtractor, minAbundance: Option[Abundance],
                    outputLocation: Option[String] = None) = {
     val reads = getReads(input)
@@ -269,35 +275,27 @@ class Routines(spark: SparkSession) {
 }
 
 object InnerRoutines {
-  def longId(data: Array[Byte]): Long =
-    Hashing.md5.hashBytes(data).asLong
-
-  def longId(data: String): Long =
-    Hashing.md5.hashString(data).asLong
-
-  def longId(n: CompactNode): Long = longId(n.data)
-
-  def bfsProg(mod: Long)(id: VertexId, node: BucketNode, incoming: Long): BucketNode = {
-    if (incoming == -1) {
-      //Initial message
-      if (id % mod == 0) {
-        node.copy(partition = id / mod)
-      } else {
-        node
-      }
-    } else {
-      //partition should be -1
-      node.copy(partition = incoming)
-    }
-  }
-
-  def bfsMsg(triplet: EdgeTriplet[BucketNode, _]): Iterator[(VertexId, Long)] = {
-    val src = triplet.srcAttr
-    val dst = triplet.dstAttr
-    val it1 = if (src.partition != -1 && dst.partition == -1) Iterator((triplet.dstId, src.partition))
-      else Iterator.empty
-    val it2 = if (dst.partition != -1 && src.partition == -1) Iterator((triplet.srcId, dst.partition))
-      else Iterator.empty
-    it1 ++ it2
-  }
+//  def bfsProg(mod: Long)(id: VertexId, node: BucketNode, incoming: Long): BucketNode = {
+//    if (incoming == -1) {
+//      //Initial message
+//      if (id % mod == 0) {
+//        node.copy(partition = id / mod)
+//      } else {
+//        node
+//      }
+//    } else {
+//      //partition should be -1
+//      node.copy(partition = incoming)
+//    }
+//  }
+//
+//  def bfsMsg(triplet: EdgeTriplet[BucketNode, _]): Iterator[(VertexId, Long)] = {
+//    val src = triplet.srcAttr
+//    val dst = triplet.dstAttr
+//    val it1 = if (src.partition != -1 && dst.partition == -1) Iterator((triplet.dstId, src.partition))
+//      else Iterator.empty
+//    val it2 = if (dst.partition != -1 && src.partition == -1) Iterator((triplet.srcId, dst.partition))
+//      else Iterator.empty
+//    it1 ++ it2
+//  }
 }
