@@ -168,6 +168,29 @@ class Routines(spark: SparkSession) {
     bucketGraph(verts, edges)
   }
 
+  /**
+   * By joining up buckets with sequences through incoming and outgoing edges,
+   * construct PathMergingBuckets that are aware of their incoming and outgoing
+   * openings.
+   */
+  def asMergingBuckets(readLocation: String) = {
+    val (verts, edges) = loadBucketsEdges(readLocation)
+    val fedges = edges.filter(x => (x._1 != x._2))
+
+    val joinSrc = fedges.joinWith(verts, fedges("_1") === verts("_1")).map(x =>
+        (x._1._2, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
+      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+
+    val joinDst = fedges.joinWith(verts, fedges("_2") === verts("_1")).map(x =>
+        (x._1._1, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
+      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+
+    val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "outer").
+      join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "outer").
+      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])]
+    r.map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
+  }
+
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
     edges: Option[Dataset[CompactEdge]]) {
@@ -275,27 +298,5 @@ class Routines(spark: SparkSession) {
 }
 
 object InnerRoutines {
-//  def bfsProg(mod: Long)(id: VertexId, node: BucketNode, incoming: Long): BucketNode = {
-//    if (incoming == -1) {
-//      //Initial message
-//      if (id % mod == 0) {
-//        node.copy(partition = id / mod)
-//      } else {
-//        node
-//      }
-//    } else {
-//      //partition should be -1
-//      node.copy(partition = incoming)
-//    }
-//  }
-//
-//  def bfsMsg(triplet: EdgeTriplet[BucketNode, _]): Iterator[(VertexId, Long)] = {
-//    val src = triplet.srcAttr
-//    val dst = triplet.dstAttr
-//    val it1 = if (src.partition != -1 && dst.partition == -1) Iterator((triplet.dstId, src.partition))
-//      else Iterator.empty
-//    val it2 = if (dst.partition != -1 && src.partition == -1) Iterator((triplet.srcId, dst.partition))
-//      else Iterator.empty
-//    it1 ++ it2
-//  }
+
 }

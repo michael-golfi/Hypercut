@@ -4,6 +4,7 @@ import dbpart.shortread.Read
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.{Map => MMap}
+import miniasm.genome.util.DNAHelpers
 
 object CountingSeqBucket {
   //The maximum abundance value that we track. Currently this is an ad hoc limit.
@@ -40,6 +41,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 
   def kmers = kmersBySequence.flatten
   def kmersBySequence = sequences.toSeq.map(Read.kmers(_, k))
+  def suffixes = kmers.map(DNAHelpers.kmerSuffix(_, k))
+  def prefixes = kmers.map(DNAHelpers.kmerPrefix(_, k))
 
   def numKmers = sequences.map(_.length() - (k-1)).sum
 
@@ -335,10 +338,63 @@ object SimpleCountingBucket {
   def empty(k: Int) = new SimpleCountingBucket(Array(), Array(), k)
 }
 
-final case class SimpleCountingBucket(override val sequences: Array[String],
+case class SimpleCountingBucket(override val sequences: Array[String],
   override val abundances: Array[Array[Abundance]],
   override val k: Int) extends CountingSeqBucket[SimpleCountingBucket](sequences, abundances, k)  {
   def copy(sequences: Array[String], abundances: Array[Array[Abundance]],
-           sequencesUpdated: Boolean): SimpleCountingBucket =
+           sequencesUpdated: Boolean) =
         new SimpleCountingBucket(sequences, abundances, k)
+
+  /**
+   * By looking at prior and post buckets in the macro graph, convert this bucket into a PathMergingBucket
+   * where openings have been correctly set.
+   */
+  def asPathMerging(priorSeqs: Iterable[String], postSeqs: Iterable[String]): PathMergingBucket = {
+    val safePrior = Option(priorSeqs).getOrElse(Seq())
+    val safePost = Option(postSeqs).getOrElse(Seq())
+
+    val priorOut = safePrior.map(_.drop(1)).flatMap(Read.kmers(_, k - 1)).toSet
+    val postIn = safePost.map(_.dropRight(1)).flatMap(Read.kmers(_, k - 1)).toSet
+
+    val inOpen = kmers.map(DNAHelpers.kmerPrefix(_, k)).
+      filter(priorOut.contains(_)).distinct
+    val outOpen = kmers.map(DNAHelpers.kmerSuffix(_, k)).
+      filter(postIn.contains(_)).distinct
+    PathMergingBucket(sequences, k, outOpen.toArray, inOpen.toArray)
+  }
+}
+
+/**
+ * Bucket for progressively merging paths into longer ones.
+ * Paths either pass through this bucket, begin in it, or end in it.
+ * At every step we track remaining openings: (k-1)-mers that are potential incoming
+ * or outgoing merges.
+ */
+case class PathMergingBucket(val sequences: Array[String],
+  val k: Int,
+
+  /**
+   * Openings forward of length k-1.
+   * These are the k-1-mers that may be joined with outgoing sequences.
+   */
+  val outOpenings: Array[String],
+
+  /**
+   * Openings backward of length k-1.
+   * These are the k-1-mers that may be joined with incoming sequences.
+   */
+  val inOpenings: Array[String]) {
+
+  /**
+   * Join incoming paths from a different bucket,
+   * remove any finished unitigs from this bucket, returning them and a new merged
+   * bucket with unfinished data from the two input buckets.
+   */
+  def mergeIn(in: PathMergingBucket): (Iterable[String], PathMergingBucket) = {
+    ???
+  }
+
+  def focusIn(openings: Array[String]): PathMergingBucket = ???
+
+  def focusOut(openings: Array[String]): PathMergingBucket = ???
 }
