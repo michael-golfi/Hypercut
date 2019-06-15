@@ -6,6 +6,7 @@ import dbpart.Stats
 import friedrich.graph.Graph
 import friedrich.util.Histogram
 import friedrich.util.formats.GraphViz
+import dbpart.PathPrinter
 
 /**
  * Encapsulates the operations of building a macro graph, partitioning it
@@ -40,7 +41,8 @@ class PathExtraction(buckets: SeqPrintBuckets,
   }
 
   def printPaths(graph: Graph[MacroNode], parts: List[List[MacroNode]]) {
-    val pp = new PathFinder("hypercut.fasta", k, printReasons)
+    val pp = new PathFinder(k)
+    val printer = new PathPrinter("hypercut.fasta", printReasons)
 
     var lengths = List[Int]()
     val minLength = k + 10
@@ -68,7 +70,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
           }
         }
         if (s.length >= minPrintLength) {
-          pp.printSequence(s"hypercut-part$pid", s)
+          printer.printSequence(s"hypercut-part$pid", s)
         }
       }
 
@@ -76,7 +78,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
         GraphViz.writeUndirected(pathGraph, s"part$pid.dot", (n: KmerNode) => n.seq)
       }
     }
-    pp.close()
+    printer.close()
     Stats.end("Find and print sequences")
     new Histogram(lengths, 20).print("Contig length")
   }

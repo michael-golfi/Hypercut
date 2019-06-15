@@ -5,6 +5,8 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.{Map => MMap}
 import miniasm.genome.util.DNAHelpers
+import dbpart.graph.PathGraphBuilder
+import dbpart.graph.PathFinder
 
 object CountingSeqBucket {
   //The maximum abundance value that we track. Currently this is an ad hoc limit.
@@ -384,6 +386,17 @@ case class PathMergingBucket(val sequences: Array[String],
    * These are the k-1-mers that may be joined with incoming sequences.
    */
   val inOpenings: Array[String]) {
+
+  def kmers = sequences.toSeq.map(Read.kmers(_, k))
+
+  def kmerGraph = {
+    val builder = new PathGraphBuilder(k)
+    builder.build(kmers.iterator.flatten.toList)
+  }
+
+  def unitigs = {
+    new PathFinder(k).findSequences(kmerGraph)
+  }
 
   /**
    * Join incoming paths from a different bucket,

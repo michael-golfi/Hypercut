@@ -175,6 +175,7 @@ class Routines(spark: SparkSession) {
    */
   def asMergingBuckets(readLocation: String) = {
     val (verts, edges) = loadBucketsEdges(readLocation)
+    
     val fedges = edges.filter(x => (x._1 != x._2))
 
     val joinSrc = fedges.joinWith(verts, fedges("_1") === verts("_1")).map(x =>
@@ -187,8 +188,9 @@ class Routines(spark: SparkSession) {
 
     val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "outer").
       join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "outer").
-      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])]
-    r.map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
+      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])].
+      map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
+    r
   }
 
   def bucketStats(

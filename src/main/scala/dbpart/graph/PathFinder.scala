@@ -8,11 +8,10 @@ import dbpart.PathPrinter
 /**
  * Finds and prints branch-free paths.
  */
-class PathFinder(outputFasta: String, k: Int, printReasons: Boolean)
-  extends PathPrinter(outputFasta, printReasons) {
+class PathFinder(k: Int) {
   type N = KmerNode
 
-  def findSequences(graph: Graph[N]) = {
+  def findSequences(graph: Graph[N]): List[Contig] = {
     //Reset flag
     for (n <- graph.nodes) {
       n.seen = false
