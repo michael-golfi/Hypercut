@@ -206,7 +206,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     var i = 0
     while (i < numSequences) {
       val existingSeq = intoSeq(i)
-      if (existingSeq.startsWith(suffix)) {
+      if (existingSeq.substring(0, suffix.length) == suffix) {
         intoSeq(i) = existingSeq.insert(0, data.charAt(0))
         intoAbund(i).insert(0, clipAbundance(abundance))
 
@@ -214,7 +214,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
         //So it is sufficient to check for it here, as it would never hit the
         //append case below.
         return tryMerge(i, intoSeq, intoAbund, numSequences)
-      } else if (existingSeq.endsWith(prefix)) {
+      } else if (existingSeq.substring(existingSeq.length - prefix.length) == prefix) {
         intoSeq(i) = (existingSeq += data.charAt(data.length() - 1))
         intoAbund(i) += clipAbundance(abundance)
         updateHelperMap(intoSeq(i), i)
