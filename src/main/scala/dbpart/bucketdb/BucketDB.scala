@@ -10,6 +10,7 @@ import scala.collection.{ Map => CMap }
 import scala.collection.mutable.{ Map => MMap }
 import scala.annotation.tailrec
 import scala.concurrent.blocking
+import dbpart.graph.BucketLoader
 
 /**
  * A Kyoto cabinet-based database.
@@ -353,8 +354,11 @@ object SeqBucketDB {
  * The abundance filter, if present, affects some of the accessor methods.
  */
 final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minAbundance: Option[Abundance])
-extends StringBucketDB[PackedSeqBucket](location, options,
-    new PackedSeqBucket.Unpacker(location, minAbundance, buckets), k) {
+  extends StringBucketDB[PackedSeqBucket](location, options,
+    new PackedSeqBucket.Unpacker(location, minAbundance, buckets), k)
+    with BucketLoader {
+
+  def getBuckets(keys: Iterable[String]) = getBulk(keys)
 
   def abundDB = unpacker.asInstanceOf[PackedSeqBucket.Unpacker].abundDB
 

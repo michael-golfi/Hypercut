@@ -6,7 +6,6 @@ import dbpart.Stats
 import friedrich.graph.Graph
 import friedrich.util.Histogram
 import friedrich.util.formats.GraphViz
-import dbpart.PathPrinter
 
 /**
  * Encapsulates the operations of building a macro graph, partitioning it
@@ -54,7 +53,7 @@ class PathExtraction(buckets: SeqPrintBuckets,
     for (p <- parts; pid = p.head.partitionId) {
       println(s"Process partition $pid/${parts.size}")
 
-      val pathGraph = new PathGraphBuilder(db, p, graph)(buckets.space).result
+      val pathGraph = new MacroPathGraphBuilder(db, k, p, graph)(buckets.space).result
       println(s"Path graph ${pathGraph.numNodes} nodes (${pathGraph.nodes.filter(_.boundary).size} boundary) ${pathGraph.numEdges} edges")
 
 //      val analyzer = new PathGraphAnalyzer(pathGraph, k)

@@ -1,8 +1,8 @@
 package dbpart.graph
 
+import dbpart.HasID
 import dbpart.hash.MarkerSet
 import dbpart.hash.MarkerSpace
-import dbpart.HasID
 
 /**
  * A node in the macro graph. Corresponds to a bucket in the edge database.
@@ -15,7 +15,7 @@ final class MacroNode(val data: Array[Byte]) extends HasID {
   var isBoundary: Boolean = true
 
   var partitionId: Int = -1
-  
+
   def uncompact(implicit space: MarkerSpace): String = MarkerSet.uncompactToString(data, space)
 
   import java.util.{ Arrays => JArrays }

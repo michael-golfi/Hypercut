@@ -1,6 +1,5 @@
 package dbpart.graph
 import dbpart._
-import dbpart.bucketdb.SeqBucketDB
 import dbpart.shortread.Read
 
 final class PathNode(val seq: NTSeq, val avgAbundance: Double) {

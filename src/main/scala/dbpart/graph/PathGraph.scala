@@ -1,33 +1,29 @@
 package dbpart.graph
 
-import dbpart._
-import dbpart.bucketdb.SeqBucketDB
-import dbpart.hash.MarkerSet
-import friedrich.graph.Graph
 import scala.annotation.tailrec
-import friedrich.util.formats.GraphViz
-import scala.collection.mutable.ArrayBuffer
-import dbpart.hash.MarkerSpace
 
-object PathGraphBuilder {
-  
-}
+import dbpart._
+import dbpart.hash.MarkerSpace
+import friedrich.graph.Graph
+import miniasm.genome.util.DNAHelpers
 
 /**
- * Builds a graph that contains edges between k-mers in a partition.
+ * Simple PathGraphBuilder that constructs a graph from a predefined set of kmers.
  */
-final class PathGraphBuilder(pathdb: SeqBucketDB,
-    nodes: Iterable[MacroNode],
-    macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) {
+class PathGraphBuilder(k: Int) {
 
-  val k: Int = pathdb.k
-  var result: Graph[KmerNode] = _
+  def build(kmers: List[String]) = {        
+    //Currently setting all abundances to 1
+    val nodes = kmers.map(s => new KmerNode(s, 1))
+    val result = new DoubleArrayListGraph[KmerNode](nodes.toArray)
 
-  println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
-  addNodes(nodes)
+    val byStart = nodes.sortBy(_.seq)
+    val byEnd = nodes.sortBy(n => n.end)
 
-  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], abunds: Iterator[Abundance]) =
-    (seqs zip abunds).toList.map(s => new KmerNode(s._1, s._2))
+    val gotEdges = findEdges(byStart, byEnd, false,
+          (f, t) => result.addEdge(f,t))
+    result
+  }
 
   /**
    * Find edges by traversing two k-mer lists, one sorted by the first
@@ -35,7 +31,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
    * Applies the given function to each edge that was found.
    */
   @tailrec
-  def findEdges(byBeginning: List[KmerNode], byEnd: List[KmerNode],
+  final def findEdges(byBeginning: List[KmerNode], byEnd: List[KmerNode],
                 gotEdges: Boolean, f: (KmerNode, KmerNode) => Unit): Boolean = {
     byBeginning match {
       case b :: bs =>
@@ -58,10 +54,25 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
       case _ => gotEdges
     }
   }
+}
+
+/**
+ * Based on a partitioned "macro graph" of buckets,
+ * builds a path graph that contains edges between k-mers in a partition.
+ */
+final class MacroPathGraphBuilder(loader: BucketLoader, k: Int,
+    nodes: Iterable[MacroNode],
+    macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) extends PathGraphBuilder(k) {
+
+  println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
+  val result = addNodes(nodes)
+
+  def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], abunds: Iterator[Abundance]) =
+    (seqs zip abunds).toList.map(s => new KmerNode(s._1, s._2))
 
   def loadKmers(part: Iterable[MacroNode]) = {
     val partMap = Map() ++ part.map(x => x.uncompact -> (x.id, x))
-    val bulkData = pathdb.getBulk(part.map(_.uncompact))
+    val bulkData = loader.getBuckets(part.map(_.uncompact))
 
     Map() ++ (for {
       (key, bucket) <- bulkData
@@ -76,7 +87,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
    * Add marker set buckets to the path graph, constructing all edges between k-mers
    * in the buckets of this partition.
    */
-  def addNodes(part: Iterable[MacroNode]) {
+  def addNodes(part: Iterable[MacroNode]) = {
 //    println("Add partition: " + part.take(3).map(_.packedString).mkString(" ") +
 //      s" ... (${part.size})")
 
@@ -88,7 +99,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
         part.flatMap(n => macroGraph.edges(n))).distinct
     val kmers = loadKmers(partAndBoundary)
 
-    result = new DoubleArrayListGraph[KmerNode](
+    val result = new DoubleArrayListGraph[KmerNode](
         kmers.filter(n => partSet.contains(n._1)).values.toList.flatten.toArray)
 
     val byStart = kmers.map(x => (x._1 -> x._2.sortBy(_.seq)))
@@ -128,6 +139,7 @@ final class PathGraphBuilder(pathdb: SeqBucketDB,
     }
 
     println(s"$foundEdges bucket pairs have k-mer edges")
+    result
   }
 }
 
@@ -236,7 +248,6 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
       gcount += 1
     }
     println(s"Reduced $reduced bubbles")
-
 
     def haveIntersection(paths: List[List[N]]) = {
       paths match {

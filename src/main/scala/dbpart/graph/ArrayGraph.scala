@@ -1,13 +1,13 @@
 package dbpart.graph
 
 import dbpart.HasID
-import scala.reflect.ClassTag
+import scala.reflect._
 import dbpart.IDSpace
 import friedrich.graph.Graph
 
 trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
   def nodesArr: Array[N]
-  implicit def classTag: ClassTag[N]
+  implicit def elemTag: ClassTag[N]
 
   val idSpace = new IDSpace(nodesArr)
 
@@ -16,7 +16,6 @@ trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
   def addNode(node: N) {
     throw new Exception("Adding nodes to the array backed graph is not allowed")
   }
-  
 }
 
 /**
@@ -28,8 +27,10 @@ trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
  *
  * This implementation stores only forward edges.
  */
-class ArrayListGraph[N <: HasID](val nodesArr: Array[N])(implicit val classTag: ClassTag[N])
-  extends ArrayBackedGraph[N] {
+class ArrayListGraph[N <: HasID : ClassTag](val nodesArr: Array[N])
+  extends ArrayBackedGraph[N] with Serializable {
+
+  def elemTag = classTag[N]
 
   type EdgeList = List[N]
 
@@ -61,8 +62,8 @@ class ArrayListGraph[N <: HasID](val nodesArr: Array[N])(implicit val classTag: 
 /**
  * An array-based graph builder that stores both forward and reverse edges.
  */
-class DoubleArrayListGraph[N <: HasID](nodesArr: Array[N])(implicit tag: ClassTag[N])
-  extends ArrayListGraph[N](nodesArr) {
+class DoubleArrayListGraph[N <: HasID : ClassTag](nodesArr: Array[N])
+  extends ArrayListGraph[N](nodesArr) with Serializable {
   protected final val revAdjList = Array.fill(nodesArr.length)(emptyEdgeList)
 
   override def addEdge(from: N, to: N) {
