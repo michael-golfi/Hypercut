@@ -175,7 +175,7 @@ class Routines(spark: SparkSession) {
    */
   def asMergingBuckets(readLocation: String) = {
     val (verts, edges) = loadBucketsEdges(readLocation)
-    
+
     val fedges = edges.filter(x => (x._1 != x._2))
 
     val joinSrc = fedges.joinWith(verts, fedges("_1") === verts("_1")).map(x =>
@@ -190,33 +190,28 @@ class Routines(spark: SparkSession) {
       join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "outer").
       as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])].
       map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
+    r.cache
     r
   }
 
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
     edges: Option[Dataset[CompactEdge]]) {
-    def smi(ds: Dataset[Int]) = ds.map(_.toLong).reduce(_ + _)
-    def sms(ds: Dataset[Short]) = ds.map(_.toLong).reduce(_ + _)
-
+    
+    def sml(ds: Dataset[Long]) = ds.reduce(_ + _)
     val fileStream = new PrintStream("bucketStats.txt")
+
+    val stats = bkts.map(_._2.stats).cache
 
     try {
       Console.withOut(fileStream) {
-        val sequenceCount = bkts.map(_._2.sequences.size).cache
-        val kmerCount = bkts.map(_._2.numKmers).cache
-        val abundance = bkts.flatMap(_._2.abundances.toSeq.flatten).cache
-        println("Sequence count in buckets: sum " + smi(sequenceCount))
-        sequenceCount.describe().show()
-        sequenceCount.unpersist
-        println("k-mer count in buckets")
-        //k-mer count sum can be seen in "count" from abundance.describe
-        kmerCount.describe().show()
-        kmerCount.unpersist
-        println("k-mer abundance: sum " + sms(abundance))
-        abundance.describe().show()
-        abundance.unpersist
-
+        println("Sequence count in buckets: sum " + sml(stats.map(_.sequences.toLong)))
+        println("Kmer count in buckets: sum " + sml(stats.map(_.kmers.toLong)))
+        println("k-mer abundance: sum " + sml(stats.map(_.totalAbundance.toLong)))
+        println("Bucket stats:")
+        stats.describe().show()
+        stats.unpersist
+        
         for (e <- edges) {
           println(s"Total number of edges: " + e.count())
           val outDeg = e.groupByKey(_._1).count().cache
