@@ -7,6 +7,7 @@
 package miniasm.genome.util
 
 import scala.util.Random
+import scala.annotation.tailrec
 
 object DNAHelpers {
 
@@ -45,7 +46,8 @@ object DNAHelpers {
   /**
    * Extend a given string by a number of random basepairs
    */
-  def extendSeq(seq: String,
+  @tailrec
+  final def extendSeq(seq: String,
                 steps: Int,
                 generator: Random = new Random(),
                 basemap: Int => Char = Map(0 -> 'A',
@@ -65,8 +67,10 @@ object DNAHelpers {
   def randomSequence(length: Int): String = extendSeq("", length)
 
   def kmerPrefix(seq: String, k: Int) = seq.substring(0, k - 1)
+  def kmerPrefix(seq: StringBuilder, k: Int) = seq.substring(0, k - 1)
 
   def kmerSuffix(seq: String, k: Int) = seq.substring(seq.length() - (k - 1))
+  def kmerSuffix(seq: StringBuilder, k: Int) = seq.substring(seq.size - (k - 1))
 
   def withoutPrefix(seq: String, k: Int) = seq.substring(k - 1)
 

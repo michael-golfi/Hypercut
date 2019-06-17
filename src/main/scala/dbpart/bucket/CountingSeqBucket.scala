@@ -32,6 +32,8 @@ object CountingSeqBucket {
   var mergeCount = 0
 }
 
+case class BucketStats(sequences: Int, totalAbundance: Int, kmers: Int)
+
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.
  */
@@ -47,6 +49,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   def prefixes = kmers.map(DNAHelpers.kmerPrefix(_, k))
 
   def numKmers = sequences.map(_.length() - (k-1)).sum
+
+  def stats = new BucketStats(sequences.length, abundances.flatten.map(_.toInt).sum, numKmers)
 
   def sequencesWithAbundance =
     sequences zip sequenceAvgAbundances
@@ -146,10 +150,12 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     var i = 0
     while (i < numSequences) {
       val s = inSeq(i)
-      val index = s.indexOf(data)
-      if (index != -1) {
-        incrementAbundance(inAbund(i), index, amount)
-        return true
+      if (s != null) {
+        val index = s.indexOf(data)
+        if (index != -1) {
+          incrementAbundance(inAbund(i), index, amount)
+          return true
+        }
       }
       i += 1
     }
@@ -162,35 +168,62 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * @return
    */
   def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[StringBuilder],
-                     intoAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int): Int = {
+                     intoAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int) {
     val prefix = intoSeq(atOffset).substring(0, k - 1)
     var i = 0
-    while (i < numSequences && i != atOffset) {
-      val existingSeq = intoSeq(i)
-      if (existingSeq.endsWith(prefix)) {
-        intoSeq(i) = intoSeq(atOffset).insert(0,
-            intoSeq(i).substring(0, intoSeq(i).length - (k - 1)))
-        intoAbund(i) ++= intoAbund(atOffset)
-        intoSeq.remove(atOffset)
-        intoAbund.remove(atOffset)
+    var failedToFind = false
 
-        mergeCount += 1
-//        if (mergeCount % 1000 == 0) {
-//          println(s"$mergeCount merged sequences")
-//        }
-
-        //Various sequences and their offsets may have changed
-        if (helperMap != None) {
-          initHelperMap()
+    /*
+     * Traversing the entire list of sequences would cause a n^2 cost for large buckets,
+     * so if possible we use the helper maps to avoid the traversal.
+     */
+    helperMap match {
+      case Some(m) =>
+        suffixHelper.get(prefix) match {
+          case Some(j) =>
+            if (j == atOffset) {
+              //Many sequences could have the same suffix, but only
+              //one of them is tracked by the helper map.
+              //Self merge (with atOffset) is not allowed.
+              //Force full traversal in this case.
+              i = 0
+            } else {
+              i = j
+            }
+          case _       => failedToFind = true
         }
-        return numSequences - 1
+      case _ =>
+    }
+
+    while (i < numSequences && i != atOffset && !failedToFind) {
+      val existingSeq = intoSeq(i)
+      if (existingSeq != null) {
+        if (existingSeq.endsWith(prefix)) {
+          intoSeq(i) = intoSeq(atOffset).insert(
+            0,
+            intoSeq(i).substring(0, intoSeq(i).length - (k - 1)))
+          intoAbund(i) ++= intoAbund(atOffset)
+
+          mergeCount += 1
+          if (helperMap != None) {
+            removeHelperSuffix(existingSeq)
+            removeHelperPrefix(intoSeq(atOffset))
+            updateHelperMaps(intoSeq(i), i)
+          }
+
+          //Replace the old StringBuilder with null so that
+          //helper maps can mostly remain valid without rebuilding
+          //(offsets of untouched StringBuilders do not change)
+          intoSeq.update(atOffset, null)
+          intoAbund.update(atOffset, null)
+          return
+        }
       }
       i += 1
     }
 
     //No merge
-    updateHelperMap(intoSeq(atOffset), atOffset)
-    numSequences
+    updateHelperMaps(intoSeq(atOffset), atOffset)
   }
 
   /**
@@ -201,29 +234,73 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   def insertSequence(data: String, intoSeq: ArrayBuffer[StringBuilder],
                      intoAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int,
                      abundance: Abundance = 1): Int = {
-    val suffix = data.substring(1)
-    val prefix = data.substring(0, k - 1)
+    val suffix = DNAHelpers.kmerSuffix(data, k)
+    val prefix = DNAHelpers.kmerPrefix(data, k)
     var i = 0
-    while (i < numSequences) {
-      val existingSeq = intoSeq(i)
-      if (existingSeq.substring(0, suffix.length) == suffix) {
-        intoSeq(i) = existingSeq.insert(0, data.charAt(0))
-        intoAbund(i).insert(0, clipAbundance(abundance))
+    var noPrefix = false
+    var noSuffix = false
 
-        //A merge is possible if a k-mer has both a prefix and a suffix match.
-        //So it is sufficient to check for it here, as it would never hit the
-        //append case below.
-        return tryMerge(i, intoSeq, intoAbund, numSequences)
-      } else if (existingSeq.substring(existingSeq.length - prefix.length) == prefix) {
-        intoSeq(i) = (existingSeq += data.charAt(data.length() - 1))
-        intoAbund(i) += clipAbundance(abundance)
-        updateHelperMap(intoSeq(i), i)
-        return numSequences
+    /*
+     * Traversing the entire list of sequences would cause a n^2 cost for large buckets,
+     * so if possible we use the helper maps to avoid the traversal.
+     */
+    helperMap match {
+      case Some(m) =>
+        prefixHelper.get(suffix) match {
+          case Some(pi) =>
+            i = pi
+          case None =>
+            noPrefix = true
+            suffixHelper.get(prefix) match {
+              case Some(si) => i = si
+              case _        => noSuffix = true
+            }
+        }
+
+      case None =>
+    }
+
+    //Look for a prefix match
+    while (i < numSequences && !noPrefix) {
+      val existingSeq = intoSeq(i)
+      if (existingSeq != null) {
+        if (DNAHelpers.kmerPrefix(existingSeq, k) == suffix) {
+          removeHelperPrefix(existingSeq)
+          existingSeq.insert(0, data.charAt(0))
+          intoAbund(i).insert(0, clipAbundance(abundance))
+
+          //A merge is possible if a k-mer has both a prefix and a suffix match.
+          //So it is sufficient to check for it here, as it would never hit the
+          //append case below.
+          tryMerge(i, intoSeq, intoAbund, numSequences)
+          return numSequences
+        }
       }
       i += 1
     }
+
+    if (i == numSequences) i = 0
+
+    //Look for a suffix match
+    while (i < numSequences && !noSuffix) {
+      val existingSeq = intoSeq(i)
+      if (existingSeq != null) {
+        if (DNAHelpers.kmerSuffix(existingSeq, k) == prefix) {
+          removeHelperSuffix(existingSeq)
+          existingSeq += data.charAt(data.length() - 1)
+          intoAbund(i) += clipAbundance(abundance)
+          updateHelperMaps(intoSeq(i), i)
+          return numSequences
+        }
+      }
+      i += 1
+    }
+
+    //Note: could possibly be more efficient by looking for
+    //positions that have been set to null following a merge,
+    //and reusing those positions
     intoSeq += new StringBuilder(data)
-    updateHelperMap(intoSeq(numSequences), numSequences)
+    updateHelperMaps(intoSeq(numSequences), numSequences)
     intoAbund += Buffer(clipAbundance(abundance))
     numSequences + 1
   }
@@ -254,7 +331,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       sequencesUpdated = true
     }
 
-    copy(seqR.map(_.toString).toArray, abundR.map(_.toArray).toArray, sequencesUpdated)
+    copy(seqR.filter(_ != null).map(_.toString).toArray,
+      abundR.filter(_ != null).map(_.toArray).toArray, sequencesUpdated)
   }
 
   /**
@@ -271,13 +349,13 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     val bufSize = insertAmt + sequences.size
     var seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(bufSize)
     var abundR: ArrayBuffer[Buffer[Abundance]] = new ArrayBuffer(bufSize)
-    if (bufSize > helperMapThreshold) {
-     initHelperMap()
-    }
 
     var n = sequences.size
     seqR ++= sequences.map(x => new StringBuilder(x))
     abundR ++= this.abundances.map(_.toBuffer)
+    if (bufSize > helperMapThreshold) {
+      initHelperMaps(seqR)
+    }
 
     for {
       (segment, abund) <- segmentsAbundances
@@ -293,8 +371,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
       Console.err.println(seqR.take(10).mkString(" "))
     }
 
-    copy(seqR.map(_.toString).toArray,
-      abundR.map(_.toArray).toArray, true)
+    copy(seqR.filter(_ != null).map(_.toString).toArray,
+      abundR.filter(_ != null).map(_.toArray).toArray, true)
   }
 
   /**
@@ -308,29 +386,64 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   @transient
   var helperMap: Option[MMap[String, (Int, Int)]] = None
 
-  private def initHelperMap() {
+  //If helperMap is set, then prefixHelper and suffixHelper are not null.
+
+  //Maps the prefix of each sequence to the offset of that sequence.
+  @transient
+  var prefixHelper: MMap[String, Int] = null
+
+  //Maps the suffix of each sequence to the position of that sequence.
+  @transient
+  var suffixHelper: MMap[String, Int] = null
+
+  private def initHelperMaps(sequences: Iterable[StringBuilder]) {
     val r = MMap[NTSeq, (Int, Int)]()
     for {
-      (seq, seqIdx) <- kmersBySequence.zipWithIndex
+      (seq, seqIdx) <- sequences.map(s => Read.kmers(s.toString, k)).zipWithIndex
       (kmer, kmerIdx) <- seq.zipWithIndex
     } {
       r += (kmer -> (seqIdx, kmerIdx))
     }
     helperMap = Some(r)
+
+    prefixHelper = MMap[String, Int]()
+    suffixHelper = MMap[String, Int]()
+    for ((seq, i) <- sequences.zipWithIndex) {
+      prefixHelper += (DNAHelpers.kmerPrefix(seq, k) -> i)
+      suffixHelper += (DNAHelpers.kmerSuffix(seq, k) -> i)
+    }
   }
 
-  private def updateHelperMap(sequence: StringBuilder, i: Int) {
-    updateHelperMap(sequence.toString, i)
+  private def removeHelperSuffix(seq: StringBuilder) {
+    helperMap match {
+      case Some(m) =>
+        suffixHelper -= DNAHelpers.kmerSuffix(seq, k)
+      case _ =>
+    }
   }
 
-  private def updateHelperMap(sequence: NTSeq, i: Int) {
+  private def removeHelperPrefix(seq: StringBuilder) {
+    helperMap match {
+      case Some(m) =>
+        prefixHelper -= DNAHelpers.kmerPrefix(seq, k)
+      case _ =>
+    }
+  }
+
+  private def updateHelperMaps(newSeq: StringBuilder, i: Int) {
+    updateHelperMaps(newSeq.toString, i)
+  }
+
+  private def updateHelperMaps(newSeq: NTSeq, i: Int) {
     helperMap match {
       case Some(m) =>
         for {
-          (kmer, j) <- Read.kmers(sequence, k).zipWithIndex
+          (kmer, j) <- Read.kmers(newSeq, k).zipWithIndex
         } {
           m += (kmer -> (i, j))
         }
+        prefixHelper += (DNAHelpers.kmerPrefix(newSeq, k) -> i)
+        suffixHelper += (DNAHelpers.kmerSuffix(newSeq, k) -> i)
       case _ =>
     }
   }
