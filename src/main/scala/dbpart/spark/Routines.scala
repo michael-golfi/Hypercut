@@ -17,6 +17,9 @@ import java.io.PrintStream
 import java.io.File
 import org.graphframes.GraphFrame
 import org.graphframes.lib.Pregel
+import org.apache.spark.rdd.PairRDDFunctions
+import miniasm.genome.bpbuffer.BPBuffer
+import miniasm.genome.bpbuffer.BPBuffer._
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -37,7 +40,7 @@ class Routines(spark: SparkSession) {
    */
   def getReads(fileSpec: String): Dataset[String] = {
     val reads = sc.textFile(fileSpec).toDS
-    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
+    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)).filter(! _.contains("N")))
   }
 
   def countFeatures(reads: Dataset[String], space: MarkerSpace) = {
@@ -54,10 +57,10 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * The marker sets in a read, in sequence (in md5-hashed form),
+   * The marker sets in a read, in sequence
    * and the corresponding segments that were discovered, in sequence.
    */
-  type ProcessedRead = (Array[(Array[Byte], String)])
+  type ProcessedRead = (Array[(Array[Byte], ZeroBPBuffer)])
 
   /**
    * Process a set of reads, generating an intermediate dataset that contains both read segments
@@ -67,7 +70,7 @@ class Routines(spark: SparkSession) {
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
       val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => (x._1.compact.data, x._2)).toArray
+      hashesSegments.map(x => (x._1.compact.data, BPBuffer.wrap(x._2))).toArray
     })
   }
 
@@ -91,7 +94,7 @@ class Routines(spark: SparkSession) {
     val segments = reads.flatMap(x => x)
     val countedSegments =
       segments.groupBy(segments.columns(0), segments.columns(1)).count.
-      as[(Array[Byte], String, Long)]
+      as[(Array[Byte], ZeroBPBuffer, Long)]
 
     val byBucket = countedSegments.groupByKey({ case (key, _, _) => key }).
       mapValues({ case (_, read, count) => (read, count) })
@@ -102,7 +105,8 @@ class Routines(spark: SparkSession) {
       {
         case (key, segmentsCounts) => {
           val empty = SimpleCountingBucket.empty(ext.k)
-          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipAbundance(x._2))).toList).
+          val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+            (x._1.toString, clipAbundance(x._2))).toList).
             atMinAbundance(minAbundance)
           (key, bkt)
         }
@@ -175,29 +179,33 @@ class Routines(spark: SparkSession) {
    */
   def asMergingBuckets(readLocation: String) = {
     val (verts, edges) = loadBucketsEdges(readLocation)
+    verts.cache
 
     val fedges = edges.filter(x => (x._1 != x._2))
 
     val joinSrc = fedges.joinWith(verts, fedges("_1") === verts("_1")).map(x =>
-        (x._1._2, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
-      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+        (x._1._2, x._2._2.sequences)).groupByKey(_._1).
+        mapGroups((k, vs) => (k, vs.map(_._2).toSeq.flatten))
 
     val joinDst = fedges.joinWith(verts, fedges("_2") === verts("_1")).map(x =>
-        (x._1._1, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
-      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+        (x._1._1, x._2._2.sequences)).groupByKey(_._1).
+      mapGroups((k, vs) => (k, vs.map(_._2).toSeq.flatten))
 
     val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "outer").
       join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "outer").
       as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])].
       map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
     r.cache
+
+    verts.unpersist
+    r.count
     r
   }
 
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
     edges: Option[Dataset[CompactEdge]]) {
-    
+
     def sml(ds: Dataset[Long]) = ds.reduce(_ + _)
     val fileStream = new PrintStream("bucketStats.txt")
 
@@ -211,7 +219,7 @@ class Routines(spark: SparkSession) {
         println("Bucket stats:")
         stats.describe().show()
         stats.unpersist
-        
+
         for (e <- edges) {
           println(s"Total number of edges: " + e.count())
           val outDeg = e.groupByKey(_._1).count().cache
