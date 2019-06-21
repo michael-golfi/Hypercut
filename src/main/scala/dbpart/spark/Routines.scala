@@ -29,6 +29,9 @@ class Routines(spark: SparkSession) {
   import org.apache.spark.sql._
   import InnerRoutines._
 
+  type Kmer = String
+  type Segment = String
+
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
 
@@ -40,7 +43,10 @@ class Routines(spark: SparkSession) {
     reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
   }
 
-  def countFeatures(reads: Dataset[String], space: MarkerSpace) = {
+  /**
+   * Count motifs such as AC, AT, TTT in a set of reads.
+   */
+  def countFeatures(reads: Dataset[String], space: MarkerSpace): FeatureCounter = {
     reads.map(r => {
       val c = new FeatureCounter
       val s = new FeatureScanner(space)
@@ -49,19 +55,21 @@ class Routines(spark: SparkSession) {
     }).reduce(_ + _)
   }
 
-  def hashReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(CompactNode, String)] = {
+  /**
+   * Find MarkerSets (in the compacted version) in a set of reads,
+   * returning them together with associated k-mers.
+   */
+  def hashReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(CompactNode, Kmer)] = {
     reads.flatMap(r => ext.compactMarkers(r))
   }
 
   /**
-   * The marker sets in a read, in sequence (in md5-hashed form),
-   * and the corresponding segments that were discovered, in sequence.
+   * The marker sets in a read, paired with the corresponding segments that were discovered.
    */
-  type ProcessedRead = (Array[(Array[Byte], String)])
+  type ProcessedRead = (Array[(Array[Byte], Segment)])
 
   /**
-   * Process a set of reads, generating an intermediate dataset that contains both read segments
-   * and edges between buckets.
+   * Hash and split a set of reads into marker sets and segments.
    */
   def splitReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
     reads.map(r => {
@@ -72,17 +80,21 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Simplified version that only builds buckets (thus counting k-mers), not collecting edges.
+   * Simplified version of bucketGraph that only builds buckets
+   * (thus, counting k-mers), not collecting edges.
    */
-  def countKmers(reads: Dataset[String], ext: MarkerSetExtractor) = {
+  def bucketsOnly(reads: Dataset[String], ext: MarkerSetExtractor) = {
     val minAbundance = None
     val segments = splitReads(reads, ext)
     processedToBuckets(segments, ext, minAbundance)
   }
 
-  def countKmers(input: String, ext: MarkerSetExtractor, output: String) {
+  /**
+   * Convenience function to perform bucketsOnly directly from an input file.
+   */
+  def bucketsOnly(input: String, ext: MarkerSetExtractor, output: String) {
     val reads = getReads(input)
-    val bkts = countKmers(reads, ext)
+    val bkts = bucketsOnly(reads, ext)
     writeBuckets(bkts, output)
   }
 
@@ -111,7 +123,8 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Construct a graph where the buckets are vertices.
+   * Construct a graph where the buckets are vertices, and edges are detected from
+   * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
   def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minAbundance: Option[Abundance],
@@ -127,10 +140,11 @@ class Routines(spark: SparkSession) {
       reads.unpersist()
     }
 
-    bucketGraph(verts, edges)
+    toGraphFrame(verts, edges)
   }
 
-  def bucketGraph(bkts: Dataset[(Array[Byte], SimpleCountingBucket)], edges: Dataset[(CompactEdge)]) = {
+  def toGraphFrame(bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
+                   edges: Dataset[(CompactEdge)]): GraphFrame = {
     val vertDF = bkts.toDF("id", "bucket")
     val edgeDF = edges.toDF("src", "dst")
     GraphFrame(vertDF, edgeDF)
@@ -150,9 +164,9 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Build graph with edges only, setting all vertex attributes to 0.
+   * Using pre-generated and saved data, build a GraphFrame with edges only (no buckets).
    */
-  def loadEdgeGraph(readLocation: String) = {
+  def loadEdgeGraph(readLocation: String): GraphFrame = {
     //Note: probably better to repartition buckets and edges at an earlier stage, before
     //saving to parquet
     val (_, edges) = loadBucketsEdges(readLocation)
@@ -163,9 +177,9 @@ class Routines(spark: SparkSession) {
   /**
    * Build graph with edges and buckets (as vertices).
    */
-  def loadBucketGraph(readLocation: String) = {
+  def loadBucketGraph(readLocation: String): GraphFrame = {
     val (verts, edges) = loadBucketsEdges(readLocation)
-    bucketGraph(verts, edges)
+    toGraphFrame(verts, edges)
   }
 
   /**
@@ -197,7 +211,7 @@ class Routines(spark: SparkSession) {
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
     edges: Option[Dataset[CompactEdge]]) {
-    
+
     def sml(ds: Dataset[Long]) = ds.reduce(_ + _)
     val fileStream = new PrintStream("bucketStats.txt")
 
@@ -211,7 +225,7 @@ class Routines(spark: SparkSession) {
         println("Bucket stats:")
         stats.describe().show()
         stats.unpersist
-        
+
         for (e <- edges) {
           println(s"Total number of edges: " + e.count())
           val outDeg = e.groupByKey(_._1).count().cache
@@ -284,7 +298,13 @@ class Routines(spark: SparkSession) {
 //    printer.close()
 //  }
 //
-  def buildBuckets(input: String, ext: MarkerSetExtractor, minAbundance: Option[Abundance],
+
+  /**
+   * Convenience function to build a GraphFrame directly from reads without
+   * loading from saved data.
+   * The generated data can optionally be saved in the specified location.
+   */
+  def graphFromReads(input: String, ext: MarkerSetExtractor, minAbundance: Option[Abundance],
                    outputLocation: Option[String] = None) = {
     val reads = getReads(input)
     val split = splitReads(reads, ext)

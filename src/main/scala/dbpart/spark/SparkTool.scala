@@ -44,9 +44,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
          val ext = new MarkerSetExtractor(defaultSpace, k.toOption.get)
          val minAbundance = None
          if (edges.toOption.get) {
-           routines.buildBuckets(input.toOption.get, ext, minAbundance, location.toOption)
+           routines.graphFromReads(input.toOption.get, ext, minAbundance, location.toOption)
          } else {
-           routines.countKmers(input.toOption.get, ext, location.toOption.get)
+           routines.bucketsOnly(input.toOption.get, ext, location.toOption.get)
          }
       }
     }
