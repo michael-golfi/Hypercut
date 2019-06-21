@@ -2,16 +2,21 @@ import dbpart.graph.MacroNode
 import dbpart.hash.MarkerSet
 
 package object dbpart {
+
   /**
    * Type of nucleotide sequences.
    */
   type NTSeq = String
+  
+  type Kmer = NTSeq
+  
+  type Segment = NTSeq
 
   /**
    * Abundance counts for k-mers.
    */
   type Abundance = Short
-  
+
   /**
    * Type of edges between buckets in the macro graph.
    */
@@ -20,5 +25,5 @@ package object dbpart {
   type CompactEdge = (Array[Byte], Array[Byte])
 
   type ExpandedEdge = (MarkerSet, MarkerSet)
-  
+
 }
