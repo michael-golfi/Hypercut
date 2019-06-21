@@ -12,16 +12,19 @@ import miniasm.genome.util.DNAHelpers
  */
 class PathGraphBuilder(k: Int) {
 
-  def build(kmers: List[String]) = {        
+  def fromKmers(kmers: List[String]): Graph[KmerNode] = {
     //Currently setting all abundances to 1
     val nodes = kmers.map(s => new KmerNode(s, 1))
-    val result = new DoubleArrayListGraph[KmerNode](nodes.toArray)
+    fromNodes(nodes)
+  }
 
+  def fromNodes(nodes: List[KmerNode]): Graph[KmerNode] = {
+    val result = new DoubleArrayListGraph[KmerNode](nodes.toArray)
     val byStart = nodes.sortBy(_.seq)
     val byEnd = nodes.sortBy(n => n.end)
 
     val gotEdges = findEdges(byStart, byEnd, false,
-          (f, t) => result.addEdge(f,t))
+      (f, t) => result.addEdge(f, t))
     result
   }
 

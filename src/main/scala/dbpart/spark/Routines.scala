@@ -29,9 +29,6 @@ class Routines(spark: SparkSession) {
   import org.apache.spark.sql._
   import InnerRoutines._
 
-  type Kmer = String
-  type Segment = String
-
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
 
@@ -187,24 +184,26 @@ class Routines(spark: SparkSession) {
    * construct PathMergingBuckets that are aware of their incoming and outgoing
    * openings.
    */
-  def asMergingBuckets(readLocation: String) = {
+  def asMergingBuckets(readLocation: String, k: Int) = {
     val (verts, edges) = loadBucketsEdges(readLocation)
 
-    val fedges = edges.filter(x => (x._1 != x._2))
+    val filtEdges = edges.filter(x => (x._1 != x._2))
 
-    val joinSrc = fedges.joinWith(verts, fedges("_1") === verts("_1")).map(x =>
-        (x._1._2, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
-      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+    val joinSrc = filtEdges.joinWith(verts, filtEdges("_1") === verts("_1")).
+      groupByKey(_._1._2).
+      mapGroups((k, vs) => (k, vs.map(_._2._2.sequences).toSeq.flatten))
 
-    val joinDst = fedges.joinWith(verts, fedges("_2") === verts("_1")).map(x =>
-        (x._1._1, x._2._2)).groupByKey(_._1).mapValues(_._2.sequences).
-      mapGroups((k, vs) => (k, vs.toSeq.flatten))
+    val joinDst = filtEdges.joinWith(verts, filtEdges("_2") === verts("_1")).
+      groupByKey(_._1._1).
+      mapGroups((k, vs) => (k, vs.map(_._2._2.sequences).toSeq.flatten))
 
-    val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "outer").
-      join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "outer").
+    val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "leftouter").
+      join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "leftouter").
       as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])].
-      map(x => (x._1, x._2.asPathMerging(x._3, x._4)))
+      map(x => (x._1, PathMergingBucket(x._2.sequences, k).withPrior(x._3).withPost(x._4)))
+
     r.cache
+    r.count
     r
   }
 

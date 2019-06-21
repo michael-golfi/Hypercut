@@ -7,6 +7,7 @@ import scala.collection.mutable.{Map => MMap}
 import miniasm.genome.util.DNAHelpers
 import dbpart.graph.PathGraphBuilder
 import dbpart.graph.PathFinder
+import dbpart.graph.KmerNode
 
 object CountingSeqBucket {
   //The maximum abundance value that we track. Currently this is an ad hoc limit.
@@ -459,68 +460,4 @@ case class SimpleCountingBucket(override val sequences: Array[String],
   def copy(sequences: Array[String], abundances: Array[Array[Abundance]],
            sequencesUpdated: Boolean) =
         new SimpleCountingBucket(sequences, abundances, k)
-
-  /**
-   * By looking at prior and post buckets in the macro graph, convert this bucket into a PathMergingBucket
-   * where openings have been correctly set.
-   */
-  def asPathMerging(priorSeqs: Iterable[String], postSeqs: Iterable[String]): PathMergingBucket = {
-    val safePrior = Option(priorSeqs).getOrElse(Seq())
-    val safePost = Option(postSeqs).getOrElse(Seq())
-
-    val priorOut = safePrior.map(_.drop(1)).flatMap(Read.kmers(_, k - 1)).toSet
-    val postIn = safePost.map(_.dropRight(1)).flatMap(Read.kmers(_, k - 1)).toSet
-
-    val inOpen = kmers.map(DNAHelpers.kmerPrefix(_, k)).
-      filter(priorOut.contains(_)).distinct
-    val outOpen = kmers.map(DNAHelpers.kmerSuffix(_, k)).
-      filter(postIn.contains(_)).distinct
-    PathMergingBucket(sequences, k, outOpen.toArray, inOpen.toArray)
-  }
-}
-
-/**
- * Bucket for progressively merging paths into longer ones.
- * Paths either pass through this bucket, begin in it, or end in it.
- * At every step we track remaining openings: (k-1)-mers that are potential incoming
- * or outgoing merges.
- */
-case class PathMergingBucket(val sequences: Array[String],
-  val k: Int,
-
-  /**
-   * Openings forward of length k-1.
-   * These are the k-1-mers that may be joined with outgoing sequences.
-   */
-  val outOpenings: Array[String],
-
-  /**
-   * Openings backward of length k-1.
-   * These are the k-1-mers that may be joined with incoming sequences.
-   */
-  val inOpenings: Array[String]) {
-
-  def kmers = sequences.toSeq.map(Read.kmers(_, k))
-
-  def kmerGraph = {
-    val builder = new PathGraphBuilder(k)
-    builder.build(kmers.iterator.flatten.toList)
-  }
-
-  def unitigs = {
-    new PathFinder(k).findSequences(kmerGraph)
-  }
-
-  /**
-   * Join incoming paths from a different bucket,
-   * remove any finished unitigs from this bucket, returning them and a new merged
-   * bucket with unfinished data from the two input buckets.
-   */
-  def mergeIn(in: PathMergingBucket): (Iterable[String], PathMergingBucket) = {
-    ???
-  }
-
-  def focusIn(openings: Array[String]): PathMergingBucket = ???
-
-  def focusOut(openings: Array[String]): PathMergingBucket = ???
 }
