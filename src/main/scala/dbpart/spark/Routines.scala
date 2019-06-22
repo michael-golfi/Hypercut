@@ -17,6 +17,7 @@ import java.io.PrintStream
 import java.io.File
 import org.graphframes.GraphFrame
 import org.graphframes.lib.Pregel
+import org.graphframes.lib.AggregateMessages
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -185,26 +186,26 @@ class Routines(spark: SparkSession) {
    * openings.
    */
   def asMergingBuckets(readLocation: String, k: Int) = {
-    val (verts, edges) = loadBucketsEdges(readLocation)
+    val graph = loadBucketGraph(readLocation)
+    val msgCol = AggregateMessages.MSG_COL_NAME
+    val aggCol = s"collect_list($msgCol)"
 
-    val filtEdges = edges.filter(x => (x._1 != x._2))
+    val srcSequences = graph.aggregateMessages.
+      sendToDst("src.bucket.sequences").
+      agg(aggCol).
+      withColumnRenamed(aggCol, "srcSeq")
 
-    val joinSrc = filtEdges.joinWith(verts, filtEdges("_1") === verts("_1")).
-      groupByKey(_._1._2).
-      mapGroups((k, vs) => (k, vs.map(_._2._2.sequences).toSeq.flatten))
+    val dstSequences = graph.aggregateMessages.
+      sendToSrc("dst.bucket.sequences").
+      agg(aggCol).
+      withColumnRenamed(aggCol, "dstSeq")
 
-    val joinDst = filtEdges.joinWith(verts, filtEdges("_2") === verts("_1")).
-      groupByKey(_._1._1).
-      mapGroups((k, vs) => (k, vs.map(_._2._2.sequences).toSeq.flatten))
+    val joined = graph.vertices.join(dstSequences, Seq("id"), "leftouter").
+      join(srcSequences, Seq("id"), "leftouter").
+      as[(Array[Byte], SimpleCountingBucket, Array[Array[String]], Array[Array[String]])]
 
-    val r = verts.join(joinSrc.withColumnRenamed("_2", "priorSeqs"), Seq("_1"), "leftouter").
-      join(joinDst.withColumnRenamed("_2", "postSeqs"), Seq("_1"), "leftouter").
-      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])].
-      map(x => (x._1, PathMergingBucket(x._2.sequences, k).withPrior(x._3).withPost(x._4)))
-
-    r.cache
-    r.count
-    r
+    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k).
+        withPost(safeFlatten(x._3)).withPrior(safeFlatten(x._4))))
   }
 
   def bucketStats(
@@ -314,5 +315,10 @@ class Routines(spark: SparkSession) {
 }
 
 object InnerRoutines {
-
+  def safeFlatten(ss: Array[Array[String]]) = {
+    Option(ss) match {
+      case Some(ss) => ss.iterator.filter(_ != null).flatten.toList
+      case _        => List()
+    }
+  }
 }
