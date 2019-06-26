@@ -30,6 +30,9 @@ class Routines(spark: SparkSession) {
   import org.apache.spark.sql._
   import InnerRoutines._
 
+  type Kmer = String
+  type Segment = String
+
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
 
