@@ -1,23 +1,22 @@
 package dbpart.spark
 
-import org.apache.spark.SparkConf
-import org.apache.spark.sql.Dataset
-import org.apache.spark.sql.SparkSession
+import java.io.File
+import java.io.PrintStream
 
-import com.google.common.hash.Hashing
+import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.SparkSession
+import org.graphframes.GraphFrame
+import org.graphframes.lib.AggregateMessages
+import org.graphframes.lib.Pregel
 
 import dbpart._
 import dbpart.bucket._
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
-import org.apache.spark.storage.StorageLevel
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SaveMode
-import java.io.PrintStream
-import java.io.File
-import org.graphframes.GraphFrame
-import org.graphframes.lib.Pregel
-import org.graphframes.lib.AggregateMessages
+
+case class HashSegment(hash: Array[Byte], segment: String)
+case class CountedHashSegment(hash: Array[Byte], segment: String, count: Long)
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -26,15 +25,18 @@ class Routines(spark: SparkSession) {
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
-  import org.apache.spark.sql.functions._
   import org.apache.spark.sql._
-  import InnerRoutines._
+  import org.apache.spark.sql.functions._
 
   type Kmer = String
   type Segment = String
 
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
+
+  spark.sqlContext.udf.register(
+    "sharedOverlaps",
+    (prior: Seq[String], post: Seq[String], k: Int) => PathMergingBucket.sharedOverlaps(prior, post, k))
 
   /**
    * Load reads and their reverse complements from DNA files.
@@ -67,7 +69,7 @@ class Routines(spark: SparkSession) {
   /**
    * The marker sets in a read, paired with the corresponding segments that were discovered.
    */
-  type ProcessedRead = (Array[(Array[Byte], Segment)])
+  type ProcessedRead = (Array[HashSegment])
 
   /**
    * Hash and split a set of reads into marker sets and segments.
@@ -76,7 +78,7 @@ class Routines(spark: SparkSession) {
     reads.map(r => {
       val buckets = ext.markerSetsInRead(r)._2
       val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => (x._1.compact.data, x._2)).toArray
+      hashesSegments.map(x => HashSegment(x._1.compact.data, x._2)).toArray
     })
   }
 
@@ -85,9 +87,8 @@ class Routines(spark: SparkSession) {
    * (thus, counting k-mers), not collecting edges.
    */
   def bucketsOnly(reads: Dataset[String], ext: MarkerSetExtractor) = {
-    val minAbundance = None
     val segments = splitReads(reads, ext)
-    processedToBuckets(segments, ext, minAbundance)
+    processedToBuckets(segments, ext)
   }
 
   /**
@@ -100,27 +101,24 @@ class Routines(spark: SparkSession) {
   }
 
   def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
-                       minAbundance: Option[Abundance]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val segments = reads.flatMap(x => x)
+                            reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+    val segments = reads.withColumnRenamed(reads.columns(0), "data").
+      select(explode($"data").as("inner")).select("inner.*").
+      as[HashSegment]
+
     val countedSegments =
-      segments.groupBy(segments.columns(0), segments.columns(1)).count.
-      as[(Array[Byte], String, Long)]
+      segments.groupBy($"hash", $"segment").count.
+        as[CountedHashSegment]
 
-    val byBucket = countedSegments.groupByKey({ case (key, _, _) => key }).
-      mapValues({ case (_, read, count) => (read, count) })
+    val byBucket = countedSegments.groupByKey(_.hash)
 
-    //Note: reduce, or an aggregator, may work better than mapGroups here.
-    //mapGroups may cause high memory usage.
-    val buckets = byBucket.mapGroups(
-      {
-        case (key, segmentsCounts) => {
-          val empty = SimpleCountingBucket.empty(ext.k)
-          val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x._1, clipAbundance(x._2))).toList).
-            atMinAbundance(minAbundance)
-          (key, bkt)
-        }
-      })
-    buckets
+    byBucket.mapGroups {
+      case (key, segmentsCounts) => {
+        val empty = SimpleCountingBucket.empty(ext.k)
+        val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x.segment, clipAbundance(x.count))).toList)
+        (key, bkt)
+      }
+    }
   }
 
   /**
@@ -128,10 +126,10 @@ class Routines(spark: SparkSession) {
    * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor, minAbundance: Option[Abundance],
+  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
-    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_._1).toList)).distinct()
-    val verts = processedToBuckets(reads, ext, minAbundance)
+    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_.hash).toList)).distinct()
+    val verts = processedToBuckets(reads, ext)
 
     edges.cache
     verts.cache
@@ -144,10 +142,15 @@ class Routines(spark: SparkSession) {
     toGraphFrame(verts, edges)
   }
 
-  def toGraphFrame(bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
-                   edges: Dataset[(CompactEdge)]): GraphFrame = {
+  def toGraphFrame(
+    bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
+    edges: Dataset[(CompactEdge)]): GraphFrame = {
     val vertDF = bkts.toDF("id", "bucket")
     val edgeDF = edges.toDF("src", "dst")
+
+//    GraphFrame(vertDF.repartition(NUM_PARTITIONS, vertDF("id")).cache,
+//      edgeDF.repartition(NUM_PARTITIONS, edgeDF("src")).cache)
+//
     GraphFrame(vertDF, edgeDF)
   }
 
@@ -156,7 +159,7 @@ class Routines(spark: SparkSession) {
   }
 
   def loadBuckets(readLocation: String) =
-     spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
+    spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
 
   def loadBucketsEdges(readLocation: String) = {
     val edges = spark.read.parquet(s"${readLocation}_edges").as[CompactEdge]
@@ -178,9 +181,12 @@ class Routines(spark: SparkSession) {
   /**
    * Build graph with edges and buckets (as vertices).
    */
-  def loadBucketGraph(readLocation: String): GraphFrame = {
+  def loadBucketGraph(readLocation: String, limit: Option[Int] = None): GraphFrame = {
     val (verts, edges) = loadBucketsEdges(readLocation)
-    toGraphFrame(verts, edges)
+    limit match {
+      case Some(l) => toGraphFrame(verts.limit(l), edges)
+      case _       => toGraphFrame(verts, edges)
+    }
   }
 
   /**
@@ -188,27 +194,26 @@ class Routines(spark: SparkSession) {
    * construct PathMergingBuckets that are aware of their incoming and outgoing
    * openings.
    */
-  def asMergingBuckets(readLocation: String, k: Int) = {
-    val graph = loadBucketGraph(readLocation)
+  def asMergingBuckets(readLocation: String, k: Int, limit: Option[Int] = None) = {
+    val graph = loadBucketGraph(readLocation, limit)
     val msgCol = AggregateMessages.MSG_COL_NAME
-    val aggCol = s"collect_list($msgCol)"
+    val aggCol = s"collect_set($msgCol)"
 
-    val srcSequences = graph.aggregateMessages.
-      sendToDst("src.bucket.sequences").
+    val inOpen = graph.aggregateMessages.
+      sendToDst("explode(sharedOverlaps(src.bucket.sequences, dst.bucket.sequences, src.bucket.k))").
       agg(aggCol).
-      withColumnRenamed(aggCol, "srcSeq")
+      withColumnRenamed(aggCol, "inOpen")
 
-    val dstSequences = graph.aggregateMessages.
-      sendToSrc("dst.bucket.sequences").
+    val outOpen = graph.aggregateMessages.
+      sendToSrc("explode(sharedOverlaps(src.bucket.sequences, dst.bucket.sequences, src.bucket.k))").
       agg(aggCol).
-      withColumnRenamed(aggCol, "dstSeq")
+      withColumnRenamed(aggCol, "outOpen")
 
-    val joined = graph.vertices.join(dstSequences, Seq("id"), "leftouter").
-      join(srcSequences, Seq("id"), "leftouter").
-      as[(Array[Byte], SimpleCountingBucket, Array[Array[String]], Array[Array[String]])]
+    val joined = graph.vertices.join(inOpen, Seq("id"), "leftouter").
+      join(outOpen, Seq("id"), "leftouter").
+      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])]
 
-    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k).
-        withPost(safeFlatten(x._3)).withPrior(safeFlatten(x._4))))
+    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k, x._3, x._4)))
   }
 
   def bucketStats(
@@ -307,11 +312,11 @@ class Routines(spark: SparkSession) {
    * loading from saved data.
    * The generated data can optionally be saved in the specified location.
    */
-  def graphFromReads(input: String, ext: MarkerSetExtractor, minAbundance: Option[Abundance],
-                   outputLocation: Option[String] = None) = {
+  def graphFromReads(input: String, ext: MarkerSetExtractor,
+                     outputLocation: Option[String] = None) = {
     val reads = getReads(input)
     val split = splitReads(reads, ext)
-    val r = bucketGraph(split, ext, minAbundance, outputLocation)
+    val r = bucketGraph(split, ext, outputLocation)
     split.unpersist
     r
   }

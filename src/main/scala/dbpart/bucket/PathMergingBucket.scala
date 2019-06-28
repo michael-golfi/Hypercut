@@ -7,6 +7,18 @@ import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
 import dbpart._
 
+object PathMergingBucket {
+  /**
+   * Function for computing shared k-1 length overlaps between sequences of prior
+   * and post k-mers. Intended for computing inOpenings and outOpenings.
+   */
+  def sharedOverlaps(prior: Seq[String], post: Seq[String], k: Int): Array[String] = {
+     val preKmers = prior.iterator.flatMap(Read.kmers(_, k - 1).drop(1)).toSet
+     val postKmers = post.toSeq.flatMap(Read.kmers(_, k - 1).toSeq.dropRight(1))
+     postKmers.filter(x => preKmers.contains(x)).distinct.toArray
+  }
+}
+
 /**
  * Bucket for progressively merging paths into longer ones.
  * Paths either pass through this bucket, begin in it, or end in it.
@@ -32,22 +44,6 @@ case class PathMergingBucket(val sequences: Array[String],
   val inOpenings: Array[String] = Array()) {
 
   def kmers = sequences.toSeq.flatMap(Read.kmers(_, k))
-
-  def withPrior(seqs: Iterable[String]) = {
-    val safePrior = Option(seqs).getOrElse(Seq())
-    val priorOut = safePrior.map(_.drop(1)).flatMap(Read.kmers(_, k - 1)).toSet
-    val inOpen = kmers.map(DNAHelpers.kmerPrefix(_, k)).
-      filter(priorOut.contains(_)).distinct
-    copy(inOpenings = inOpen.toArray)
-  }
-
-  def withPost(seqs: Iterable[String]) = {
-    val safePost = Option(seqs).getOrElse(Seq())
-    val postIn = safePost.map(_.dropRight(1)).flatMap(Read.kmers(_, k - 1)).toSet
-    val outOpen = kmers.map(DNAHelpers.kmerSuffix(_, k)).
-      filter(postIn.contains(_)).distinct
-    copy(outOpenings = outOpen.toArray)
-  }
 
   def removeSequences(ss: Iterable[NTSeq]): PathMergingBucket = {
     val removeKmers = ss.iterator.flatMap(Read.kmers(_, k)).toSet
