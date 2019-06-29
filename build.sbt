@@ -14,6 +14,7 @@ name := "DBPart"
 scalaVersion := "2.11.11"
 
 scalacOptions ++= Seq(
+  "-optimize",
   "-feature",
   "-Yinline-warnings")
 

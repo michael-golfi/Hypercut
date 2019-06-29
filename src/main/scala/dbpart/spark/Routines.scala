@@ -59,26 +59,19 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Find MarkerSets (in the compacted version) in a set of reads,
-   * returning them together with associated k-mers.
-   */
-  def hashReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(CompactNode, Kmer)] = {
-    reads.flatMap(r => ext.compactMarkers(r))
-  }
-
-  /**
    * The marker sets in a read, paired with the corresponding segments that were discovered.
    */
   type ProcessedRead = (Array[HashSegment])
 
-  /**
-   * Hash and split a set of reads into marker sets and segments.
+    /**
+   * Hash and split a set of reads into edges
    */
-  def splitReads(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[ProcessedRead] = {
-    reads.map(r => {
+  def splitReadsToEdges(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(Array[Byte], Array[Byte])] = {
+    reads.flatMap(r => {
       val buckets = ext.markerSetsInRead(r)._2
-      val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => HashSegment(x._1.compact.data, x._2)).toArray
+      MarkerSetExtractor.collectTransitions(
+        buckets.map(x => x._1.compact.data).toList
+        )
     })
   }
 
@@ -87,12 +80,17 @@ class Routines(spark: SparkSession) {
    * (thus, counting k-mers), not collecting edges.
    */
   def bucketsOnly(reads: Dataset[String], ext: MarkerSetExtractor) = {
-    val segments = splitReads(reads, ext)
+    val segments = reads.flatMap(r => {
+      val buckets = ext.markerSetsInRead(r)._2
+      val hashesSegments = ext.splitRead(r, buckets)
+      hashesSegments.map(x => HashSegment(x._1.compact.data, x._2))
+    })
     processedToBuckets(segments, ext)
   }
 
   /**
-   * Convenience function to perform bucketsOnly directly from an input file.
+   * Convenience function to compute buckets directly from an input specification
+   * and write them to the output location.
    */
   def bucketsOnly(input: String, ext: MarkerSetExtractor, output: String) {
     val reads = getReads(input)
@@ -100,12 +98,8 @@ class Routines(spark: SparkSession) {
     writeBuckets(bkts, output)
   }
 
-  def processedToBuckets[A](reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
+  def processedToBuckets[A](segments: Dataset[HashSegment], ext: MarkerSetExtractor,
                             reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val segments = reads.withColumnRenamed(reads.columns(0), "data").
-      select(explode($"data").as("inner")).select("inner.*").
-      as[HashSegment]
-
     val countedSegments =
       segments.groupBy($"hash", $"segment").count.
         as[CountedHashSegment]
@@ -126,10 +120,10 @@ class Routines(spark: SparkSession) {
    * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: Dataset[ProcessedRead], ext: MarkerSetExtractor,
+  def bucketGraph(reads: Dataset[String], ext: MarkerSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
-    val edges = reads.flatMap(r => MarkerSetExtractor.collectTransitions(r.map(_.hash).toList)).distinct()
-    val verts = processedToBuckets(reads, ext)
+    val edges = splitReadsToEdges(reads, ext).distinct
+    val verts = bucketsOnly(reads, ext)
 
     edges.cache
     verts.cache
@@ -213,15 +207,17 @@ class Routines(spark: SparkSession) {
       join(outOpen, Seq("id"), "leftouter").
       as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])]
 
-    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k, x._3, x._4)))
+//    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k, x._3, x._4)))
+    joined
   }
 
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
-    edges: Option[Dataset[CompactEdge]]) {
+    edges: Option[Dataset[CompactEdge]],
+    output: String) {
 
     def sml(ds: Dataset[Long]) = ds.reduce(_ + _)
-    val fileStream = new PrintStream("bucketStats.txt")
+    val fileStream = new PrintStream(s"${output}_bucketStats.txt")
 
     val stats = bkts.map(_._2.stats).cache
 
@@ -259,7 +255,7 @@ class Routines(spark: SparkSession) {
     } else {
       (loadBuckets(input), None)
     }
-    bucketStats(verts, edges)
+    bucketStats(verts, edges, input)
   }
 
   /**
@@ -315,9 +311,7 @@ class Routines(spark: SparkSession) {
   def graphFromReads(input: String, ext: MarkerSetExtractor,
                      outputLocation: Option[String] = None) = {
     val reads = getReads(input)
-    val split = splitReads(reads, ext)
-    val r = bucketGraph(split, ext, outputLocation)
-    split.unpersist
+    val r = bucketGraph(reads, ext, outputLocation)
     r
   }
 }
