@@ -226,40 +226,6 @@ class Routines(spark: SparkSession) {
     bucketStats(verts, edges, input)
   }
 
-  def boundaryBuckets(graph: GraphFrame, k: Int, minLength: Option[Int], output: String) = {
-    import InnerRoutines._
-//    val nodeIn = graph.inDegrees
-//    val nodeOut = graph.outDegrees
-//
-    val ids = graph.vertices.selectExpr("id", "monotonically_increasing_id() as coreId")
-    val idGraph = GraphFrame(ids, graph.edges)
-    idGraph.cache
-
-    val partitions = idGraph.pregel.
-      withVertexColumn("partition", $"coreId",
-        array_min(array(Pregel.msg, $"partition"))).
-        sendMsgToDst(Pregel.src("partition")).
-        sendMsgToSrc(Pregel.dst("partition")).
-        aggMsgs(min(Pregel.msg)).
-        setMaxIter(1).
-        run
-
-    val withBuckets = partitions.join(graph.vertices, Seq("id"))
-
-    val bb = withBuckets.as[(Array[Byte], Long, Long, SimpleCountingBucket)].
-      groupByKey(_._3).mapGroups((key, rows) => {  //Group by partition
-      //SCB is boundary if partition != coreId
-      BoundaryBucket(
-        rows.map(r => (r._4, r._2 != r._3)).toList,
-        k)
-    })
-
-    bb.flatMap(_.containedUnitigs.flatMap(lengthFilter(minLength))).map(u =>
-      (u.seq, u.stopReasonStart, u.stopReasonEnd)).
-      write.mode("overwrite").csv(s"${output}_unitigs")
-    bb
-  }
-
   /**
    * Convenience function to build a GraphFrame directly from reads without
    * loading from saved data.
@@ -273,7 +239,10 @@ class Routines(spark: SparkSession) {
   }
 }
 
-object InnerRoutines {
+/**
+ * Serialization-safe routines.
+ */
+object SerialRoutines {
   def safeFlatten(ss: Array[Array[String]]) = {
     Option(ss) match {
       case Some(ss) => ss.iterator.filter(_ != null).flatten.toList

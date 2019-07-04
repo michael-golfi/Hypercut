@@ -8,11 +8,14 @@ import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
 
 object BoundaryBucket {
-  def apply(components: List[(SimpleCountingBucket, Boolean)], k: Int): BoundaryBucket = {
+  def apply(boundarySequences: Array[String], k: Int): BoundaryBucket =
+    BoundaryBucket(Array(), boundarySequences, k)
+
+  def apply(components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
     val (boundary, core) = components.partition(_._2)
 
-    BoundaryBucket(core.flatMap(_._1.sequences).toArray,
-      boundary.flatMap(_._1.sequences).toArray, k)
+    BoundaryBucket(core.flatMap(_._1).toArray,
+      boundary.flatMap(_._1).toArray, k)
   }
   /**
    * Function for computing shared k-1 length overlaps between sequences of prior
@@ -28,10 +31,6 @@ object BoundaryBucket {
 case class BoundaryBucket(core: Array[String], boundary: Array[String],
   k: Int) {
   import BoundaryBucket._
-
-  if (core.isEmpty) {
-    Console.err.println("Warning: BoundaryBucket with empty core")
-  }
 
   def kmers = core.toSeq.flatMap(Read.kmers(_, k))
 
