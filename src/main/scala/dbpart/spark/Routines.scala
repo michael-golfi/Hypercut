@@ -34,10 +34,6 @@ class Routines(spark: SparkSession) {
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
 
-  spark.sqlContext.udf.register(
-    "sharedOverlaps",
-    (prior: Seq[String], post: Seq[String], k: Int) => PathMergingBucket.sharedOverlaps(prior, post, k))
-
   /**
    * Load reads and their reverse complements from DNA files.
    */
@@ -183,34 +179,6 @@ class Routines(spark: SparkSession) {
     }
   }
 
-  /**
-   * By joining up buckets with sequences through incoming and outgoing edges,
-   * construct PathMergingBuckets that are aware of their incoming and outgoing
-   * openings.
-   */
-  def asMergingBuckets(readLocation: String, k: Int, limit: Option[Int] = None) = {
-    val graph = loadBucketGraph(readLocation, limit)
-    val msgCol = AggregateMessages.MSG_COL_NAME
-    val aggCol = s"collect_set($msgCol)"
-
-    val inOpen = graph.aggregateMessages.
-      sendToDst("explode(sharedOverlaps(src.bucket.sequences, dst.bucket.sequences, src.bucket.k))").
-      agg(aggCol).
-      withColumnRenamed(aggCol, "inOpen")
-
-    val outOpen = graph.aggregateMessages.
-      sendToSrc("explode(sharedOverlaps(src.bucket.sequences, dst.bucket.sequences, src.bucket.k))").
-      agg(aggCol).
-      withColumnRenamed(aggCol, "outOpen")
-
-    val joined = graph.vertices.join(inOpen, Seq("id"), "leftouter").
-      join(outOpen, Seq("id"), "leftouter").
-      as[(Array[Byte], SimpleCountingBucket, Array[String], Array[String])]
-
-//    joined.map(x => (x._1, PathMergingBucket(x._2.sequences, k, x._3, x._4)))
-    joined
-  }
-
   def bucketStats(
     bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
     edges: Option[Dataset[CompactEdge]],
@@ -258,50 +226,39 @@ class Routines(spark: SparkSession) {
     bucketStats(verts, edges, input)
   }
 
-  /**
-   * Partition buckets using a BFS search.
-   * @param modulo Starting points for partitions (id % modulo == 0).
-   * The number of partitions will be inversely proportional to this number.
-   */
-  def partitionBuckets(graph: GraphFrame)(modulo: Long = 10000): GraphFrame = {
+  def boundaryBuckets(graph: GraphFrame, k: Int, minLength: Option[Int], output: String) = {
+    import InnerRoutines._
 //    val nodeIn = graph.inDegrees
 //    val nodeOut = graph.outDegrees
 //
-//    val nVert = graph.vertices.join(nodeIn, "id").join(nodeOut, "id").
+    val ids = graph.vertices.selectExpr("id", "monotonically_increasing_id() as coreId")
+    val idGraph = GraphFrame(ids, graph.edges)
+    idGraph.cache
 
-    val partitions = graph.pregel.
-      withVertexColumn("partition", lit(null),
-        coalesce(Pregel.msg, lit(null))).
+    val partitions = idGraph.pregel.
+      withVertexColumn("partition", $"coreId",
+        array_min(array(Pregel.msg, $"partition"))).
         sendMsgToDst(Pregel.src("partition")).
         sendMsgToSrc(Pregel.dst("partition")).
-        aggMsgs(first(Pregel.msg)).
+        aggMsgs(min(Pregel.msg)).
+        setMaxIter(1).
         run
 
-//    var current = graph.mapVertices { case(id, _) => new BucketNode() }
-//      joinVertices(nodeIn)((id, node, deg) => node.copy(inDeg = deg)).
-//      joinVertices(nodeOut)((id, node, deg) => node.copy(outDeg = deg))
-//
-//    val result = current.pregel(-1L, Int.MaxValue, EdgeDirection.Either)(bfsProg(modulo),
-//        bfsMsg, (x, y) => x)
-//
-//    //Some nodes may not have been reached - will be left in partition "-1".
-//
-//    result
-        ???
-  }
+    val withBuckets = partitions.join(graph.vertices, Seq("id"))
 
-//  def assemble(pg: PathGraph, k: Int, minAbundance: Option[Abundance], output: String) {
-//    val merged = mergePaths(pg, k)
-//    merged.cache
-//
-//    val printer = new PathPrinter(output, false)
-//    for (contig <- merged.toLocalIterator) {
-//      printer.printSequence("hypercut-gx", contig, None)
-//    }
-//
-//    printer.close()
-//  }
-//
+    val bb = withBuckets.as[(Array[Byte], Long, Long, SimpleCountingBucket)].
+      groupByKey(_._3).mapGroups((key, rows) => {  //Group by partition
+      //SCB is boundary if partition != coreId
+      BoundaryBucket(
+        rows.map(r => (r._4, r._2 != r._3)).toList,
+        k)
+    })
+
+    bb.flatMap(_.containedUnitigs.flatMap(lengthFilter(minLength))).map(u =>
+      (u.seq, u.stopReasonStart, u.stopReasonEnd)).
+      write.mode("overwrite").csv(s"${output}_unitigs")
+    bb
+  }
 
   /**
    * Convenience function to build a GraphFrame directly from reads without
@@ -322,5 +279,10 @@ object InnerRoutines {
       case Some(ss) => ss.iterator.filter(_ != null).flatten.toList
       case _        => List()
     }
+  }
+
+  def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
+    case Some(ml) => if (c.length >= ml) Some(c) else None
+    case _        => Some(c)
   }
 }

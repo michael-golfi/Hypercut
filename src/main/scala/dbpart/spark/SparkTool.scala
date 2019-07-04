@@ -57,7 +57,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val eg = routines.loadEdgeGraph(location.toOption.get)
-        routines.partitionBuckets(eg)(modulo.toOption.get)
+//        routines.partitionBuckets(eg)(modulo.toOption.get)
       }
     }
     addSubcommand(partition)
