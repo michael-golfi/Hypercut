@@ -4,6 +4,7 @@ import org.graphframes.GraphFrame
 import dbpart.bucket.BoundaryBucket
 import org.apache.spark.sql.SparkSession
 import org.graphframes.lib.Pregel
+import org.graphframes.lib.AggregateMessages
 
 class IterativeMerge(spark: SparkSession) {
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
@@ -17,6 +18,9 @@ class IterativeMerge(spark: SparkSession) {
    */
   type IterationData = (GraphFrame, DataFrame)
 
+  def removeLineage(df: DataFrame) = 
+    AggregateMessages.getCachedDataFrame(df)
+  
   /**
    * Prepare the first iteration.
    * Sets up new ID numbers for each bucket and prepares the iterative merge.
@@ -28,15 +32,17 @@ class IterativeMerge(spark: SparkSession) {
         "monotonically_increasing_id() as id").as[(Array[Byte], BoundaryBucket, Long)].
           toDF("bucketId", "sequences", "id")
 
-    val relabelSrc = buckets.selectExpr("bucketId as src", "id as newSrc")
-    val relabelDst = buckets.selectExpr("bucketId as dst", "id as newDst")
+    val relabelSrc = buckets.selectExpr("bucketId as src", "id as newSrc").cache
+    val relabelDst = relabelSrc.toDF("dst", "newDst")
     val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
-      selectExpr("newSrc as src", "newDst as dst")
+      selectExpr("newSrc", "newDst").
+      as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
     val nextBuckets = buckets.select("id", "sequences")
-    nextBuckets.cache
-    val idGraph = GraphFrame.fromEdges(relabelEdges)
-    (idGraph.cache, nextBuckets)
+    val idGraph = GraphFrame.fromEdges(relabelEdges.checkpoint)
+    relabelSrc.unpersist
+
+    (idGraph, nextBuckets)
   }
 
   /**
@@ -56,12 +62,11 @@ class IterativeMerge(spark: SparkSession) {
         setMaxIter(1).
         run
 
-    partitions.cache
-
-    val relabelSrc = partitions.selectExpr("id as src", "partition as newSrc")
-    val relabelDst = partitions.selectExpr("id as dst", "partition as newDst")
+    val relabelSrc = partitions.selectExpr("id as src", "partition as newSrc").cache
+    val relabelDst = relabelSrc.toDF("dst", "newDst")
     val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
-      selectExpr("newSrc as src", "newDst as dst").distinct
+      selectExpr("newSrc", "newDst").
+      as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
     val withBuckets = partitions.join(buckets, Seq("id"))
 
@@ -80,20 +85,39 @@ class IterativeMerge(spark: SparkSession) {
       (u.seq, u.stopReasonStart, u.stopReasonEnd)).
       write.mode(writeMode).csv(s"${output}_unitigs")
 
-     val nextBuckets = unitigs.select("_1", "_2._2").toDF("id", "bucket")
+     val nextBuckets = 
+       removeLineage(unitigs.select("_1", "_2._2").toDF("id", "bucket")).
+       checkpoint
 
-     nextBuckets.cache
-     nextBuckets.count
-     relabelEdges.cache
-     relabelEdges.count
+     //Truncate RDD lineage
+     val nextGraph = GraphFrame.fromEdges(removeLineage(relabelEdges).checkpoint())
 
-     val nextGraph = GraphFrame.fromEdges(relabelEdges).cache
-
-     buckets.unpersist
+     relabelSrc.unpersist
      partitions.unpersist
-     graph.unpersist
+     graph.unpersist()
+     buckets.unpersist()
 
     (nextGraph, nextBuckets)
+  }
+
+  def iterate(graph: GraphFrame, k: Int, minLength: Option[Int], output: String) {
+    var data = initialize(graph, k)
+    var i = 1
+    var n = data._1.edges.count
+    while (n > 0) {
+      println(s"Begin iteration $i ($n edges)")
+      val append = if (i == 1) false else true
+      data = merge(data, k, minLength, output, append)
+      n = data._1.edges.count
+      i += 1
+    }
+  }
+
+  /**
+   * Unpersist remaining data after the final iteration
+   */
+  def unpersist {
+
   }
 
 }
