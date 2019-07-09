@@ -32,7 +32,10 @@ case class BoundaryBucket(core: Array[String], boundary: Array[String],
   k: Int) {
   import BoundaryBucket._
 
-  def kmers = core.toSeq.flatMap(Read.kmers(_, k))
+  def kmers = core.flatMap(Read.kmers(_, k))
+
+  def coreStats = BucketStats(core.size, 0, kmers.size)
+  def boundaryStats = BucketStats(boundary.size, 0, 0)
 
   /**
    * Openings forward of length k-1.
