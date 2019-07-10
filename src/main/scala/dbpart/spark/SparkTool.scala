@@ -9,6 +9,7 @@ import dbpart.CoreConf
 import dbpart.HCCommand
 import dbpart.RunnableCommand
 import dbpart.hash.MarkerSetExtractor
+import org.rogach.scallop.ScallopOption
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -24,6 +25,8 @@ abstract class SparkTool(appName: String) {
 }
 
 class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(args) {
+  import spark.sqlContext.implicits._
+  
   version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (Spark version)")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
@@ -51,7 +54,21 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       }
     }
     addSubcommand(build)
-
+    
+    val top = new Subcommand("top") with RunnableCommand {
+      val n = opt[Int](required = false, default = Some(10), 
+          descr = "Number of buckets to print")
+      val amount = opt[Int](required = false, default = Some(10), 
+          descr = "Amount of sequence to print")
+       
+      def run() {
+       val buckets = routines.loadBuckets(location.toOption.get)
+       routines.showBuckets(buckets.map(_._2), 
+           n.toOption.get, amount.toOption.get)        
+      }
+    }
+    addSubcommand(top)
+    
     val partition = new Subcommand("partition") with RunnableCommand {
       val modulo = opt[Long](required = false, default = Some(10000), descr = "Modulo for BFS starting points")
 
