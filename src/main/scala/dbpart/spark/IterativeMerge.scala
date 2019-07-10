@@ -118,10 +118,13 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
 
      val relabelSrc =
        mergeData.selectExpr("explode(_3)").selectExpr("col._1", "col._2").toDF("src", "newSrc")
+     val removeEdges =
+       mergeData.selectExpr("explode(_4)").selectExpr("col._1", "col._2").as[(Long, Long)]
      val relabelDst = relabelSrc.toDF("dst", "newDst")
      val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
       selectExpr("newSrc", "newDst").
-      as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
+      as[(Long, Long)].except(removeEdges).
+      filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
      //Truncate RDD lineage
      val nextGraph = GraphFrame.fromEdges(materialize(removeLineage(relabelEdges)))
@@ -129,7 +132,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
      mergeData.unpersist
      partitions.unpersist
      graph.unpersist
-     buckets.unpersist
+     graph.edges.rdd.unpersist(false)
+     buckets.rdd.unpersist(false)
 
     (nextGraph, nextBuckets)
   }

@@ -14,6 +14,13 @@ object BoundaryBucket {
     BoundaryBucket(id, core.flatMap(_._1).toArray,
       boundary.flatMap(_._1).toArray, k)
   }
+
+  def potentialIn(ss: Seq[String], k: Int) =
+    ss.flatMap(Read.kmers(_, k - 1).toSeq.dropRight(1))
+
+  def potentialOut(ss: Iterator[String], k: Int) =
+    ss.flatMap(Read.kmers(_, k - 1).drop(1))
+
   /**
    * Function for computing shared k-1 length overlaps between sequences of prior
    * and post k-mers. Intended for computing inOpenings and outOpenings.
@@ -34,16 +41,21 @@ object BoundaryBucket {
    */
   def seizeUnitigsAndMerge(core: BoundaryBucket,
                            boundary: List[BoundaryBucket]):
-                           (List[Contig], List[BoundaryBucket], Array[(Long, Long)]) = {
+                           (List[Contig], List[BoundaryBucket], Array[(Long, Long)], Array[(Long, Long)]) = {
     val (noBound, updated) = core.seizeUnitigs
     val (merge, noMerge) = boundary.partition(updated.overlapsWith)
 
+    def removeEdges(ids: Seq[Long]) = ids.flatMap(i =>
+      Seq((core.id, i), (i, core.id))).toArray
+
+    val remove = removeEdges(noMerge.map(_.id))
+
     if (updated.core.isEmpty) {
-      (noBound, noMerge, noMerge.map(x => (x.id -> x.id)).toArray)
+      (noBound, noMerge, noMerge.map(x => (x.id -> x.id)).toArray, remove)
     } else {
       val newCore = BoundaryBucket(core.id, updated.core ++ merge.flatMap(_.core), Array(), core.k)
       val relabelIds = Array(core.id -> core.id) ++ merge.map(_.id -> core.id) ++ noMerge.map(x => (x.id -> x.id))
-      (noBound, newCore :: noMerge, relabelIds)
+      (noBound, newCore :: noMerge, relabelIds, remove)
     }
   }
 }
@@ -59,8 +71,8 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
 
   def overlapsWith(other: BoundaryBucket) = {
     //Note: could make this direction-aware
-    !sharedOverlaps(core, other.core, k).isEmpty ||
-      !sharedOverlaps(other.core, core, k).isEmpty
+    !sharedOverlapsTo(other.core).isEmpty ||
+      !sharedOverlapsFrom(other.core).isEmpty
   }
 
   /**
@@ -79,6 +91,22 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   @transient
   lazy val inSet: Set[String] = {
     sharedOverlaps(boundary, core, k).toSet
+  }
+
+  @transient
+  lazy val potentialOutSet = potentialOut(core.iterator, k).toSet
+
+  @transient
+  lazy val potentialInSet: Set[String] = potentialIn(core, k).toSet
+
+  def sharedOverlapsFrom(prior: Seq[String]): Array[String] = {
+    potentialOut(prior.iterator, k).
+      filter(potentialInSet.contains(_)).toArray
+  }
+
+  def sharedOverlapsTo(post: Seq[String]): Array[String] = {
+    potentialIn(post, k).
+      filter(potentialOutSet.contains(_)).toArray
   }
 
   def isBoundary(seq: NTSeq) =
