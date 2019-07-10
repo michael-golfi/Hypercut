@@ -32,5 +32,14 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     //Check that unitigs contained entirely in the bucket
     //can be obtained, and that they do not remain in the bucket
     //afterward
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array(), 4)
+    val (contigs, updated) = bkt.seizeUnitigs
+    contigs.map(_.seq) should contain theSameElementsAs(Seq("ACTGGG", "GTGCA"))
+    updated.core.toSeq should equal(Seq())
+  }
+
+  test("removeSequences") {
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array(), 4)
+    bkt.removeSequences(Seq("ACTG")).kmers.toList should contain theSameElementsAs(Seq("CTGG", "TGGG", "GTGC", "TGCA"))
   }
 }

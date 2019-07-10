@@ -8,13 +8,10 @@ import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
 
 object BoundaryBucket {
-  def apply(boundarySequences: Array[String], k: Int): BoundaryBucket =
-    BoundaryBucket(Array(), boundarySequences, k)
-
-  def apply(components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
+  def apply(id: Long, components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
     val (boundary, core) = components.partition(_._2)
 
-    BoundaryBucket(core.flatMap(_._1).toArray,
+    BoundaryBucket(id, core.flatMap(_._1).toArray,
       boundary.flatMap(_._1).toArray, k)
   }
   /**
@@ -26,9 +23,32 @@ object BoundaryBucket {
     val postKmers = post.toSeq.flatMap(Read.kmers(_, k - 1).toSeq.dropRight(1))
     postKmers.filter(x => preKmers.contains(x)).distinct.toArray
   }
+
+  /**
+   * Remove unitigs from the core (whose boundary is known)
+   * and merge it with its boundary buckets when there is still a shared (k-1)-mer
+   * after unitig removal.
+   * The returned buckets will share the same IDs as the input buckets, but some may have been
+   * merged into the core.
+   * The contents of buckets on the boundary, if not merged into the core, will be unchanged.
+   */
+  def seizeUnitigsAndMerge(core: BoundaryBucket,
+                           boundary: List[BoundaryBucket]):
+                           (List[Contig], List[BoundaryBucket], Array[(Long, Long)]) = {
+    val (noBound, updated) = core.seizeUnitigs
+    val (merge, noMerge) = boundary.partition(updated.overlapsWith)
+
+    if (updated.core.isEmpty) {
+      (noBound, noMerge, noMerge.map(x => (x.id -> x.id)).toArray)
+    } else {
+      val newCore = BoundaryBucket(core.id, updated.core ++ merge.flatMap(_.core), Array(), core.k)
+      val relabelIds = Array(core.id -> core.id) ++ merge.map(_.id -> core.id) ++ noMerge.map(x => (x.id -> x.id))
+      (noBound, newCore :: noMerge, relabelIds)
+    }
+  }
 }
 
-case class BoundaryBucket(core: Array[String], boundary: Array[String],
+case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String],
   k: Int) {
   import BoundaryBucket._
 
@@ -36,6 +56,12 @@ case class BoundaryBucket(core: Array[String], boundary: Array[String],
 
   def coreStats = BucketStats(core.size, 0, kmers.size)
   def boundaryStats = BucketStats(boundary.size, 0, 0)
+
+  def overlapsWith(other: BoundaryBucket) = {
+    //Note: could make this direction-aware
+    !sharedOverlaps(core, other.core, k).isEmpty ||
+      !sharedOverlaps(other.core, core, k).isEmpty
+  }
 
   /**
    * Openings forward of length k-1.
@@ -91,7 +117,7 @@ case class BoundaryBucket(core: Array[String], boundary: Array[String],
     val filtered = Read.flattenKmers(kmers.filter(s => !removeKmers.contains(s)).
       toList, k, Nil)
 
-    BoundaryBucket(filtered.toArray, boundary, k)
+    BoundaryBucket(id, filtered.toArray, boundary, k)
   }
 
   /**

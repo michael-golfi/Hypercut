@@ -35,7 +35,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
     buckets.map(_.coreStats).describe().show
     println("Boundary stats")
     buckets.map(_.boundaryStats).describe().show
-
   }
 
   /**
@@ -45,17 +44,18 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
   def initialize(graph: GraphFrame, k: Int): IterationData = {
     val buckets =
       graph.vertices.selectExpr("id as bucketId",
-        "struct(array() as core, bucket.sequences as boundary, bucket.k as k)",
-        "monotonically_increasing_id() as id").as[(Array[Byte], BoundaryBucket, Long)].
-          toDF("bucketId", "sequences", "id")
+        "struct(monotonically_increasing_id() as id, bucket.sequences as core, array() as boundary, bucket.k as k)"
+        ).as[(Array[Byte], BoundaryBucket)].
+          toDF("bucketId", "bucket")
 
-    val relabelSrc = buckets.selectExpr("bucketId as src", "id as newSrc").cache
+    val relabelSrc = buckets.selectExpr("bucketId as src", "bucket.id as newSrc").cache
     val relabelDst = relabelSrc.toDF("dst", "newDst")
     val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
       selectExpr("newSrc", "newDst").
       as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
-    val nextBuckets = buckets.select("id", "sequences").toDF("id", "bucket")
+      //TODO this duplicates data
+    val nextBuckets = buckets.selectExpr("bucket.id as id", "bucket")
     val idGraph = GraphFrame.fromEdges(relabelEdges.cache)
     materialize(relabelEdges)
     relabelSrc.unpersist
@@ -66,7 +66,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
   /**
    * Runs one merge iteration, output data, remove sequences from buckets and
    * merge them.
-   * 
+   *
    * At each iteration step, we run pregel to identify neighbors to join based on
    * minimum ID, then merge BoundaryBuckets together, output and remove as much
    * sequence as possible. A new, smaller graph and a new set of merged buckets
@@ -89,35 +89,44 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
         setMaxIter(1).
         run
 
-    val relabelSrc = partitions.selectExpr("id as src", "partition as newSrc").cache
-    val relabelDst = relabelSrc.toDF("dst", "newDst")
-    val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
-      selectExpr("newSrc", "newDst").
-      as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
-
     val withBuckets = partitions.join(buckets, Seq("id"))
 
-    val unitigs = withBuckets.as[(Long, Long, BoundaryBucket)].
+    val mergeData = withBuckets.as[(Long, Long, BoundaryBucket)].
       groupByKey(_._2).mapGroups((key, rows) => { //Group by partition
         //SCB is boundary if partition != coreId
-        (key, BoundaryBucket(
-          rows.map(r => (r._3.core ++ r._3.boundary, r._1 != r._2)).toList,
-          k).seizeUnitigs)
-      })
+        //TODO: we might get groups here where the core element is missing
+        //(has merged with something else) - handle properly
+
+        val data = rows.toList
+        val everything = BoundaryBucket(key,
+          data.map(r => (r._3.core, r._1 != r._2)),
+          k)
+        BoundaryBucket.seizeUnitigsAndMerge(everything,
+          data.filter(r => r._1 != r._2).map(_._3))
+      }).cache
 
      val writeMode = if (append) "append" else "overwrite"
 
-     unitigs.flatMap(_._2._1.flatMap(lengthFilter(minLength))).map(u =>
+     mergeData.flatMap(_._1.flatMap(lengthFilter(minLength))).map(u =>
       (u.seq, u.stopReasonStart, u.stopReasonEnd)).
       write.mode(writeMode).csv(s"${output}_unitigs")
 
      val nextBuckets =
-       removeLineage(unitigs.select("_1", "_2._2").toDF("id", "bucket"))
+       materialize(removeLineage(mergeData.selectExpr("explode(_2)").selectExpr("col.id", "col").toDF("id", "bucket")))
+
+     //TODO prevent non-merged boundary buckets from merging back with the same core
+
+     val relabelSrc =
+       mergeData.selectExpr("explode(_3)").selectExpr("col._1", "col._2").toDF("src", "newSrc")
+     val relabelDst = relabelSrc.toDF("dst", "newDst")
+     val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
+      selectExpr("newSrc", "newDst").
+      as[(Long, Long)].filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
      //Truncate RDD lineage
      val nextGraph = GraphFrame.fromEdges(materialize(removeLineage(relabelEdges)))
 
-     relabelSrc.unpersist
+     mergeData.unpersist
      partitions.unpersist
      graph.unpersist
      buckets.unpersist
