@@ -23,7 +23,7 @@ import org.graphframes.lib.AggregateMessages
  * Helper routines for executing Hypercut from Apache Spark.
  */
 class Routines(spark: SparkSession) {
-  implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
+  val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
   import org.apache.spark.sql.functions._

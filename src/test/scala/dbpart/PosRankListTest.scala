@@ -13,8 +13,13 @@ class PosRankListTest extends FunSuite with Matchers {
     val prl = PosRankList(test)
     prl should contain theSameElementsAs(test)
 
-    prl.dropUntilPosition(3, space)
+    prl.dropUntilPosition(2, space)
     prl should contain theSameElementsAs(test)
+    //Minimum permitted start offset means that (AC,3) cannot be 
+    //parsed after position 2.
+    prl.dropUntilPosition(3, space)
+    
+    prl should contain theSameElementsAs(test.drop(1))
     prl.dropUntilPosition(4, space)
     prl should contain theSameElementsAs(test.drop(1))
     prl.dropUntilPosition(6, space)

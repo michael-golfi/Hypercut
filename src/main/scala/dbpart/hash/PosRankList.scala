@@ -193,7 +193,9 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   }
 
   /**
-   * Removes items before the given position.
+   * Removes items that can only be parsed 
+   * before the given sequence position, given the constraints
+   * of the given MarkerSpace (min permitted start offset, etc)
    */
   def dropUntilPosition(pos: Int, space: MarkerSpace) {
     nextPos match {
