@@ -14,11 +14,11 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val ss = Array("ACTGGG", "TTGTTA")
     var post = Array("CCGAT", "GTTAA")
     var prior = Array[String]()
-    BoundaryBucket.sharedOverlaps(prior, ss, k) should equal (Seq())
-    BoundaryBucket.sharedOverlaps(ss, post, k) should equal (Seq("GTTA"))
+    BoundaryBucket.sharedOverlaps(prior, ss, k).toSeq should equal (Seq())
+    BoundaryBucket.sharedOverlaps(ss, post, k).toSeq should equal (Seq("GTTA"))
 
     prior = Array("CCGAG", "AACTGAA")
-    BoundaryBucket.sharedOverlaps(prior, ss, k) should equal(Seq("ACTG"))
+    BoundaryBucket.sharedOverlaps(prior, ss, k).toSeq should equal(Seq("ACTG"))
 
 //    val post = Array("CCGAT", "GTTAA")
   }
