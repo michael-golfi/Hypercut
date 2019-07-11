@@ -158,24 +158,18 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * Using pre-generated and saved data, build a GraphFrame with edges only (no buckets).
-   */
-  def loadEdgeGraph(readLocation: String): GraphFrame = {
-    //Note: probably better to repartition buckets and edges at an earlier stage, before
-    //saving to parquet
-    val (_, edges) = loadBucketsEdges(readLocation)
-    val edgeDF = edges.toDF("src", "dst")
-    GraphFrame.fromEdges(edgeDF)
-  }
-
-  /**
    * Build graph with edges and buckets (as vertices).
    */
-  def loadBucketGraph(readLocation: String, limit: Option[Int] = None): GraphFrame = {
-    val (verts, edges) = loadBucketsEdges(readLocation)
+  def loadBucketGraph(readLocation: String, minAbundance: Option[Abundance] = None,
+                      limit: Option[Int] = None): GraphFrame = {
+    val (buckets, edges) = loadBucketsEdges(readLocation)
+    val filterBuckets = minAbundance match {
+      case Some(min) => buckets.map(x => (x._1, x._2.atMinAbundance(minAbundance)))
+      case None => buckets
+    }
     limit match {
-      case Some(l) => toGraphFrame(verts.limit(l), edges)
-      case _       => toGraphFrame(verts, edges)
+      case Some(l) => toGraphFrame(filterBuckets.limit(l), edges)
+      case _       => toGraphFrame(filterBuckets, edges)
     }
   }
 
@@ -237,7 +231,7 @@ class Routines(spark: SparkSession) {
     val r = bucketGraph(reads, ext, outputLocation)
     r
   }
-  
+
   def showBuckets(buckets: Dataset[SimpleCountingBucket], n: Int, amount: Int) {
     val withSize = buckets.map(b => (b.sequences.size, b))
     val sorted = withSize.sort(desc("_1")).take(n)

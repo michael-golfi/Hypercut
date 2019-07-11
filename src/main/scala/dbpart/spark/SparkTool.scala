@@ -11,6 +11,8 @@ import dbpart.RunnableCommand
 import dbpart.hash.MarkerSetExtractor
 import org.rogach.scallop.ScallopOption
 
+import dbpart.bucket.CountingSeqBucket._
+
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
     val conf = new SparkConf
@@ -26,7 +28,7 @@ abstract class SparkTool(appName: String) {
 
 class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(args) {
   import spark.sqlContext.implicits._
-  
+
   version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (Spark version)")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
@@ -54,30 +56,33 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       }
     }
     addSubcommand(build)
-    
+
     val top = new Subcommand("top") with RunnableCommand {
-      val n = opt[Int](required = false, default = Some(10), 
+      val n = opt[Int](required = false, default = Some(10),
           descr = "Number of buckets to print")
-      val amount = opt[Int](required = false, default = Some(10), 
+      val amount = opt[Int](required = false, default = Some(10),
           descr = "Amount of sequence to print")
-       
+
       def run() {
        val buckets = routines.loadBuckets(location.toOption.get)
-       routines.showBuckets(buckets.map(_._2), 
-           n.toOption.get, amount.toOption.get)        
+       routines.showBuckets(buckets.map(_._2),
+           n.toOption.get, amount.toOption.get)
       }
     }
     addSubcommand(top)
-    
-    val partition = new Subcommand("partition") with RunnableCommand {
-      val modulo = opt[Long](required = false, default = Some(10000), descr = "Modulo for BFS starting points")
+
+    val compact = new Subcommand("compact") with RunnableCommand {
+      val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
+      val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
 
       def run() {
-        val eg = routines.loadEdgeGraph(location.toOption.get)
-//        routines.partitionBuckets(eg)(modulo.toOption.get)
+        val loc = location.toOption.get
+        val graph = routines.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
+        val it = new IterativeMerge(spark)
+        it.iterate(graph, k.toOption.get, minLength.toOption, loc)
       }
     }
-    addSubcommand(partition)
+    addSubcommand(compact)
 
     val stats = new HCCommand("stats") (
       routines.bucketStats(location.toOption.get)

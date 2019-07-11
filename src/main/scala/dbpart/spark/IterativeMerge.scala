@@ -114,8 +114,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
      val nextBuckets =
        materialize(removeLineage(mergeData.selectExpr("explode(_2)").selectExpr("col.id", "col").toDF("id", "bucket")))
 
-     //TODO prevent non-merged boundary buckets from merging back with the same core
-
      val relabelSrc =
        mergeData.selectExpr("explode(_3)").selectExpr("col._1", "col._2").toDF("src", "newSrc")
      val removeEdges =
@@ -132,8 +130,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
      mergeData.unpersist
      partitions.unpersist
      graph.unpersist
-     graph.edges.rdd.unpersist(false)
-     buckets.rdd.unpersist(false)
+     graph.edges.rdd.unpersist(true)
+     buckets.rdd.unpersist(true)
 
     (nextGraph, nextBuckets)
   }
