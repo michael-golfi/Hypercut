@@ -143,7 +143,7 @@ object MarkerSet {
     new MarkerSet(space, ms.toList)
   }
 
-  final def addToFirst(s: Seq[Marker], n: Int) = {
+  def addToFirst(s: Seq[Marker], n: Int) = {
     if (s.isEmpty) {
       List()
     } else {
@@ -151,27 +151,8 @@ object MarkerSet {
     }
   }
 
-  /**
-   * In a sequence of relative markers, remove the first and update
-   * the offsets of the following one.
-   */
-  final def removeHeadMarker(s: Seq[Marker]) = {
-    if (!s.isEmpty) {
-      addToFirst(s.tail, s.head.pos)
-    } else {
-      Seq()
-    }
-  }
-
-  final def dropHeadMarker(s: List[Marker]) =
-    if (s.size > 1) {
-      setFirstToZero(s.drop(1))
-    } else {
-      Seq()
-    }
-
-  final def setFirstToZero(s: List[Marker]) = {
-    if (!s.isEmpty) {
+  def setFirstToZero(s: List[Marker]) = {
+    if (s.nonEmpty) {
       s.head.copy(pos = 0) :: s.tail
     } else {
       List()
@@ -263,16 +244,6 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
 
   override def toString = "ms{" + relativeMarkers.mkString(",") + "}"
 
-  def apply(pos: Int): Marker = relativeMarkers(pos)
-
-  def tagAt(pos: Int): Option[String] = {
-    if (relativeMarkers.size > pos) {
-      Some(relativeMarkers(pos).tag)
-    } else {
-      None
-    }
-  }
-
   def fromZeroAsArray = new MarkerSet(space, setFirstToZero(relativeMarkers))
 
   def fromZero = new MarkerSet(space, setFirstToZero(relativeMarkers))
@@ -312,7 +283,7 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
   }
 
   lazy val collapse = {
-    if (!relativeMarkers.isEmpty) {
+    if (relativeMarkers.nonEmpty) {
       val lowest = relativeMarkers.sortBy(_.rankSort).last
       val i = relativeMarkers.indexOf(lowest)
       new MarkerSet(space, removeMarker(i, relativeMarkers))

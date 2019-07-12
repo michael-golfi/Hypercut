@@ -11,7 +11,7 @@ import scala.collection.mutable.Buffer
  * Tracks discovered edges in memory for periodic write to a database.
  * This class is not thread safe, and users must synchronise appropriately.
  */
-final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) {
+final class EdgeSet(db: EdgeDB, writeInterval: Option[Int]) {
   var data: HashMap[CompactNode,MSet[CompactNode]] = new HashMap[CompactNode,MSet[CompactNode]]
 
   var flushedNodeCount: Long = 0
@@ -54,7 +54,7 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
         //Avoid frequent size check
         if ((edgeCount % 1000000 == 0) &&
           fullSize > int) {
-          writeTo(db, space)
+          writeTo(db)
         }
       case _ =>
     }
@@ -63,7 +63,7 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int], space: MarkerSpace) 
   /**
    * Writes (appends) the edges to the provided EdgeDB.
    */
-  def writeTo(db: EdgeDB, space: MarkerSpace) = synchronized {
+  def writeTo(db: EdgeDB) = synchronized {
     for (g <- data.grouped(1000000)) {
       db.addBulk(g.map(x => x._1.data -> x._2.map(_.data).toSeq))
     }

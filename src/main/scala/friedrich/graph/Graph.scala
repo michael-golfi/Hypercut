@@ -23,10 +23,17 @@ trait Graph[N] {
   def edgesFrom(from: N): List[N]
   def edgesTo(to: N): List[N]
 
+  def atLeastTwo(data: List[Any]): Boolean = data match {
+    case x :: y :: _ => true
+    case _ => false
+  }
+
+  def isBranchOut(e: N) = atLeastTwo(edgesFrom(e))
+  def isBranchIn(e: N) = atLeastTwo(edgesTo(e))
+
   def degree(from: N): Int = fromDegree(from) + toDegree(from)
   def fromDegree(from: N): Int = edgesFrom(from).size
   def toDegree(to: N): Int = edgesTo(to).size
-
 
   /**
    * Both to- and from-nodes of the given node
@@ -55,7 +62,7 @@ trait Graph[N] {
    * Print a textual representation of the graph.
    * For debug purposes.
    */
-  def printBare: Unit = for (n <- nodes) {
+  def printBare(): Unit = for (n <- nodes) {
     println(n)
     print(n + " to: ")
     for (e <- edgesFrom(n)) {
@@ -73,5 +80,3 @@ trait Graph[N] {
     println(s"$numEdges edges")
   }
 }
-
-

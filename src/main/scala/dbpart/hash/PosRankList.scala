@@ -45,26 +45,27 @@ object PosRankList {
     var i = 0
     var r = new PosRankList()
     var prior: DLNode = r
-    if (nodes.size > 0) {
+    if (nodes.nonEmpty) {
       //position order
       r.nextPos = Right(nodes.head)
       nodes.head.prevPos = Left(r)
 
-      val byRank = nodes.sortBy(_.rankSort)
+      val byPos = nodes.toArray
+      val byRank = nodes.sortBy(_.rankSort).toArray
       r.lowerRank = Right(byRank.head)
       byRank.head.higherRank = Left(r)
 
       while (i < nodes.size - 1) {
-        nodes(i).nextPos = Right(nodes(i + 1))
-        nodes(i + 1).prevPos = Right(nodes(i))
+        byPos(i).nextPos = Right(byPos(i + 1))
+        byPos(i + 1).prevPos = Right(byPos(i))
         byRank(i).lowerRank = Right(byRank(i + 1))
         byRank(i + 1).higherRank = Right(byRank(i))
         i += 1
       }
-      nodes(i).nextPos = Left(r.end)
-      r.end.prevPos = Right(nodes(i))
+      byPos(i).nextPos = Left(r.end)
+      r.end.prevPos = Right(byPos(i))
       byRank(i).lowerRank = Left(r.end)
-      r.end.higherRank = Right(nodes(i))
+      r.end.higherRank = Right(byRank(i))
     }
     r
   }
@@ -193,7 +194,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   }
 
   /**
-   * Removes items that can only be parsed 
+   * Removes items that can only be parsed
    * before the given sequence position, given the constraints
    * of the given MarkerSpace (min permitted start offset, etc)
    */

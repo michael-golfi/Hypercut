@@ -20,7 +20,7 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
   def partitions: List[Partition] = {
     var r = List[Partition]()
     for (n <- graph.nodes; if !inPartition(n)) {
-      r ::= BFSfrom(n)
+      r ::= bfsFrom(n)
       buildingID += 1
     }
     r
@@ -33,9 +33,9 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
     }
   }
 
-  def BFSfrom(n: Node): List[Node] = {
+  def bfsFrom(n: Node): List[Node] = {
     assignToCurrent(n)
-    BFSfrom(List(n), 1, List(n))
+    bfsFrom(List(n), 1, List(n))
   }
 
   //Follows a non-branching path
@@ -46,7 +46,7 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
     val edges = graph.edgesFrom(n).filter(!inPartition(_)) :::
       graph.edgesTo(n).filter(!inPartition(_))
 
-    if (edges.size == 0) {
+    if (edges.isEmpty) {
       n :: acc
     } else if (edges.size > 1 || max == 0 ) {
       n :: acc
@@ -56,12 +56,12 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
   }
 
   @tailrec
-  def BFSfrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
+  def bfsFrom(soFar: List[Node], soFarSize: Int, nextLevel: List[Node]): List[Node] = {
     if (soFarSize >= groupSize || (assignCount == totalCount)) {
       refineBoundary(soFar)
       soFar
     } else {
-      if (!nextLevel.isEmpty) {
+      if (nextLevel.nonEmpty) {
         var next = MSet[Node]()
         val minNeed = minSize - soFarSize
         var partitionAdd = List[Node]()
@@ -96,7 +96,7 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
         }
         partitionAdd = (partitionAdd ++ next).distinct
 
-        BFSfrom(partitionAdd ::: soFar, soFarSize + partitionAdd.size, next.toList)
+        bfsFrom(partitionAdd ::: soFar, soFarSize + partitionAdd.size, next.toList)
       } else {
         refineBoundary(soFar)
         soFar
@@ -104,13 +104,13 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
     }
   }
 
-  def DFSfrom(n: Node): List[Node] = {
+  def dfsFrom(n: Node): List[Node] = {
     assignToCurrent(n)
-    DFSfrom(List(n), 1, (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(_ != n))
+    dfsFrom(List(n), 1, (graph.edgesFrom(n) ++ graph.edgesTo(n)).filter(_ != n))
   }
 
   @tailrec
-  def DFSfrom(soFar: List[Node], soFarSize: Int, searchList: List[Node]): List[Node] = {
+  def dfsFrom(soFar: List[Node], soFarSize: Int, searchList: List[Node]): List[Node] = {
     if (soFarSize >= groupSize || (assignCount == totalCount)) {
       refineBoundary(soFar)
       soFar
@@ -119,12 +119,12 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
         case n :: ns =>
           val edges = (graph.edgesFrom(n) ++ graph.edgesTo(n))
           val newEdges = edges.filter(a => !inPartition(a))
-          if (!newEdges.isEmpty) {
+          if (newEdges.nonEmpty) {
             val use = newEdges.head
             assignToCurrent(use)
-            DFSfrom(use :: soFar, soFarSize + 1, newEdges.tail ::: searchList)
+            dfsFrom(use :: soFar, soFarSize + 1, newEdges.tail ::: searchList)
           } else {
-            DFSfrom(soFar, soFarSize, ns)
+            dfsFrom(soFar, soFarSize, ns)
           }
         case _ =>
           refineBoundary(soFar)
@@ -169,9 +169,8 @@ final class PartitionBuilder(graph: Graph[MacroNode], groupSize: Int) {
         }
       case _ =>
         //Stop here
-        (building :: acc).filter(!_.isEmpty)
+        (building :: acc).filter(_.nonEmpty)
     }
   }
 
 }
-

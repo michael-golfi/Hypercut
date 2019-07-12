@@ -193,7 +193,7 @@ class Routines(spark: SparkSession) {
         stats.unpersist
 
         for (e <- edges) {
-          println(s"Total number of edges: " + e.count())
+          println(s"Total number of edges: ${e.count}")
           val outDeg = e.groupByKey(_._1).count().cache
           println("Outdegree: ")
           outDeg.describe().show()

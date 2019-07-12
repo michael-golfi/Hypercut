@@ -49,12 +49,12 @@ object Benchmark {
   }
 
   def measure[A](conf: BenchConf, f: String => A) {
-    val n = conf.n.toOption.get
-    val thr = conf.threads.toOption.get
+    val n = conf.n()
+    val thr = conf.threads()
 
     val fs = (1 to thr).map(i => Future {
       try {
-        val it = ReadFiles.iterator(conf.input.toOption.get).take(n)
+        val it = ReadFiles.iterator(conf.input()).take(n)
         val start = System.currentTimeMillis()
         for (i <- it) {
           f(i)
@@ -76,19 +76,19 @@ object Benchmark {
     conf.verify
 
     println("Warmup")
-    measure(conf, dry(_, conf.k.toOption.get))
+    measure(conf, dry(_, conf.k()))
     println("Warmup done")
 
-    for (i <- conf.items.toOption.get) {
+    for (i <- conf.items()) {
       println(s"Measuring $i")
       i match {
-        case "hashCode" => measure(conf, hashCode(_, conf.k.toOption.get))
-        case "dry"      => measure(conf, dry(_, conf.k.toOption.get))
+        case "hashCode" => measure(conf, hashCode(_, conf.k()))
+        case "dry"      => measure(conf, dry(_, conf.k()))
         case "regex"    => measure(conf, regex(_))
         case "indexof"  => measure(conf, indexOf(_))
         case "extract" =>
           val space = conf.defaultSpace
-          val ext = MarkerSetExtractor.apply(space, conf.k.toOption.get)
+          val ext = MarkerSetExtractor.apply(space, conf.k())
           measure(conf, extract(_, ext))
       }
     }

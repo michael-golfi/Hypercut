@@ -28,7 +28,7 @@ object DNAHelpers {
    */
   def complement(data: String): String = {
     var i = 0
-    var cs = new Array[Char](data.size)
+    val cs = new Array[Char](data.size)
     while (i < data.size) {
       cs(i) = charComplement(data.charAt(i))
       i += 1

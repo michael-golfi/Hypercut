@@ -14,7 +14,7 @@ import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
 
-final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
+final class SeqPrintBuckets(val space: MarkerSpace, val k: Int,
   settings: Settings, dbOptions: String, minAbund: Option[Abundance]) {
 
   val extractor = new MarkerSetExtractor(space, k)
@@ -33,7 +33,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
   }
 
   def handle(reads: Iterator[String], doIndex: Boolean, doEdges: Boolean) {
-    val edgeSet = new EdgeSet(edgeDb, settings.edgeWriteInterval, space)
+    val edgeSet = new EdgeSet(edgeDb, settings.edgeWriteInterval)
     var edgesFuture: Future[Unit] = Future.successful(())
 
     /**
@@ -69,7 +69,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
     Await.result(edgesFuture, Duration.Inf)
     val st = Stats.beginNew
-    edgeSet.writeTo(edgeDb, space)
+    edgeSet.writeTo(edgeDb)
     st.end("Write edges")
   }
 
@@ -156,7 +156,7 @@ final class SeqPrintBuckets(val space: MarkerSpace, val k: Int, numMarkers: Int,
 
     Distribution.printStats("Node degree", graph.nodes.map(graph.degree))
 
-    val hist = new Histogram(Seq() ++ graph.nodes.map(graph.degree))
+    val hist = new Histogram(graph.nodes.map(graph.degree).toSeq)
     hist.print("Node degree")
     graph
   }

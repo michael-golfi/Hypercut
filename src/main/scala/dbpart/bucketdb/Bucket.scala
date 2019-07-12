@@ -57,7 +57,7 @@ final class DistinctBucket(oldSet: String, val items: List[String])
 
   def insertBulk(values: Iterable[String]): Option[DistinctBucket] = {
     val newVals = values.filter(!items.contains(_)).toList.distinct
-    if (!newVals.isEmpty) {
+    if (newVals.nonEmpty) {
       val newString = newVals.mkString(separator)
       Some(new DistinctBucket(s"$oldSet$separator$newString", newVals ::: items))
     } else {
@@ -113,7 +113,7 @@ final class DistinctByteBucket(oldSet: Array[Byte], separated: List[Seq[Byte]],
 
   def insertBulk(values: Iterable[Rec]): Option[DistinctByteBucket] = {
     val newVals = values.map(pad(_)).filter(!separated.contains(_)).toList.distinct
-    if (!newVals.isEmpty) {
+    if (newVals.nonEmpty) {
       val newData = oldSet ++ newVals.flatten
       Some(new DistinctByteBucket(newData, newVals ::: separated, itemSize))
     } else {

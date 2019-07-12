@@ -109,12 +109,11 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
     outSet.contains(DNAHelpers.kmerSuffix(seq, k)) ||
       inSet.contains(DNAHelpers.kmerPrefix(seq, k))
 
-  def kmerGraph = {
-    val builder = new PathGraphBuilder(k)
-    var in = inSet
-    var out = outSet
+  def nodesForGraph = {
+    val in = inSet
+    val out = outSet
 
-    val nodes = kmers.iterator.map(s => {
+    kmers.iterator.map(s => {
       val n = new KmerNode(s, 1)
       if (isBoundary(s, out, in)) {
         //Pseudo-partition 1.
@@ -123,11 +122,11 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
       }
       n
     })
-    val ns = nodes.toList
-    in = null
-    out = null
+  }
 
-    builder.fromNodes(ns)
+  def kmerGraph = {
+    val builder = new PathGraphBuilder(k)
+    builder.fromNodes(nodesForGraph.toList)
   }
 
   /**

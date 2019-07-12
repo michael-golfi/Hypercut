@@ -52,11 +52,11 @@ class PathExtraction(buckets: SeqPrintBuckets,
       n.partitionId = pid
     }
 
-    for (p <- parts; pid = p.head.partitionId) {
+    for (p <- parts; head <- p.headOption; pid = head.partitionId) {
       println(s"Process partition $pid/${parts.size}")
 
       val pathGraph = new MacroPathGraphBuilder(db, k, p, graph)(buckets.space).result
-      println(s"Path graph ${pathGraph.numNodes} nodes (${pathGraph.nodes.filter(_.boundary).size} boundary) ${pathGraph.numEdges} edges")
+      println(s"Path graph ${pathGraph.numNodes} nodes (${pathGraph.nodes.count(_.boundary)} boundary) ${pathGraph.numEdges} edges")
 
 //      val analyzer = new PathGraphAnalyzer(pathGraph, k)
 //      analyzer.findBubbles()

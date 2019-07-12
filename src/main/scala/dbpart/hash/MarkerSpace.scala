@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import scala.collection.Seq
 
 object MarkerSpace {
-  def simple(n: Int) = new MarkerSpace(Seq(
+  def simple(n: Int) = new MarkerSpace(Array(
         "TTA",
         "AT", "AC",
         "GT", "GC",
@@ -38,19 +38,19 @@ object MarkerSpace {
 
   def named(name: String, n: Int): MarkerSpace = using(named(name), n)
 
-  def using(mers: Seq[String], n: Int) = new MarkerSpace(mers, n)
+  def using(mers: Seq[String], n: Int) = new MarkerSpace(mers.toArray, n)
 }
 
 /**
  * A set of markers that can be used, and their relative priorities.
  * @param n Number of markers in a marker set.
  */
-final case class MarkerSpace(val byPriority: Seq[String], val n: Int) {
+final case class MarkerSpace(val byPriority: Array[String], val n: Int) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
-  val byFirstChar = Map() ++ byPriority.groupBy(_.charAt(0))
-  val byIndex = Map() ++ byPriority.zipWithIndex
+  val byFirstChar = byPriority.groupBy(_.charAt(0)).toMap
+  val byIndex = byPriority.zipWithIndex.toMap
 
   def minPermittedStartOffset(motif: String) =
     maxMotifLength - motif.length()
@@ -77,7 +77,7 @@ final case class MarkerSpace(val byPriority: Seq[String], val n: Int) {
     Marker(pos, new Features(pattern, priorityOf(pattern), sortValue))
   }
 
-  val priorityMap = Map() ++ byPriority.zipWithIndex
+  val priorityMap = byPriority.zipWithIndex.toMap
   def priorityOf(mk: String) = priorityMap(mk)
 
   @tailrec

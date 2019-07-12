@@ -67,17 +67,17 @@ final class MacroPathGraphBuilder(loader: BucketLoader, k: Int,
     nodes: Iterable[MacroNode],
     macroGraph: Graph[MacroNode])(implicit space: MarkerSpace) extends PathGraphBuilder(k) {
 
-  println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.filter(_.isBoundary).size} boundary)")
+  println(s"Construct path graph from ${nodes.size} macro nodes (${nodes.count(_.isBoundary)} boundary)")
   val result = addNodes(nodes)
 
   def sequenceToKmerNodes(macroNode: MacroNode, seqs: Iterator[String], abunds: Iterator[Abundance]) =
     (seqs zip abunds).toList.map(s => new KmerNode(s._1, s._2))
 
   def loadKmers(part: Iterable[MacroNode]) = {
-    val partMap = Map() ++ part.map(x => x.uncompact -> (x.id, x))
+    val partMap = part.iterator.map(x => x.uncompact -> (x.id, x)).toMap
     val bulkData = loader.getBuckets(part.map(_.uncompact))
 
-    Map() ++ (for {
+    Map.empty ++ (for {
       (key, bucket) <- bulkData
       macroNode = partMap(key)._2
       id = partMap(key)._1
@@ -157,14 +157,14 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
    * A list of nodes that have multiple forward edges.
    */
   def findForwardJunctions(): Iterator[N] =
-    g.nodes.filter(g.edgesFrom(_).size > 1)
+    g.nodes.filter(g.isBranchOut(_))
 
   /**
    * *
    * A list of nodes that have multiple backward edges.
    */
   def findBackwardJunctions(): Iterator[N] =
-    g.nodes.filter(g.edgesTo(_).size > 1)
+    g.nodes.filter(g.isBranchIn(_))
 
   /**
    * *
@@ -198,14 +198,14 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
   def computePathAbundance(path: Iterable[N]): Double =
     path.map(p => p.abundance).sum.toDouble / path.size
 
-  final def transform(list: List[List[N]]): List[List[N]] = transform(Nil, list)
+  def transform(list: List[List[N]]): List[List[N]] = transform(Nil, list)
 
   @tailrec
-  final def transform(acc: List[List[N]], list: List[List[N]]): List[List[N]] =
+  def transform(acc: List[List[N]], list: List[List[N]]): List[List[N]] =
     list match {
       case (m :: ms) :: ls => {
         val ef = g.edgesFrom(m).filter(e => ! e.noise && ! ms.contains(e))
-        if (ef.size > 0) {
+        if (ef.nonEmpty) {
           //ef.toList.map(_ :: m :: ms) ++ transform(ls)
           transform(ef.toList.map(_ :: m :: ms) ::: acc, ls)
         } else {
@@ -227,7 +227,7 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
     var found = false
     var paths = List[List[N]]()
 
-    val junctions = findForwardJunctions().toList
+    val junctions = findForwardJunctions().toSeq
     println("total of " + junctions.size + " branches to inspect")
     for {
       split <- junctions.par
@@ -255,7 +255,7 @@ final class PathGraphAnalyzer(g: Graph[KmerNode], k: Int) {
     def haveIntersection(paths: List[List[N]]) = {
       paths match {
         case p :: ps =>
-          !paths.tail.foldLeft(p.toSet)((a, b) => b.filter(a.contains(_)).toSet).isEmpty
+          paths.tail.foldLeft(p.toSet)((a, b) => b.filter(a.contains(_)).toSet).nonEmpty
         case _ => false
       }
     }

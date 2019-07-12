@@ -1,7 +1,3 @@
-import com.typesafe.sbt.SbtStartScript
-
-seq(SbtStartScript.startScriptForClassesSettings: _*)
-
 //Comment out the following line to speed up fetching dependencies,
 //if source attachments are not needed.
 
@@ -17,6 +13,8 @@ scalacOptions ++= Seq(
   "-optimize",
   "-feature",
   "-Yinline-warnings")
+
+scapegoatVersion in ThisBuild := "1.3.9"
 
 resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
 

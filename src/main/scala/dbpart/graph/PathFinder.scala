@@ -28,9 +28,14 @@ class PathFinder(k: Int) {
     r.toList
   }
 
+  final def atLeastTwo(data: List[Any]): Boolean = data match {
+    case x :: y :: _ => true
+    case _ => false
+  }
+
   private def edgeStopReason(edges: Iterable[N]) = {
     if (edges.size > 1) "Branch"
-    else if (edges.size == 0) "Terminus"
+    else if (edges.isEmpty) "Terminus"
     else "Loop?"
   }
 
@@ -42,18 +47,21 @@ class PathFinder(k: Int) {
   @tailrec
   final def extendForward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
-    if (from.boundary) {
-      //Boundaries have hidden branches
-      //TODO distinguish the different boundary cases here?
-      return (from :: acc, s"Boundary_${from.boundaryPartition.get}")
+    from.boundaryPartition match {
+      case Some(bp) =>
+        //Boundaries have hidden branches
+        //TODO distinguish the different boundary cases here?
+        return (from :: acc, s"Boundary_${bp}")
+      case _ =>
     }
-    val ef = graph.edgesFrom(from).filter(! _.noise)
-    if (ef.size > 1 || ef.size == 0) {
+
+    val ef = graph.edgesFrom(from).iterator.filter(! _.noise).take(2).toList
+    if (atLeastTwo(ef) || ef.isEmpty) {
       (from :: acc, edgeStopReason(ef))
     } else {
       val candidate = ef.head
-      val et = graph.edgesTo(candidate).filter(! _.noise)
-      if (et.size > 1 || candidate.seen) {
+      val et = graph.edgesTo(candidate).iterator.filter(! _.noise).take(2).toList
+      if (atLeastTwo(et) || candidate.seen) {
         (from :: acc, edgeStopReason(et))
       } else {
         //'from' should be the only node linking to it
@@ -65,18 +73,21 @@ class PathFinder(k: Int) {
   @tailrec
   final def extendBackward(graph: Graph[N], from: N, acc: List[N] = Nil): (List[N], String) = {
     from.seen = true
-    if (from.boundary) {
-      //Boundaries have hidden branches
-      //TODO distinguish the different boundary cases here?
-      return (from :: acc, s"Boundary_${from.boundaryPartition.get}")
+    from.boundaryPartition match {
+      case Some(bp) =>
+        //Boundaries have hidden branches
+        //TODO distinguish the different boundary cases here?
+        return (from :: acc, s"Boundary_${bp}")
+      case _ =>
     }
-    val et = graph.edgesTo(from).filter(! _.noise)
-    if (et.size > 1 || et.size == 0) {
+
+    val et = graph.edgesTo(from).iterator.filter(! _.noise).take(2).toList
+    if (atLeastTwo(et) || et.isEmpty) {
       (from :: acc, edgeStopReason(et))
     } else {
       val candidate = et.head
-      val ef = graph.edgesFrom(candidate).filter(! _.noise)
-      if (ef.size > 1 || candidate.seen) {
+      val ef = graph.edgesFrom(candidate).iterator.filter(! _.noise).take(2).toList
+      if (atLeastTwo(ef) || candidate.seen) {
         (from :: acc, edgeStopReason(ef))
       } else {
         //'from' should be the only node linking to it

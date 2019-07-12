@@ -39,7 +39,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
     descr = "Number of markers to extract from each k-mer", default = Some(4))
   val space = opt[String](required = false, descr = "Marker space to use", default = Some("mixedTest"))
 
-  def defaultSpace = MarkerSpace.named(space.toOption.get, numMarkers.toOption.get)
+  def defaultSpace = MarkerSpace.named(space(), numMarkers())
 }
 
 /**
@@ -56,11 +56,11 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val bnum = opt[Int](descr = "Number of buckets in kch databases (when creating new file)", default = Some(40000000))
   val minAbund = opt[Abundance](descr = "Minimum abundance cutoff when reading databases")
 
-  def defaultSettings = Settings.settings(dbfile.toOption.get, bnum.toOption.get)
+  def defaultSettings = Settings.settings(dbfile(), bnum())
 
   lazy val defaultBuckets = new SeqPrintBuckets(
-    defaultSpace, k.toOption.get, numMarkers.toOption.get,
-    defaultSettings, SeqBucketDB.options(bnum.toOption.get), minAbund.toOption)
+    defaultSpace, k(),
+    defaultSettings, SeqBucketDB.options(bnum()), minAbund.toOption)
 
   val buckets = new Subcommand("buckets") {
     val build = new Subcommand("build") with RunnableCommand {
@@ -71,18 +71,17 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
       val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
       def run() {
-        val settings = if (index.toOption.get) {
-          Settings.settings(dbfile.toOption.get, bnum.toOption.get)
+        val settings = if (index()) {
+          Settings.settings(dbfile(), bnum())
         } else {
-          Settings.noindexSettings(dbfile.toOption.get, bnum.toOption.get)
+          Settings.noindexSettings(dbfile(), bnum())
         }
 
-        val spb = new SeqPrintBuckets(defaultSpace, k.toOption.get,
-          numMarkers.toOption.get,
-          settings, SeqBucketDB.mmapOptions(bnum.toOption.get),
+        val spb = new SeqPrintBuckets(defaultSpace, k(),
+          settings, SeqBucketDB.mmapOptions(bnum()),
           None)
 
-        spb.build(input.toOption.get, mates.toOption, index.toOption.get, edges.toOption.get)
+        spb.build(input(), mates.toOption, index(), edges())
         spb.stats
       }
     }
@@ -98,7 +97,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
       banner("Show the sequences, abundances and edges contained in a bucket.")
       val buckets = trailArg[List[String]](required = true, descr = "Buckets to show")
       def run() {
-        defaultBuckets.show(buckets.toOption.get)
+        defaultBuckets.show(buckets())
       }
     }
     addSubcommand(show)
@@ -107,9 +106,9 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
       banner("Copy a bucket database into another one (appending), optionally applying abundance filtering. Edges are not abundance filtered.")
       val output = opt[String](required = true, descr = "Path to database file (.kch) to append into")
       def run() {
-        val out = new SeqBucketDB(output.toOption.get, SeqBucketDB.options(bnum.toOption.get),
-          bnum.toOption.get,
-          k.toOption.get, None)
+        val out = new SeqBucketDB(output(), SeqBucketDB.options(bnum()),
+          bnum(),
+          k(), None)
        //TODO implement or remove this command
        ???
       }
@@ -129,7 +128,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
         descrYes = "Check sequence structure (slow)")
 
       def run() {
-        defaultBuckets.checkConsistency(kmerCheck.toOption.get, seqCheck.toOption.get)
+        defaultBuckets.checkConsistency(kmerCheck(), seqCheck())
       }
     }
     addSubcommand(check)
@@ -139,17 +138,17 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val analyse = new Subcommand("analyse") with RunnableCommand {
     banner("Analyse reads and display their fingerprints.")
 
-    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace, k.toOption.get)
+    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace, k())
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
     val markers = toggle("markers", default = Some(false), descrYes = "Scan for raw markers in the reads and print a histogram")
 
     def run() {
-      if (markers.toOption.get) {
-       new FeatureScanner(defaultSpace).scan(input.toOption.get, None)
+      if (markers()) {
+       new FeatureScanner(defaultSpace).scan(input(), None)
       } else {
-        defaultExtractor.prettyPrintMarkers(input.toOption.get)
+        defaultExtractor.prettyPrintMarkers(input())
       }
     }
   }
@@ -168,9 +167,9 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
       descrYes = "Output reasons for contig endings")
 
     def run () {
-      val extr = new PathExtraction(defaultBuckets, partitionSize.toOption.get,
-        minLength.toOption.get, partitionGraphs.toOption.get,
-        reasons.toOption.get)
+      val extr = new PathExtraction(defaultBuckets, partitionSize(),
+        minLength(), partitionGraphs(),
+        reasons())
       extr.printPathsByPartition()
     }
   }

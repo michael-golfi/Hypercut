@@ -46,12 +46,12 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
       def run() {
-         val ext = new MarkerSetExtractor(defaultSpace, k.toOption.get)
+         val ext = new MarkerSetExtractor(defaultSpace, k())
          val minAbundance = None
-         if (edges.toOption.get) {
-           routines.graphFromReads(input.toOption.get, ext, location.toOption)
+         if (edges()) {
+           routines.graphFromReads(input(), ext, location.toOption)
          } else {
-           routines.bucketsOnly(input.toOption.get, ext, location.toOption.get)
+           routines.bucketsOnly(input(), ext, location())
          }
       }
     }
@@ -64,9 +64,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
           descr = "Amount of sequence to print")
 
       def run() {
-       val buckets = routines.loadBuckets(location.toOption.get)
+       val buckets = routines.loadBuckets(location())
        routines.showBuckets(buckets.map(_._2),
-           n.toOption.get, amount.toOption.get)
+           n(), amount())
       }
     }
     addSubcommand(top)
@@ -76,23 +76,23 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
 
       def run() {
-        val loc = location.toOption.get
+        val loc = location()
         val graph = routines.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
         val it = new IterativeMerge(spark)
-        it.iterate(graph, k.toOption.get, minLength.toOption, loc)
+        it.iterate(graph, k(), minLength.toOption, loc)
       }
     }
     addSubcommand(compact)
 
     val stats = new HCCommand("stats") (
-      routines.bucketStats(location.toOption.get)
+      routines.bucketStats(location())
     )
     addSubcommand(stats)
   }
   addSubcommand(buckets)
 
   verify()
-  spark.sparkContext.setCheckpointDir(checkpoint.toOption.get)
+  spark.sparkContext.setCheckpointDir(checkpoint())
 }
 
 object Hypercut extends SparkTool("Hypercut") {

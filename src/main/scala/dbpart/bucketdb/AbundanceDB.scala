@@ -55,7 +55,7 @@ final class AbundanceDB(val dbLocation: String, bnum: Int) extends StringKyotoDB
    */
   def dbOptions: String = s"#bnum=$bnum#apow=5#mmap=$c8g#opts=l"
 
-  var bulkData: CMap[String, StringAbundanceBucket] = Map()
+  var bulkData: CMap[String, StringAbundanceBucket] = Map.empty
   def bulkLoad(keys: Iterable[String]) {
     bulkData = getBulk(keys)
   }
@@ -69,7 +69,7 @@ final class AbundanceDB(val dbLocation: String, bnum: Int) extends StringKyotoDB
   }
 
   def getBulk(keys: Iterable[String]): CMap[String, StringAbundanceBucket] = {
-    var r = MMap[String,StringAbundanceBucket]()
+    val r = MMap[String,StringAbundanceBucket]()
     visitBucketsReadonly(keys, (key, bucket) => { r += key -> bucket })
     r
   }

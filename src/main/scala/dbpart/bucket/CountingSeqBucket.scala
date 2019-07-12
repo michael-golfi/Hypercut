@@ -3,6 +3,7 @@ import dbpart._
 import dbpart.shortread.Read
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
+import scala.collection.mutable.IndexedSeq
 import scala.collection.mutable.{Map => MMap}
 import miniasm.genome.util.DNAHelpers
 import dbpart.graph.PathGraphBuilder
@@ -25,7 +26,7 @@ object CountingSeqBucket {
 
   def clipAbundance(abund: Short): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund
 
-  def incrementAbundance(abundSeq: Buffer[Abundance], pos: Int, amt: Abundance) = {
+  def incrementAbundance(abundSeq: IndexedSeq[Abundance], pos: Int, amt: Abundance) = {
     abundSeq(pos) = clipAbundance(abundSeq(pos) + amt)
   }
 
@@ -81,8 +82,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   }
 
   def abundanceFilter(abund: Int): Self = {
-    var r: ArrayBuffer[String] = new ArrayBuffer(sequences.size)
-    var abundR: ArrayBuffer[Seq[Abundance]] = new ArrayBuffer(sequences.size)
+    val r: ArrayBuffer[String] = new ArrayBuffer(sequences.size)
+    val abundR: ArrayBuffer[Seq[Abundance]] = new ArrayBuffer(sequences.size)
     for {
       (s,c) <- (sequences zip abundances)
         filtered = abundanceFilter(s, c, abund)
@@ -112,7 +113,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * 3
    */
   def abundanceFilter(seq: String, abunds: Seq[Abundance], abund: Int): List[(String, Seq[Abundance])] = {
-    if (abunds.size == 0) {
+    if (abunds.isEmpty) {
       Nil
     } else {
       val dropKeepAbund = abunds.span(_ < abund)
@@ -133,8 +134,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Find a k-mer in the bucket, incrementing its abundance.
    * @return true iff the sequence was found.
    */
-  def findAndIncrement(data: String, inSeq: Seq[StringBuilder],
-                inAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int,
+  def findAndIncrement(data: String, inSeq: IndexedSeq[StringBuilder],
+                inAbund: IndexedSeq[ArrayBuffer[Abundance]], numSequences: Int,
                 amount: Abundance = 1): Boolean = {
     helperMap match {
       case Some(m) =>
@@ -169,7 +170,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * @return
    */
   def tryMerge(atOffset: Int, intoSeq: ArrayBuffer[StringBuilder],
-                     intoAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int) {
+                     intoAbund: ArrayBuffer[ArrayBuffer[Abundance]], numSequences: Int) {
     val prefix = intoSeq(atOffset).substring(0, k - 1)
     var i = 0
     var failedToFind = false
@@ -215,8 +216,8 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
           //Replace the old StringBuilder with null so that
           //helper maps can mostly remain valid without rebuilding
           //(offsets of untouched StringBuilders do not change)
-          intoSeq.update(atOffset, null)
-          intoAbund.update(atOffset, null)
+          intoSeq(atOffset) = null
+          intoAbund(atOffset) = null
           return
         }
       }
@@ -233,7 +234,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * The sequence must be a k-mer.
    */
   def insertSequence(data: String, intoSeq: ArrayBuffer[StringBuilder],
-                     intoAbund: ArrayBuffer[Buffer[Abundance]], numSequences: Int,
+                     intoAbund: ArrayBuffer[ArrayBuffer[Abundance]], numSequences: Int,
                      abundance: Abundance = 1): Int = {
     val suffix = DNAHelpers.kmerSuffix(data, k)
     val prefix = DNAHelpers.kmerPrefix(data, k)
@@ -302,7 +303,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     //and reusing those positions
     intoSeq += new StringBuilder(data)
     updateHelperMaps(intoSeq(numSequences), numSequences)
-    intoAbund += Buffer(clipAbundance(abundance))
+    intoAbund += ArrayBuffer(clipAbundance(abundance))
     numSequences + 1
   }
 
@@ -316,13 +317,13 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * Insert k-mers with corresponding abundances. Each value is a single k-mer.
    */
   def insertBulk(values: Iterable[String], abundances: Iterator[Abundance]): Self = {
-    var seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(values.size + sequences.size)
-    var abundR: ArrayBuffer[Buffer[Abundance]] = new ArrayBuffer(values.size + sequences.size)
+    val seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(values.size + sequences.size)
+    val abundR: ArrayBuffer[ArrayBuffer[Abundance]] = new ArrayBuffer(values.size + sequences.size)
 
     var sequencesUpdated = false
     var n = sequences.size
     seqR ++= sequences.iterator.map(s => new StringBuilder(s))
-    abundR ++= this.abundances.map(_.toBuffer)
+    abundR ++= this.abundances.map(ArrayBuffer() ++ _)
 
     for {
       (v, abund) <- values.iterator zip abundances
@@ -344,16 +345,15 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
    * This method is optimised for insertion of a larger number of distinct segments.
    */
   def insertBulkSegments(segmentsAbundances: Iterable[(String, Abundance)]): Self = {
-    var r = this
     val insertAmt = segmentsAbundances.size
 
     val bufSize = insertAmt + sequences.size
-    var seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(bufSize)
-    var abundR: ArrayBuffer[Buffer[Abundance]] = new ArrayBuffer(bufSize)
+    val seqR: ArrayBuffer[StringBuilder] = new ArrayBuffer(bufSize)
+    val abundR: ArrayBuffer[ArrayBuffer[Abundance]] = new ArrayBuffer(bufSize)
 
     var n = sequences.size
     seqR ++= sequences.map(x => new StringBuilder(x))
-    abundR ++= this.abundances.map(_.toBuffer)
+    abundR ++= this.abundances.map(ArrayBuffer() ++ _)
     if (bufSize > helperMapThreshold) {
       initHelperMaps(seqR)
     }
@@ -391,11 +391,11 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 
   //Maps the prefix of each sequence to the offset of that sequence.
   @transient
-  var prefixHelper: MMap[String, Int] = null
+  var prefixHelper: MMap[String, Int] = MMap.empty
 
   //Maps the suffix of each sequence to the position of that sequence.
   @transient
-  var suffixHelper: MMap[String, Int] = null
+  var suffixHelper: MMap[String, Int] = MMap.empty
 
   private def initHelperMaps(sequences: Iterable[StringBuilder]) {
     val r = MMap[NTSeq, (Int, Int)]()
