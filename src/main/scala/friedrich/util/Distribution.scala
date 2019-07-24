@@ -58,6 +58,7 @@ class Histogram(values: Seq[Int], bnum: Int = 10,
   if (bs < 1) {
     bs = 1
   }
+  
   val buckets = dist.min.to(useMax, bs)
   var counts = Array.fill(bnum)(0)
 
@@ -72,6 +73,7 @@ class Histogram(values: Seq[Int], bnum: Int = 10,
     } else {
       counts(bnum - 1) += 1
     }
+    
   }
 
 

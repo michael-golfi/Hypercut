@@ -235,13 +235,9 @@ class Routines(spark: SparkSession) {
   def showBuckets(buckets: Dataset[SimpleCountingBucket], n: Int, amount: Int) {
     val withSize = buckets.map(b => (b.sequences.size, b))
     val sorted = withSize.sort(desc("_1")).take(n)
-    for {
-      (size, bucket) <- sorted
-    } {
+    for { (size, bucket) <- sorted } {
       println(s"bucket size $size k-mers ${bucket.numKmers}")
-      for {
-        s <- bucket.sequences.take(amount)
-      } {
+      for { s <- bucket.sequences.take(amount) } {
         println(s"  $s")
       }
     }
