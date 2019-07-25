@@ -38,8 +38,11 @@ class Routines(spark: SparkSession) {
   /**
    * Load reads and their reverse complements from DNA files.
    */
-  def getReads(fileSpec: String): Dataset[String] = {
-    val reads = sc.textFile(fileSpec).toDS
+  def getReads(fileSpec: String, frac: Option[Double] = None): Dataset[String] = {
+    val reads = frac match {
+      case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
+      case None => sc.textFile(fileSpec).toDS
+    }
     reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
   }
 
@@ -53,6 +56,13 @@ class Routines(spark: SparkSession) {
       s.scanRead(c, r)
       c
     }).reduce(_ + _)
+  }
+
+  def createSampledSpace(input: String, fraction: Double, space: MarkerSpace): MarkerSpace = {
+    val in = getReads(input, Some(fraction))
+    val counter = countFeatures(in, space)
+    counter.print(s"Discovered frequencies in fraction $fraction")
+    counter.toSpaceByFrequency(space.n)
   }
 
   /**

@@ -38,5 +38,8 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
     descr = "Number of markers to extract from each k-mer", default = Some(4))
   val space = opt[String](required = false, descr = "Marker space to use", default = Some("mixedTest"))
 
+  val sample = opt[Double](required = false, descr = "Fraction of reads to sample for marker frequency",
+      default = None)
+
   def defaultSpace = MarkerSpace.named(space(), numMarkers())
 }

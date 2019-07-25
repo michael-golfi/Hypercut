@@ -47,4 +47,12 @@ final case class FeatureCounter() {
     println(counter.map(c => perc(c._2)).mkString("\t"))
   }
 
+  /**
+   * Construct a new marker space where the least common markers in this counter
+   * have the highest priority.
+   */
+  def toSpaceByFrequency(n: Int) = {
+    new MarkerSpace(counter.toSeq.sortBy(_._2).map(_._1).toArray, n)
+  }
+
 }

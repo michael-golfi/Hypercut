@@ -9,6 +9,7 @@ import dbpart.hash.MarkerSetExtractor
 import org.rogach.scallop.ScallopOption
 
 import dbpart.bucket.CountingSeqBucket._
+import dbpart.hash.MarkerSpace
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -35,6 +36,13 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val checkpoint = opt[String](required = false, default = Some("/ext/scratch/spark/checkpoint"),
       descr = "Path to checkpoint directory")
 
+  def getSpace(input: String): MarkerSpace = {
+    sample.toOption match {
+      case Some(amount) => routines.createSampledSpace(input, amount, defaultSpace)
+      case None => defaultSpace
+    }
+  }
+
   val buckets = new Subcommand("buckets") {
     val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
 
@@ -43,7 +51,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
       def run() {
-         val ext = new MarkerSetExtractor(defaultSpace, k())
+         val ext = new MarkerSetExtractor(getSpace(input()), k())
          val minAbundance = None
          if (edges()) {
            routines.graphFromReads(input(), ext, location.toOption)
