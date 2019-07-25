@@ -1,19 +1,16 @@
-package dbpart
+package dbpart.bucketdb
 
-import dbpart.bucketdb.EdgeDB
-import dbpart.bucketdb.DistinctByteBucket
 import dbpart.hash.MarkerSet
 import dbpart.hash.MarkerSpace
-import dbpart.bucketdb.SeqBucketDB
 
 object Settings {
   //NB the ideal edge flush interval should be set considering the number of expected edges per node
   //(since the memory cost of buffering edges can be high)
 
-  def noindexSettings(dbfile: String, buckets: Int): dbpart.Settings =
+  def noindexSettings(dbfile: String, buckets: Int): Settings =
     new Settings(dbfile, buckets, Some(20000000), 50000)
 
-  def settings(dbfile: String, buckets: Int): dbpart.Settings =
+  def settings(dbfile: String, buckets: Int): Settings =
     new Settings(dbfile, buckets, Some(5000000), 20000)
 }
 

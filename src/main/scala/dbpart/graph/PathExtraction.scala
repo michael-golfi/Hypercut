@@ -1,7 +1,7 @@
 package dbpart.graph
 
 import dbpart.PartitionBuilder
-import dbpart.SeqPrintBuckets
+import dbpart.bucketdb.BucketDBTool
 import dbpart.Stats
 import friedrich.graph.Graph
 import friedrich.util.Histogram
@@ -13,7 +13,7 @@ import dbpart.PathPrinter
  * into partitions of a given maximum size, and finding and printing contigs
  * from each partition.
  */
-class PathExtraction(buckets: SeqPrintBuckets,
+class PathExtraction(buckets: BucketDBTool,
   partitionSize: Int, minPrintLength: Int, outputPartitionGraphs: Boolean,
   printReasons: Boolean) {
   val k: Int = buckets.k

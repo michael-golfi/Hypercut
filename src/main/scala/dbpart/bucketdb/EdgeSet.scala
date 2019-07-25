@@ -1,11 +1,10 @@
-package dbpart
+package dbpart.bucketdb
 
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.{ HashSet => MSet }
-
-import dbpart.bucketdb.EdgeDB
 import dbpart.hash._
-import scala.collection.mutable.Buffer
+import scala.annotation.migration
+import scala.annotation.tailrec
 
 /**
  * Tracks discovered edges in memory for periodic write to a database.

@@ -14,6 +14,7 @@ import dbpart._
 import dbpart.bucket._
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
+import dbpart.hash.FeatureScanner
 
 case class HashSegment(hash: Array[Byte], segment: String)
 case class CountedHashSegment(hash: Array[Byte], segment: String, count: Long)

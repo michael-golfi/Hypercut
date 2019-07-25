@@ -1,10 +1,8 @@
-package dbpart
+package dbpart.hash
 
-import dbpart.hash.FeatureCounter
-import dbpart.hash.MarkerSpace
 import dbpart.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
-import dbpart.hash.Marker
+import dbpart.Stats
 
 /**
  * Looks for raw markers in reads, counting them in a histogram.
@@ -38,7 +36,7 @@ final class FeatureScanner(val space: MarkerSpace) {
     for (r <- rs) scanRead(counter, r)
   }
 
-  def handle(reads: Iterator[String]): dbpart.hash.FeatureCounter = {
+  def handle(reads: Iterator[String]): FeatureCounter = {
     val bufferSize = 100000
     val counter =
       reads.grouped(bufferSize).grouped(4).map(gg =>
@@ -57,7 +55,7 @@ final class FeatureScanner(val space: MarkerSpace) {
     counter
   }
 
-   def scan(inputFile: String, matesFile: Option[String]) {
+  def scan(inputFile: String, matesFile: Option[String]) {
     Stats.begin()
     val counter = handle(ReadFiles.iterator(inputFile))
     counter.print("Total feature count")

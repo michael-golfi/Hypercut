@@ -1,12 +1,13 @@
 package dbpart
 
-import dbpart.shortread.ReadFiles
-import dbpart.hash.MarkerSetExtractor
-import dbpart.shortread.Read
-import scala.concurrent.Future
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
+
+import dbpart.hash.MarkerSetExtractor
+import dbpart.shortread.Read
+import dbpart.shortread.ReadFiles
 
 class BenchConf(args: Array[String]) extends CoreConf(args) {
   val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")

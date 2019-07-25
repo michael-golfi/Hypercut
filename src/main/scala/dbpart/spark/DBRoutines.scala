@@ -5,7 +5,7 @@ import scala.collection.JavaConverters._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.Dataset
 import dbpart.hash.MarkerSetExtractor
-import dbpart.Settings
+import dbpart.bucketdb.Settings
 import dbpart.bucketdb._
 import dbpart.bucket._
 import dbpart.hash.MarkerSet

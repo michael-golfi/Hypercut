@@ -1,11 +1,9 @@
-package dbpart
+package dbpart.bucketdb
 import scala.concurrent.Await
 import scala.concurrent.Future
 import scala.concurrent.blocking
 import scala.concurrent.duration.Duration
-
 import dbpart.bucket._
-import dbpart.bucketdb._
 import dbpart.graph.DoubleArrayListGraph
 import dbpart.graph.MacroNode
 import dbpart.hash._
@@ -13,8 +11,10 @@ import dbpart.shortread.ReadFiles
 import friedrich.util.Distribution
 import friedrich.util.Histogram
 import miniasm.genome.util.DNAHelpers
+import dbpart._
+import scala.collection.Seq
 
-final class SeqPrintBuckets(val space: MarkerSpace, val k: Int,
+final class BucketDBTool(val space: MarkerSpace, val k: Int,
   settings: Settings, dbOptions: String, minAbund: Option[Abundance]) {
 
   val extractor = new MarkerSetExtractor(space, k)

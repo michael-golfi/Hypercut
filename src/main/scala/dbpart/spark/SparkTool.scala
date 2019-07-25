@@ -4,10 +4,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.rogach.scallop.Subcommand
 
-import dbpart.Commands
-import dbpart.CoreConf
-import dbpart.HCCommand
-import dbpart.RunnableCommand
+import dbpart._
 import dbpart.hash.MarkerSetExtractor
 import org.rogach.scallop.ScallopOption
 
