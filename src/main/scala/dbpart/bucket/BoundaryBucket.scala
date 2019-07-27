@@ -6,6 +6,7 @@ import miniasm.genome.util.DNAHelpers
 import dbpart.graph.PathGraphBuilder
 import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
+import scala.collection.immutable.SortedSet
 
 object BoundaryBucket {
   def apply(id: Long, components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
@@ -28,11 +29,21 @@ object BoundaryBucket {
   /**
    * Function for computing shared k-1 length overlaps between sequences of prior
    * and post k-mers. Intended for computing inOpenings and outOpenings.
+   * Prior gets cached as a set.
    */
-  def sharedOverlaps(prior: Seq[String], post: Seq[String], k: Int): Iterator[String] = {
+  def sharedOverlapsThroughPrior(prior: Seq[String], post: Seq[String], k: Int): Iterator[String] = {
     val preKmers = potentialOut(prior.iterator, k).toSet
     val postKmers = potentialIn(post.iterator, k)
-    postKmers.filter(x => preKmers.contains(x))
+    postKmers.filter(preKmers.contains)
+  }
+
+  /**
+   * As above, but post gets cached as a set.
+   */
+  def sharedOverlapsThroughPost(prior: Seq[String], post: Seq[String], k: Int): Iterator[String] = {
+    val preKmers = potentialOut(prior.iterator, k)
+    val postKmers = potentialIn(post.iterator, k).toSet
+    preKmers.filter(postKmers.contains)
   }
 
   /**
@@ -92,14 +103,14 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
    * These are the k-1-mers that may be joined with outgoing sequences.
    */
   def outSet: Set[String] =
-    sharedOverlaps(core, boundary, k).toSet
+    sharedOverlapsThroughPrior(core, boundary, k).toSet
 
   /**
    * Openings backward of length k-1.
    * These are the k-1-mers that may be joined with incoming sequences.
    */
   def inSet: Set[String] =
-    sharedOverlaps(boundary, core, k).toSet
+    sharedOverlapsThroughPost(boundary, core, k).toSet
 
   def potentialOutSet = potentialOut(core.iterator, k).toSet
 
@@ -112,6 +123,7 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def nodesForGraph = {
     val in = inSet
     val out = outSet
+
 
     kmers.iterator.map(s => {
       val n = new KmerNode(s, 1)
