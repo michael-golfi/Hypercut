@@ -7,6 +7,7 @@ import dbpart.graph.PathGraphBuilder
 import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
 import scala.collection.immutable.SortedSet
+import scala.collection.Searching
 
 object BoundaryBucket {
   def apply(id: Long, components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
@@ -58,15 +59,16 @@ object BoundaryBucket {
                            boundary: List[BoundaryBucket]):
                            (List[Contig], List[BoundaryBucket], Array[(Long, Long)], Array[(Long, Long)]) = {
     val (noBound, updated) = core.seizeUnitigs
-    val suffix = updated.potentialOutSet
-    val prefix = updated.potentialInSet
 
-    val (merge, noMerge) = boundary.partition(updated.overlapsWith(_, suffix, prefix))
+    val potentialSuffixes = updated.potentialOutSet
+    val potentialPrefixes = updated.potentialInSet
 
-    def removeEdges(ids: Seq[Long]) = ids.flatMap(i =>
+    val (merge, noMerge) = boundary.partition(updated.overlapsWith(_, potentialSuffixes, potentialPrefixes))
+
+    def removableEdges(ids: Seq[Long]) = ids.flatMap(i =>
       Seq((core.id, i), (i, core.id))).toArray
 
-    val remove = removeEdges(noMerge.map(_.id))
+    val remove = removableEdges(noMerge.map(_.id))
 
     if (updated.core.isEmpty) {
       (noBound, noMerge, noMerge.map(x => (x.id -> x.id)).toArray, remove)
@@ -98,40 +100,33 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def sharedOverlapsTo(post: Iterator[String], outSet: Set[String]): Iterator[String] =
     potentialIn(post, k).filter(outSet.contains(_))
 
-  /**
-   * Openings forward of length k-1.
-   * These are the k-1-mers that may be joined with outgoing sequences.
-   */
-  def outSet: Set[String] =
-    sharedOverlapsThroughPrior(core, boundary, k).toSet
-
-  /**
-   * Openings backward of length k-1.
-   * These are the k-1-mers that may be joined with incoming sequences.
-   */
-  def inSet: Set[String] =
-    sharedOverlapsThroughPost(boundary, core, k).toSet
-
   def potentialOutSet = potentialOut(core.iterator, k).toSet
 
   def potentialInSet: Set[String] = potentialIn(core.iterator, k).toSet
 
-  def isBoundary(seq: NTSeq, outSet: Set[String], inSet: Set[String]) =
-    outSet.contains(DNAHelpers.kmerSuffix(seq, k)) ||
-      inSet.contains(DNAHelpers.kmerPrefix(seq, k))
+  import Searching._
 
   def nodesForGraph = {
-    val in = inSet
-    val out = outSet
-
+    val in = sharedOverlapsThroughPost(boundary, core, k).toArray.sorted
+    val out = sharedOverlapsThroughPrior(core, boundary, k).toArray.sorted
 
     kmers.iterator.map(s => {
       val n = new KmerNode(s, 1)
-      if (isBoundary(s, out, in)) {
+
+      val suf = DNAHelpers.kmerSuffix(s, k)
+      out.search(suf) match {
         //Pseudo-partition 1.
         //Setting the boundary flag blocks premature path finding.
-        n.boundaryPartition = Some(1)
+        case Found(i) => n.boundaryPartition = Some(1)
+        case _        =>
       }
+
+      val pre = DNAHelpers.kmerPrefix(s, k)
+      in.search(pre) match {
+        case Found(i) => n.boundaryPartition = Some(1)
+        case _        =>
+      }
+
       n
     })
   }
@@ -172,5 +167,4 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
     val updated = removeSequences(noBound.map(_.seq))
     (noBound, updated)
   }
-
 }

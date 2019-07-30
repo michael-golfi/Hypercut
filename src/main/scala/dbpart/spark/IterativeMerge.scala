@@ -116,12 +116,12 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
 
      val relabelSrc =
        mergeData.selectExpr("explode(_3)").selectExpr("col._1", "col._2").toDF("src", "newSrc")
-     val removeEdges =
+     val removableEdges =
        mergeData.selectExpr("explode(_4)").selectExpr("col._1", "col._2").as[(Long, Long)]
      val relabelDst = relabelSrc.toDF("dst", "newDst")
      val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
       selectExpr("newSrc", "newDst").
-      as[(Long, Long)].except(removeEdges).
+      as[(Long, Long)].except(removableEdges).
       filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
      //Truncate RDD lineage
