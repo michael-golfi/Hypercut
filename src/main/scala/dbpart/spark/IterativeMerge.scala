@@ -6,10 +6,13 @@ import org.apache.spark.sql.SparkSession
 import org.graphframes.lib.Pregel
 import org.graphframes.lib.AggregateMessages
 
-class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
+class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
+  k: Int, output: String) {
+
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import SerialRoutines._
+  import IterativeSerial._
   import org.apache.spark.sql._
   import org.apache.spark.sql.functions._
 
@@ -18,12 +21,21 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
    */
   type IterationData = (GraphFrame, DataFrame)
 
+  var iteration = 1
+  val checkpointInterval = 4
+
   /**
    * Trick to get around the very large execution plans that arise
    * when running iterative algorithms on DataFrames.
    */
-  def removeLineage(df: DataFrame) =
-    AggregateMessages.getCachedDataFrame(df)
+  def removeLineage(df: DataFrame) = {
+    val r = AggregateMessages.getCachedDataFrame(df)
+    if (iteration % checkpointInterval == 0) {
+      r.checkpoint()
+    } else {
+      r
+    }
+  }
 
   def materialize(df: DataFrame) = {
     df.foreachPartition((r: Iterator[Row]) => () )
@@ -41,7 +53,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
    * Prepare the first iteration.
    * Sets up new ID numbers for each bucket and prepares the iterative merge.
    */
-  def initialize(graph: GraphFrame, k: Int): IterationData = {
+  def initialize(graph: GraphFrame): IterationData = {
     val buckets =
       graph.vertices.selectExpr("id as bucketId",
         "struct(monotonically_increasing_id() as id, bucket.sequences as core, array() as boundary, bucket.k as k)"
@@ -72,8 +84,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
    * sequence as possible. A new, smaller graph and a new set of merged buckets
    * is produced for the next iteration.
    */
-  def merge(data: IterationData, k: Int,
-            minLength: Option[Int], output: String, append: Boolean): IterationData = {
+  def merge(data: IterationData,
+            minLength: Option[Int], append: Boolean): IterationData = {
     val (graph, buckets) = data
 
     if (showStats) {
@@ -91,19 +103,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
 
     val withBuckets = partitions.join(buckets, Seq("id"))
 
+    val k = this.k
     val mergeData = withBuckets.as[(Long, Long, BoundaryBucket)].
-      groupByKey(_._2).mapGroups((key, rows) => { //Group by partition
-        //SCB is boundary if partition != coreId
-        //TODO: we might get groups here where the core element is missing
-        //(has merged with something else) - handle properly
-
-        val data = rows.toList
-        val everything = BoundaryBucket(key,
-          data.map(r => (r._3.core, r._1 != r._2)),
-          k)
-        BoundaryBucket.seizeUnitigsAndMerge(everything,
-          data.filter(r => r._1 != r._2).map(_._3))
-      }).cache
+      groupByKey(_._2).mapGroups(seizeUnitigs(k)(_, _)). //Group by partition
+       cache
 
      val writeMode = if (append) "append" else "overwrite"
 
@@ -139,16 +142,32 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false) {
   /**
    * Run iterative merge until completion.
    */
-  def iterate(graph: GraphFrame, k: Int, minLength: Option[Int], output: String) {
-    var data = initialize(graph, k)
-    var i = 1
+  def iterate(graph: GraphFrame, minLength: Option[Int]) {
+    var data = initialize(graph)
+
     var n = data._1.edges.count
     while (n > 0) {
-      println(s"Begin iteration $i ($n edges)")
-      val append = if (i == 1) false else true
-      data = merge(data, k, minLength, output, append)
+      println(s"Begin iteration $iteration ($n edges)")
+      val append = if (iteration == 1) false else true
+      data = merge(data, minLength, append)
       n = data._1.edges.count
-      i += 1
+      iteration += 1
     }
+  }
+}
+
+object IterativeSerial {
+  def seizeUnitigs(k: Int)(key: Long, rows: Iterator[(Long, Long, BoundaryBucket)]) = {
+    //SCB is boundary if partition != coreId
+    //TODO: we might get groups here where the core element is missing
+    //(has merged with something else) - handle properly
+
+    val data = rows.toList
+    val everything = BoundaryBucket(
+      key, data.map(r => (r._3.core, r._1 != r._2)),
+      k)
+    BoundaryBucket.seizeUnitigsAndMerge(
+      everything,
+      data.filter(r => r._1 != r._2).map(_._3))
   }
 }

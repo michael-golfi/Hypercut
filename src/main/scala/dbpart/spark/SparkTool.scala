@@ -83,8 +83,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       def run() {
         val loc = location()
         val graph = routines.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
-        val it = new IterativeMerge(spark)
-        it.iterate(graph, k(), minLength.toOption, loc)
+        val showStats = false
+        val it = new IterativeMerge(spark, showStats, k(), loc)
+        it.iterate(graph, minLength.toOption)
       }
     }
     addSubcommand(compact)

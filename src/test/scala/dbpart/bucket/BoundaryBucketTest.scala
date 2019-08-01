@@ -42,4 +42,27 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array(), 4)
     bkt.removeSequences(Seq("ACTG")).kmers.toList should contain theSameElementsAs(Seq("CTGG", "TGGG", "GTGC", "TGCA"))
   }
+
+  test("unifyParts") {
+
+    val testData = List((List(1L, 2L, 3L), List("a")),
+      (List(1L, 4L), List("b")),
+      (List(5L, 6L), List("c")))
+    val un = BoundaryBucket.unifyParts(testData)
+
+    //Should merge 3 parts into 2
+    un.map(x => (x._2.toSet, x._3.toSet)) should contain theSameElementsAs(
+      List(
+        (Set("a", "b"), Set(1L, 2L, 3L, 4L)),
+        (Set("c"), Set(5L, 6L))
+        ))
+
+    //Adding this part should force all the parts to merge into one
+    val testData2 = (List(5L, 4L), List("d")) :: testData
+    val un2 = BoundaryBucket.unifyParts(testData2)
+    un2.map(x => (x._2.toSet, x._3.toSet)) should contain theSameElementsAs(
+      List(
+        (Set("a", "b", "c", "d"), Set[Long](1, 2, 3, 4, 5, 6))
+        ))
+  }
 }
