@@ -14,10 +14,13 @@ import dbpart._
 import dbpart.bucket._
 import dbpart.hash._
 import miniasm.genome.util.DNAHelpers
-import dbpart.hash.FeatureScanner
 
-case class HashSegment(hash: Array[Byte], segment: String)
-case class CountedHashSegment(hash: Array[Byte], segment: String, count: Long)
+import dbpart.hash.FeatureScanner
+import miniasm.genome.bpbuffer.BPBuffer
+import miniasm.genome.bpbuffer.BPBuffer._
+
+case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
+case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
@@ -43,7 +46,7 @@ class Routines(spark: SparkSession) {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
     }
-    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
+    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)).filter(! _.contains("N")))
   }
 
   /**
@@ -68,6 +71,7 @@ class Routines(spark: SparkSession) {
   /**
    * The marker sets in a read, paired with the corresponding segments that were discovered.
    */
+
   type ProcessedRead = (Array[HashSegment])
 
     /**
@@ -90,7 +94,7 @@ class Routines(spark: SparkSession) {
     val segments = reads.flatMap(r => {
       val buckets = ext.markerSetsInRead(r)._2
       val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => HashSegment(x._1.compact.data, x._2))
+      hashesSegments.map(x => HashSegment(x._1.compact.data, BPBuffer.wrap(x._2)))
     })
     processedToBuckets(segments, ext)
   }
@@ -116,7 +120,8 @@ class Routines(spark: SparkSession) {
     byBucket.mapGroups {
       case (key, segmentsCounts) => {
         val empty = SimpleCountingBucket.empty(ext.k)
-        val bkt = empty.insertBulkSegments(segmentsCounts.map(x => (x.segment, clipAbundance(x.count))).toList)
+        val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+          (x.segment.toString, clipAbundance(x.count))).toList)
         (key, bkt)
       }
     }
