@@ -93,7 +93,7 @@ trait BPBuffer {
    * Print detailed information about this object, including internal
    * storage and representation details.
    */
-  def printDetailed: Unit
+  def printDetailed(): Unit
 
   /**
    * Compare with another BPBuffer for ordering.
@@ -116,7 +116,7 @@ object BPBuffer {
 
   import BitRepresentation._
 
-  implicit def toShort(i: Int) = i.asInstanceOf[Short]
+  implicit def toShort(i: Int) = i.toShort
 
   /**
    * Creates a new bpbuffer from an ACTG string.
@@ -367,9 +367,9 @@ object BPBuffer {
     //insert the twobit into orig.
     //offset is a 0-3 value.
     private def writeTwobitAtOffset(orig: Byte, twobit: Byte, offset: Int): Byte = {
-      var r = orig & ~(3 << 2 * (3 - offset)) //turn off those bits we don't want
-      var insertPart = (twobit << (2 * (3 - offset)))
-      (r | insertPart).asInstanceOf[Byte]
+      val r = orig & ~(3 << 2 * (3 - offset)) //turn off those bits we don't want
+      val insertPart = (twobit << (2 * (3 - offset)))
+      (r | insertPart).toByte
     }
 
     def appendTwobit(twobit: Byte) = appendTwobit(twobit, false)
@@ -406,7 +406,7 @@ object BPBuffer {
     def prependTwobit(twobit: Byte, revCom: Boolean = true): BPBuffer = {
       val newSize = size + 1
       val newData: Array[Byte] = Array.fill((newSize - 1) / 4 + 1)(0)
-      newData(0) = (twobit << 6).asInstanceOf[Byte]
+      newData(0) = (twobit << 6).toByte
 
       for (i <- 0 until size) {
         val writeByte = (i + 1) / 4
@@ -434,7 +434,7 @@ object BPBuffer {
       new ForwardBPBuffer(data, offset, amt)
     }
 
-    def printDetailed = {
+    def printDetailed() {
       println("BPBuffer size " + size + " offset " + offset + " " + getClass)
       print("Data ")
       data.foreach(x => { print(x + " ") })
@@ -485,7 +485,7 @@ object BPBuffer {
     override def computeIntArrayElement(i: Int) = {
       val n = numIntsInArray
       val paddingBPs = (16 - (size % 16)) % 16 //number of AAA... BPs at the end of the last int in the forward repr.
-      var doSnd = (n > 1 && i < n - 1)
+      val doSnd = (n > 1 && i < n - 1)
 
       //read from two ints
       val fst = super.computeIntArrayElement(n - i - 1)
@@ -542,7 +542,7 @@ object BPBuffer {
    * Data will be read from right to left in the array, starting one step before the given offset,
    * and then complemented.
    */
-  case class RCBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends RCBPBufferImpl {
+  final case class RCBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends RCBPBufferImpl {
     override def hashCode: Int = kmerHashCode
     override def equals(other: Any): Boolean = other match {
       case bbi: BPBufferImpl => deepEquals(bbi)
@@ -551,7 +551,7 @@ object BPBuffer {
 
   }
 
-  case class ForwardBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends BPBufferImpl {
+  final case class ForwardBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends BPBufferImpl {
     override def hashCode: Int = kmerHashCode
     override def equals(other: Any): Boolean = other match {
       case bbi: BPBufferImpl => deepEquals(bbi)
@@ -559,7 +559,10 @@ object BPBuffer {
     }
   }
 
-  case class ZeroBPBuffer(val data: Array[Byte], val size: Short) extends BPBufferImpl {
+  /**
+   * A forward BPBuffer that has zero offset. Useful to save space in serialized encodings.
+   */
+  final case class ZeroBPBuffer(val data: Array[Byte], val size: Short) extends BPBufferImpl {
     def offset = 0
 
     override def hashCode: Int = kmerHashCode

@@ -47,7 +47,7 @@ object DNAHelpers {
    * Extend a given string by a number of random basepairs
    */
   @tailrec
-  final def extendSeq(seq: String,
+  def extendSeq(seq: String,
                 steps: Int,
                 generator: Random = new Random(),
                 basemap: Int => Char = Map(0 -> 'A',

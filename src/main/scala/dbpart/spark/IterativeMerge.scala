@@ -148,7 +148,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     var n = data._1.edges.count
     while (n > 0) {
       println(s"Begin iteration $iteration ($n edges)")
-      val append = if (iteration == 1) false else true
+      val append = (iteration > 1)
       data = merge(data, minLength, append)
       n = data._1.edges.count
       iteration += 1

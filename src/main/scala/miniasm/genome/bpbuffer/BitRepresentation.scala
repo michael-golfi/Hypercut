@@ -25,7 +25,7 @@ object BitRepresentation {
 
   //precompute conversion table once
   for (i <- 0 to 255) {
-    val b = i.asInstanceOf[Byte]
+    val b = i.toByte
     val str = byteToQuadCompute(b)
     byteToQuad(b - Byte.MinValue) = str
     quadToByte += ((str, b))
@@ -62,7 +62,7 @@ object BitRepresentation {
     var res = ""
     val chars = for (i <- 0 to 3) {
       val ptn = ((byte >> ((3 - i) * 2)) & 0x3)
-      val char = twobitToChar(ptn.asInstanceOf[Byte])
+      val char = twobitToChar(ptn.toByte)
       res += char
     }
     res
@@ -74,7 +74,7 @@ object BitRepresentation {
   def byteToQuad(byte: Byte): String = byteToQuad(byte - Byte.MinValue)
 
   import scala.language.implicitConversions
-  implicit final def toByte(int: Int) = int.asInstanceOf[Byte]
+  implicit def toByte(int: Int) = int.toByte
 
   /**
    * Complement of a single BP.
@@ -86,7 +86,7 @@ object BitRepresentation {
    */
   def complement(byte: Byte) = {
     //	  println("Complement " + byte)
-    (byte ^ 0xff).asInstanceOf[Byte]
+    (byte ^ 0xff).toByte
   }
 
   /**
@@ -110,7 +110,7 @@ object BitRepresentation {
   def stringToBytes(bps: String): Array[Byte] = {
     var i = 0
     val rsize = (bps.size - 1) / 4
-    var r = new Array[Byte](rsize + 1)
+    val r = new Array[Byte](rsize + 1)
     while (i <= rsize) {
       r(i) = quadToByte(bps, i * 4)
       i += 1
@@ -123,7 +123,7 @@ object BitRepresentation {
    * resulting string must be supplied.
    */
   def bytesToString(bytes: Array[Byte], offset: Int, size: Int): String = {
-    var res = new StringBuilder()
+    val res = new StringBuilder()
 
     val startByte = offset / 4
 
@@ -143,7 +143,7 @@ object BitRepresentation {
   def continuations(km: BPBuffer) = twobits.map { km.drop(1).appendTwobit(_) }
   def continuesFrom(km: BPBuffer) = twobits.map { km.take(km.size - 1).prependTwobit(_) }
 
-  def reverseComplement(bytes: Array[Byte], offset: Int, size: Int): Array[Byte] = {
+  def reverseComplement(bytes: Array[Byte], size: Int): Array[Byte] = {
     val r = Array.fill[Byte](size)(0)
     var i = 0
     while (i < size) {

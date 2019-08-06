@@ -19,8 +19,8 @@ import dbpart.hash.FeatureScanner
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 
-case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
-case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
+final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
+final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
