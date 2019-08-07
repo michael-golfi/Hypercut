@@ -52,20 +52,17 @@ class Histogram(values: Seq[Int], numBins: Int = 10,
   limitMax: Option[Long] = None) {
   val dist = new Distribution()
   dist.observe(values)
-
   val useMax = limitMax.getOrElse(dist.max)
-
-  var bs = (useMax - dist.min + 1)/numBins
-  if (bs < 1) {
-    bs = 1
-  }
-  
+  var binSize = (useMax - dist.min + 1)/numBins
+   if (binSize < 1) {
+     binSize = 1
+   }
   //Bins are upper bounds of values in each bin
-  val bins = (dist.min + bs - 1).to(useMax, bs)
-  var counts = Array.fill(numBins)(0)
+  val bins = (dist.min + binSize - 1).to(useMax, binSize)
+  val counts = Array.fill(bins.size)(0)
 
   val mpos = values.size/2
-  var srt = values.toArray.sorted
+  val srt = values.toArray.sorted
   val median = if (values.size > 0) Some(srt(mpos)) else None
 
   for (v <- values) {
@@ -77,11 +74,10 @@ class Histogram(values: Seq[Int], numBins: Int = 10,
     } 
   }
 
-
   def print(label: String) {
     println(s"$label Median: $median ")
     dist.print(label)
-    println(bins.take(numBins).mkString("\t"))
+    println(bins.map(b => "%.1f".format(b)).mkString("\t"))
     println(counts.mkString("\t"))
   }
 
