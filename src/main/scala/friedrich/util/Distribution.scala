@@ -53,7 +53,7 @@ class Histogram(values: Seq[Int], numBins: Int = 10,
   val dist = new Distribution()
   dist.observe(values)
   val useMax = limitMax.getOrElse(dist.max)
-  var binSize = (useMax - dist.min + 1)/numBins
+  var binSize = (useMax.toDouble - dist.min + 1)/numBins
    if (binSize < 1) {
      binSize = 1
    }
