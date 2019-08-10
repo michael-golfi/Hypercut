@@ -7,8 +7,9 @@ import dbpart.graph.PathGraphBuilder
 import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
 import scala.collection.immutable.SortedSet
-import scala.collection.Searching
+import scala.collection.{Searching, Set => CSet}
 import scala.collection.mutable.{Map => MMap, Set => MSet}
+import scala.annotation.tailrec
 
 object BoundaryBucket {
   def apply(id: Long, components: List[(Array[String], Boolean)], k: Int): BoundaryBucket = {
@@ -16,6 +17,28 @@ object BoundaryBucket {
 
     BoundaryBucket(id, core.flatMap(_._1).toArray,
       boundary.flatMap(_._1).toArray, k)
+  }
+
+  /**
+   * Whether two sorted lists have at least one common element
+   */
+  @tailrec
+  def haveIntersection(d1: List[String], d2: List[String]): Boolean = {
+    d1 match {
+      case Nil => false
+      case x :: xs => d2 match {
+        case Nil => false
+        case y :: ys =>
+          val c = x.compareTo(y)
+          if (c < 0) {
+            haveIntersection(xs, y :: ys)
+          } else if (c == 0) {
+            true
+          } else {
+            haveIntersection(x :: xs, ys)
+          }
+      }
+    }
   }
 
   def potentialIn(ss: Iterator[String], k: Int) =
@@ -34,7 +57,7 @@ object BoundaryBucket {
    * Prior gets cached as a set.
    */
   def sharedOverlapsThroughPrior(prior: Seq[String], post: Seq[String], k: Int): Iterator[String] = {
-    val preKmers = potentialOut(prior.iterator, k).toSet
+    val preKmers = potentialOut(prior.iterator, k).to[MSet]
     val postKmers = potentialIn(post.iterator, k)
     postKmers.filter(preKmers.contains)
   }
@@ -44,19 +67,19 @@ object BoundaryBucket {
    */
   def sharedOverlapsThroughPost(prior: Seq[String], post: Seq[String], k: Int): Iterator[String] = {
     val preKmers = potentialOut(prior.iterator, k)
-    val postKmers = potentialIn(post.iterator, k).toSet
+    val postKmers = potentialIn(post.iterator, k).to[CSet]
     preKmers.filter(postKmers.contains)
   }
 
-  def overlapsWith(other: BoundaryBucket, suffix: Set[String], prefix: Set[String], k: Int) = {
+  def overlapsWith(other: BoundaryBucket, suffix: CSet[String], prefix: CSet[String], k: Int) = {
     !sharedOverlapsTo(other.core.iterator, suffix, k).isEmpty ||
       !sharedOverlapsFrom(other.core.iterator, prefix, k).isEmpty
   }
 
-  def sharedOverlapsFrom(prior: Iterator[String], inSet: Set[String], k: Int): Iterator[String] =
+  def sharedOverlapsFrom(prior: Iterator[String], inSet: CSet[String], k: Int): Iterator[String] =
     potentialOut(prior, k).filter(inSet.contains(_))
 
-  def sharedOverlapsTo(post: Iterator[String], outSet: Set[String], k: Int): Iterator[String] =
+  def sharedOverlapsTo(post: Iterator[String], outSet: CSet[String], k: Int): Iterator[String] =
     potentialIn(post, k).filter(outSet.contains(_))
 
    /**
@@ -100,7 +123,7 @@ object BoundaryBucket {
           idLookup += (i -> min)
         }
         idLookup = idLookup.map(x => (x._1 -> oldKeysRewrite.getOrElse(x._2, x._2)))
-        val remainingKeys = idLookup.values.toSet
+        val remainingKeys = idLookup.values.to[MSet]
         dataLookup = dataLookup.filter(x => remainingKeys.contains(x._1))
         dataLookup(min) = data.toArray
 
@@ -138,8 +161,9 @@ object BoundaryBucket {
 
     //Pair each split part with the boundary IDs that it intersects with
     val splitWithBoundary = split.map(s => {
-      val potentialSuffixes = potentialOut(s.iterator, core.k).toSet
-      val potentialPrefixes = potentialIn(s.iterator, core.k).toSet
+      //Note: might save memory by sharing strings between these two sets
+      val potentialSuffixes = potentialOut(s.iterator, core.k).to[MSet]
+      val potentialPrefixes = potentialIn(s.iterator, core.k).to[MSet]
 
       val (merge, noMerge) = boundary.partition(
         overlapsWith(_, potentialSuffixes, potentialPrefixes, core.k))
@@ -147,7 +171,7 @@ object BoundaryBucket {
     }).filter(_._1.nonEmpty)
 
     val mergedParts = unifyParts(splitWithBoundary.map(x => (x._1, x._2)))
-    val noMerge = (boundary.map(_.id).toSet -- (mergedParts.flatMap(_._3))).toSeq
+    val noMerge = (boundary.map(_.id).to[MSet] -- (mergedParts.flatMap(_._3))).toSeq
     val boundaryLookup = Map() ++ boundary.map(b => (b.id -> b))
 
     def removableEdges(ids: Seq[Long]) = ids.flatMap(i =>
@@ -178,9 +202,9 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def coreStats = BucketStats(core.size, 0, kmers.size)
   def boundaryStats = BucketStats(boundary.size, 0, 0)
 
-  def potentialOutSet = potentialOut(core.iterator, k).toSet
+  def potentialOutSet: CSet[String] = potentialOut(core.iterator, k).to[MSet]
 
-  def potentialInSet: Set[String] = potentialIn(core.iterator, k).toSet
+  def potentialInSet: CSet[String] = potentialIn(core.iterator, k).to[MSet]
 
   import Searching._
 
@@ -226,7 +250,7 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
    * Remove sequences from the core of this bucket.
    */
   def removeSequences(ss: Iterable[NTSeq]): BoundaryBucket = {
-    val removeKmers = ss.iterator.flatMap(Read.kmers(_, k)).toSet
+    val removeKmers = ss.iterator.flatMap(Read.kmers(_, k)).to[MSet]
     val filtered = Read.flattenKmers(kmers.filter(s => !removeKmers.contains(s)).
       toList, k, Nil)
 
