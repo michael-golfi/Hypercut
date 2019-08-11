@@ -30,6 +30,8 @@ final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, co
  * Helper routines for executing Hypercut from Apache Spark.
  */
 class Routines(spark: SparkSession) {
+  import SerialRoutines._
+
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
@@ -50,7 +52,7 @@ class Routines(spark: SparkSession) {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
     }
-    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)).filter(! _.contains("N")))
+    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
   }
 
   /**
@@ -98,7 +100,10 @@ class Routines(spark: SparkSession) {
     val segments = reads.flatMap(r => {
       val buckets = ext.markerSetsInRead(r)._2
       val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.map(x => HashSegment(x._1.compact.data, BPBuffer.wrap(x._2)))
+      hashesSegments.flatMap(x =>
+        removeN(x._2, ext.k).map(s =>
+          HashSegment(x._1.compact.data, BPBuffer.wrap(s)))
+      )
     })
     processedToBuckets(segments, ext)
   }
@@ -130,7 +135,7 @@ class Routines(spark: SparkSession) {
       }
     }
   }
-  
+
   def log10(x: Double) = Math.log(x) / Math.log(10)
 
   def plotBuckets(location: String) {
@@ -288,6 +293,10 @@ class Routines(spark: SparkSession) {
  * Serialization-safe routines.
  */
 object SerialRoutines {
+  def removeN(segment: String, k: Int): Array[String] = {
+    segment.split("N", -1).filter(s => s.length() >= k)
+  }
+
   def safeFlatten(ss: Array[Array[String]]) = {
     Option(ss) match {
       case Some(ss) => ss.iterator.filter(_ != null).flatten.toList
