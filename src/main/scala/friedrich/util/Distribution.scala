@@ -44,43 +44,40 @@ class Distribution(format: String = "%.2f") {
 }
 
 /**
+ * Divide values into bins for the purposes of creating a histogram.
  * Note: might be useful to display certain histograms on a log scale
  * instead of linear
  */
-class Histogram(values: Seq[Int], bnum: Int = 10,
+class Histogram(values: Seq[Int], numBins: Int = 10,
   limitMax: Option[Long] = None) {
   val dist = new Distribution()
   dist.observe(values)
-
   val useMax = limitMax.getOrElse(dist.max)
-
-  var bs = (useMax - dist.min)/bnum
-  if (bs < 1) {
-    bs = 1
-  }
-  
-  val buckets = dist.min.to(useMax, bs)
-  var counts = Array.fill(bnum)(0)
+  var binSize = (useMax.toDouble - dist.min + 1)/numBins
+   if (binSize < 1) {
+     binSize = 1
+   }
+  //Bins are upper bounds of values in each bin
+  val bins = (dist.min + binSize - 1).to(useMax, binSize)
+  val counts = Array.fill(bins.size)(0)
 
   val mpos = values.size/2
-  var srt = values.toArray.sorted
+  val srt = values.toArray.sorted
   val median = if (values.size > 0) Some(srt(mpos)) else None
 
   for (v <- values) {
-    val i = buckets.indexWhere(_ >= v)
-    if (i != -1 && i < bnum) {
+    val i = bins.indexWhere(_ >= v)
+    if (i != -1 && i < numBins) {
       counts(i) += 1
     } else {
-      counts(bnum - 1) += 1
-    }
-    
+      counts(numBins - 1) += 1
+    } 
   }
-
 
   def print(label: String) {
     println(s"$label Median: $median ")
     dist.print(label)
-    println(buckets.take(bnum).mkString("\t"))
+    println(bins.map(b => "%.1f".format(b)).mkString("\t"))
     println(counts.mkString("\t"))
   }
 

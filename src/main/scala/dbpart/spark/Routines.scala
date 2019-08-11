@@ -19,6 +19,10 @@ import dbpart.hash.FeatureScanner
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 
+import vegas._
+import vegas.render.WindowRenderer._
+import friedrich.util._
+
 final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
 final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
 
@@ -125,6 +129,26 @@ class Routines(spark: SparkSession) {
         (key, bkt)
       }
     }
+  }
+  
+  def log10(x: Double) = Math.log(x) / Math.log(10)
+
+  def plotBuckets(location: String) {
+    //Get the buckets
+    val buckets = loadBuckets(location)
+    val hist = new Histogram(buckets.map(_._2.numKmers).collect, 50)
+    val bins = (hist.bins.map(b => "%.1f".format(b)))
+    val counts = hist.counts.map(x => log10(x))
+    val points = bins zip counts
+    //
+    //      println(bins)
+    hist.print("number of kmers")
+    val plot = Vegas("Bucket Histogram").
+      withData(
+        points.map(p => Map("bins" -> p._1, "Kmers" -> p._2))).
+        encodeX("bins", Quant).
+        encodeY("Kmers", Quant).
+        mark(Bar).show
   }
 
   /**
