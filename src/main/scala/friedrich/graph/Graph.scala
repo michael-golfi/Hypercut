@@ -64,15 +64,8 @@ trait Graph[N] {
    */
   def printBare(): Unit = for (n <- nodes) {
     println(n)
-    print(n + " to: ")
-    for (e <- edgesFrom(n)) {
-      print(e + ", ")
-    }
-    print(" from: ")
-    for (e <- edgesTo(n)) {
-      print(e + ", ")
-    }
-    println("")
+    println("  Out: " + edgesFrom(n).mkString(","))
+    println("  In: " + edgesTo(n).mkString(","))
   }
 
   def stats() {

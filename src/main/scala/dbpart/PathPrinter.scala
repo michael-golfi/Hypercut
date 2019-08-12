@@ -5,11 +5,11 @@ import java.io.PrintWriter
 
 case class Contig(nodes: List[String], k: Int,
   stopReasonStart: String, stopReasonEnd: String) {
-  
-  def touchesBoundary = 
-    stopReasonStart.startsWith("Boundary") || 
+
+  def touchesBoundary =
+    stopReasonStart.startsWith("Boundary") ||
     stopReasonEnd.startsWith("Boundary")
-  
+
   lazy val length = seq.length
 
   lazy val seq = {
@@ -24,6 +24,8 @@ case class Contig(nodes: List[String], k: Int,
       sb.result()
     }
   }
+
+  override def toString = s"$seq, $stopReasonStart, $stopReasonEnd"
 }
 
 class PathPrinter(outputFasta: String, printReasons: Boolean) {

@@ -5,7 +5,7 @@ import scala.reflect._
 import dbpart.IDSpace
 import friedrich.graph.Graph
 
-trait ArrayBackedGraph[N <: HasID with AnyRef] extends Graph[N] {
+trait ArrayBackedGraph[N <: HasID] extends Graph[N] {
   def nodesArr: Array[N]
   implicit def elemTag: ClassTag[N]
 
@@ -50,13 +50,11 @@ class ArrayListGraph[N <: HasID : ClassTag](val nodesArr: Array[N])
 
   def addEdge(from: N, to: N) {
     addForward(from, to)
-//    addBackward(to, from)
   }
 
   protected def addForward(from: N, to: N) {
     adjList(from.id) ::= to
   }
-
 }
 
 /**
@@ -68,12 +66,12 @@ class DoubleArrayListGraph[N <: HasID : ClassTag](nodesArr: Array[N])
 
   override def addEdge(from: N, to: N) {
     super.addEdge(from, to)
-    addBackward(to, from)
+    addReverse(to, from)
   }
 
   override def edgesTo(from: N): List[N] = revAdjList(from.id)
 
-  protected def addBackward(from: N, to: N) {
+  protected def addReverse(from: N, to: N) {
     revAdjList(from.id) ::= to
   }
 }
