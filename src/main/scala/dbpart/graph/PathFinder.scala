@@ -20,6 +20,7 @@ class PathFinder(k: Int) {
       n <- graph.nodes
       if !n.seen
       if !n.noise
+      if !n.boundary
       p1 = extendForward(graph, n)
       p2 = extendBackward(graph, n)
       p = Contig(p2._1.map(_.seq) ::: p1._1.map(_.seq).reverse.tail, k,
