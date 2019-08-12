@@ -7,7 +7,7 @@ import org.graphframes.lib.Pregel
 import org.graphframes.lib.AggregateMessages
 
 class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
-  k: Int, output: String) {
+  minLength: Option[Int], k: Int, output: String) {
 
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
@@ -84,13 +84,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * sequence as possible. A new, smaller graph and a new set of merged buckets
    * is produced for the next iteration.
    */
-  def merge(data: IterationData,
-            minLength: Option[Int], append: Boolean): IterationData = {
+  def merge(data: IterationData, append: Boolean): IterationData = {
     val (graph, buckets) = data
 
     if (showStats) {
       stats(buckets.select("bucket.*").as[BoundaryBucket])
     }
+
+    finishIsolatedBuckets(data, append)
 
     val partitions = graph.pregel.
       withVertexColumn("partition", $"id",
@@ -108,9 +109,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       groupByKey(_._2).mapGroups(seizeUnitigs(k)(_, _)). //Group by partition
        cache
 
-     val writeMode = if (append) "append" else "overwrite"
+     val writeMode = "append"
 
-     mergeData.flatMap(_._1.flatMap(lengthFilter(minLength))).map(u =>
+     val ml = minLength
+     mergeData.flatMap(_._1.flatMap(lengthFilter(ml))).map(u =>
       (u.seq, u.stopReasonStart, u.stopReasonEnd)).
       write.mode(writeMode).csv(s"${output}_unitigs")
 
@@ -139,35 +141,61 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     (nextGraph, nextBuckets)
   }
 
+  def finishIsolatedBuckets(data: IterationData, append: Boolean) {
+    val (graph, buckets) = data
+
+    val isolated = buckets.join(graph.degrees, Seq("id"), "left_outer").
+      filter("degree is null").selectExpr("id", "bucket.core", "bucket.boundary", "bucket.k").as[BoundaryBucket]
+
+    val writeMode = if (append) "append" else "overwrite"
+    println(s"${isolated.count()} isolated nodes")
+    println(s"${isolated.collect().toList.map(_.id)}") 
+
+    val ml = minLength
+    val unitigs = isolated.flatMap(i => {
+      val unified = BoundaryBucket(i.id, i.core ++ i.boundary, Array(), i.k)
+      val unitigs = BoundaryBucket.seizeUnitigsAndMerge(unified, List())
+      unitigs._1.flatMap(lengthFilter(ml)).map(u =>
+        (u.seq, u.stopReasonStart, u.stopReasonEnd))
+    }).write.mode(writeMode).csv(s"${output}_unitigs")
+  }
+
   /**
    * Run iterative merge until completion.
    */
-  def iterate(graph: GraphFrame, minLength: Option[Int]) {
+  def iterate(graph: GraphFrame) {
     var data = initialize(graph)
 
     var n = data._1.edges.count
     while (n > 0) {
       println(s"Begin iteration $iteration ($n edges)")
+//      println(data._1.edges.as[(Long, Long)].collect.toList)
       val append = (iteration > 1)
-      data = merge(data, minLength, append)
+
+      data = merge(data, append)
       n = data._1.edges.count
       iteration += 1
     }
+    finishIsolatedBuckets(data, iteration > 1)
   }
 }
 
 object IterativeSerial {
   def seizeUnitigs(k: Int)(key: Long, rows: Iterator[(Long, Long, BoundaryBucket)]) = {
-    //SCB is boundary if partition != coreId
-    //TODO: we might get groups here where the core element is missing
-    //(has merged with something else) - handle properly
+    //is boundary if partition != coreId
 
     val data = rows.toList
     val everything = BoundaryBucket(
       key, data.map(r => (r._3.core, r._1 != r._2)),
       k)
-    BoundaryBucket.seizeUnitigsAndMerge(
-      everything,
-      data.filter(r => r._1 != r._2).map(_._3))
+    if (everything.core.nonEmpty) {
+      BoundaryBucket.seizeUnitigsAndMerge(
+        everything,
+        data.filter(r => r._1 != r._2).map(_._3))
+    } else {
+        //the desired core element is missing since it merged with something else -
+        //identity transformation preserves the local structure until the next iteration
+      BoundaryBucket.identityMerge(data.map(_._3))
+    }
   }
 }
