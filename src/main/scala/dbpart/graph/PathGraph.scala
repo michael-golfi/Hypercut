@@ -21,7 +21,7 @@ class PathGraphBuilder(k: Int) {
   def fromNodes(nodes: List[KmerNode]): Graph[KmerNode] = {
     val result = new DoubleArrayListGraph[KmerNode](nodes.toArray)
     val byStart = nodes.sortBy(_.seq)
-    val byEnd = nodes.sortBy(n => n.end)
+    val byEnd = nodes.sortBy(_.end)
 
     val gotEdges = findEdges(byStart, byEnd, false,
       (f, t) => result.addEdge(f, t))
@@ -47,10 +47,14 @@ class PathGraphBuilder(k: Int) {
             } else if (cmp > 0) {
               findEdges(bs, byEnd, gotEdges, f)
             } else {
-              val ns = byEnd.takeWhile(_.end == overlap)
-              for (n <- ns) { f(n, b) }
+              val (sameEnd, nextE) = byEnd.span(_.end == overlap)
+              val (sameBegin, nextB) = byBeginning.span(_.begin == overlap)
+              for {
+                from <- sameEnd
+                to <- sameBegin
+              } f(from, to)
               //All possible edges for b have been constructed
-              findEdges(bs, byEnd, true, f)
+              findEdges(nextB, nextE, true, f)
             }
           case _ => gotEdges
         }

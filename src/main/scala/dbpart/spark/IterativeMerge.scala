@@ -5,6 +5,8 @@ import dbpart.bucket.BoundaryBucket
 import org.apache.spark.sql.SparkSession
 import org.graphframes.lib.Pregel
 import org.graphframes.lib.AggregateMessages
+import org.graphframes.pattern.Edge
+import dbpart.Contig
 
 class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   minLength: Option[Int], k: Int, output: String) {
@@ -45,8 +47,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   def stats(buckets: Dataset[BoundaryBucket]) {
     println("Core stats")
     buckets.map(_.coreStats).describe().show
-    println("Boundary stats")
-    buckets.map(_.boundaryStats).describe().show
   }
 
   /**
@@ -56,7 +56,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   def initialize(graph: GraphFrame): IterationData = {
     val buckets =
       graph.vertices.selectExpr("id as bucketId",
-        "struct(monotonically_increasing_id() as id, bucket.sequences as core, array() as boundary, bucket.k as k)"
+        "struct(monotonically_increasing_id() as id, bucket.sequences as core, bucket.k as k, 0 as generation)"
         ).as[(Array[Byte], BoundaryBucket)].
           toDF("bucketId", "bucket")
 
@@ -68,7 +68,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
       //TODO this duplicates data
     val nextBuckets = buckets.selectExpr("bucket.id as id", "bucket")
-    val idGraph = GraphFrame.fromEdges(relabelEdges.cache)
+//    val idGraph = GraphFrame.fromEdges(relabelEdges.cache)
+    val idGraph = GraphFrame.apply(buckets.selectExpr("bucket.id as id", "0 as generation").cache,
+      relabelEdges.cache)
     materialize(relabelEdges)
     relabelSrc.unpersist
 
@@ -93,27 +95,49 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     finishIsolatedBuckets(data, append)
 
-    val partitions = graph.pregel.
-      withVertexColumn("partition", $"id",
-        array_min(array(Pregel.msg, $"partition"))).
-        sendMsgToDst(Pregel.src("partition")).
-        sendMsgToSrc(Pregel.dst("partition")).
-        aggMsgs(min(Pregel.msg)).
-        setMaxIter(1).
-        run
+    val genMsg = s"${Pregel.msg}.generation"
+    val partMsg = s"${Pregel.msg}.id"
+    val idSrc = Pregel.src("id")
+    val idDst = Pregel.dst("id")
+    val genSrc = Pregel.src("generation")
+    val genDst = Pregel.dst("generation")
+
+//    println(graph.edges.as[(Long, Long)].collect().toList.groupBy(_._1))
+
+    //Inner join on vertices with degrees will drop isolated buckets here
+    val partitions = GraphFrame(
+        graph.vertices.join(graph.degrees, Seq("id")),
+        graph.edges).pregel.
+        withVertexColumn("partition", $"id",
+        expr(s"IF ($genMsg < generation OR ($genMsg == generation AND $partMsg < partition), $partMsg, partition)")).
+      sendMsgToDst(expr(s"struct($genSrc, $idSrc)")).
+      sendMsgToSrc(expr(s"struct($genDst, $idDst)")).
+      aggMsgs(min(Pregel.msg)).
+      setMaxIter(1).
+      run
+
+    /**
+     * Challenge: case where one merge center is torn between two different
+     * merge groups. To ensure progress over time, we prefer the smaller
+     * merge group of the two.
+     *
+     * E.g. edges: 5 - 3 - 2 - (4, 6)
+     * 3 would initially be chosen to merge into (3, 2, 4, 6) by min bucket id,
+     * but (5, 3, 2) is smaller by size so 2 should get to merge into 3 instead.
+     * This happens between two connecting centers (2 and 3 in this example).
+     */
 
     val withBuckets = partitions.join(buckets, Seq("id"))
 
     val k = this.k
-    val mergeData = withBuckets.as[(Long, Long, BoundaryBucket)].
-      groupByKey(_._2).mapGroups(seizeUnitigs(k)(_, _)). //Group by partition
+    val mergeData = withBuckets.as[MergingBuckets].
+      groupByKey(_.partition).mapGroups(seizeUnitigs(k)(_, _)). //Group by partition
        cache
 
      val writeMode = "append"
 
      val ml = minLength
-     mergeData.flatMap(_._1.flatMap(lengthFilter(ml))).map(u =>
-      (u.seq, u.stopReasonStart, u.stopReasonEnd)).
+     mergeData.flatMap(_._1.flatMap(lengthFilter(ml))).map(u => formatUnitig(u)).
       write.mode(writeMode).csv(s"${output}_unitigs")
 
      val nextBuckets =
@@ -124,13 +148,16 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
      val removableEdges =
        mergeData.selectExpr("explode(_4)").selectExpr("col._1", "col._2").as[(Long, Long)]
      val relabelDst = relabelSrc.toDF("dst", "newDst")
-     val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
-      selectExpr("newSrc", "newDst").
-      as[(Long, Long)].except(removableEdges).
-      filter(x => x._1 != x._2).toDF("src", "dst").distinct
+     val relabelEdges = graph.edges.as[(Long, Long)].except(removableEdges).
+       join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
+        selectExpr("newSrc", "newDst").as[(Long, Long)].
+        filter(x => x._1 != x._2).toDF("src", "dst").distinct
 
      //Truncate RDD lineage
-     val nextGraph = GraphFrame.fromEdges(materialize(removeLineage(relabelEdges)))
+     val nextGraph = GraphFrame(
+       nextBuckets.selectExpr("id", "bucket.generation as generation").cache,
+       materialize(removeLineage(relabelEdges))
+       )
 
      mergeData.unpersist
      partitions.unpersist
@@ -145,16 +172,15 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val (graph, buckets) = data
 
     val isolated = buckets.join(graph.degrees, Seq("id"), "left_outer").
-      filter("degree is null").selectExpr("id", "bucket.core", "bucket.boundary", "bucket.k").as[BoundaryBucket]
+      filter("degree is null").selectExpr("id", "bucket.core", "bucket.k", "bucket.generation").as[BoundaryBucket]
 
     val writeMode = if (append) "append" else "overwrite"
     println(s"${isolated.count()} isolated nodes")
-    println(s"${isolated.collect().toList.map(_.id)}") 
+//    println(s"${isolated.collect().toList.map(_.id)}")
 
     val ml = minLength
     val unitigs = isolated.flatMap(i => {
-      val unified = BoundaryBucket(i.id, i.core ++ i.boundary, Array(), i.k)
-      val unitigs = BoundaryBucket.seizeUnitigsAndMerge(unified, List())
+      val unitigs = BoundaryBucket.seizeUnitigsAndMerge(i, List())
       unitigs._1.flatMap(lengthFilter(ml)).map(u =>
         (u.seq, u.stopReasonStart, u.stopReasonEnd))
     }).write.mode(writeMode).csv(s"${output}_unitigs")
@@ -180,22 +206,50 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 }
 
+/**
+ * A group of buckets (a center and its neighbors) ready for merging.
+ */
+final case class MergingBuckets(id: Long, degree: Long, partition: Long,
+  bucket: BoundaryBucket) {
+  def isCenter = id == partition
+}
+
 object IterativeSerial {
-  def seizeUnitigs(k: Int)(key: Long, rows: Iterator[(Long, Long, BoundaryBucket)]) = {
+  def formatUnitig(u: Contig) = {
+    (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
+  }
+  
+  def seizeUnitigs(k: Int)(key: Long, rows: Iterator[MergingBuckets]) = {
     //is boundary if partition != coreId
 
     val data = rows.toList
-    val everything = BoundaryBucket(
-      key, data.map(r => (r._3.core, r._1 != r._2)),
-      k)
-    if (everything.core.nonEmpty) {
-      BoundaryBucket.seizeUnitigsAndMerge(
-        everything,
-        data.filter(r => r._1 != r._2).map(_._3))
+    val (core, boundary) = data.partition(_.isCenter)
+    assert(core.size <= 1)
+    val hasCore = core.size == 1
+
+    if (hasCore) {
+      val deg = core.head.degree
+      val hasFullBoundary = (core.head.degree == data.size - 1)
+      if (hasFullBoundary) {
+        println(s"Full merge $key $deg ${data.map(_.id)}")
+
+        //Have the core and all the boundary buckets as part of the merge
+        BoundaryBucket.seizeUnitigsAndMerge(core.head.bucket, boundary.map(_.bucket))
+      } else {
+        println(s"Missing boundary $key $deg ${data.map(_.id)}")
+        //Some of the boundary is missing.
+        //Merge buckets but do not remove any data.
+        //TODO can this lead to huge unprocessed buckets?
+        BoundaryBucket.simpleMerge(key, k, data.map(_.bucket))
+//        BoundaryBucket.identityMerge(data.map(_.bucket))
+      }
     } else {
-        //the desired core element is missing since it merged with something else -
-        //identity transformation preserves the local structure until the next iteration
-      BoundaryBucket.identityMerge(data.map(_._3))
+        println(s"Missing core $key ${data.map(_.id)}")
+        //the desired core element is missing since it merged with something else.
+        //Pick an arbitrary ID from the group and merge without removing data.
+        //TODO can this lead to huge unprocessed buckets?
+      BoundaryBucket.simpleMerge(data.head.id, k, data.map(_.bucket))
+//      BoundaryBucket.identityMerge(data.map(_.bucket))
     }
   }
 }
