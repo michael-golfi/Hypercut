@@ -79,12 +79,12 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     val compact = new Subcommand("compact") with RunnableCommand {
       val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
+      val showStats = opt[Boolean](required = false, descr = "Show statistics for each merge iteration")
 
       def run() {
         val loc = location()
         val graph = routines.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
-        val showStats = false
-        val it = new IterativeMerge(spark, showStats, minLength.toOption, k(), loc)
+        val it = new IterativeMerge(spark, showStats(), minLength.toOption, k(), loc)
         it.iterate(graph)
       }
     }
