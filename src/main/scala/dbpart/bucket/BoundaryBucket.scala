@@ -96,7 +96,7 @@ object BoundaryBucket {
     })
   }
 
-  //Contigs ready for output, new buckets, relabelled IDs, edges to be removed.
+  //Contigs ready for output, new buckets, relabelled IDs, edges to be removed (in terms of old IDs)
   type MergedBuckets = (List[Contig], List[BoundaryBucket], Array[(Long, Long)], Array[(Long, Long)])
 
   /**
@@ -139,24 +139,24 @@ object BoundaryBucket {
       //Boundary buckets will have edges to/from the old core removed
       val remove = removableEdges(boundary.map(_.id))
 
-      if (splitWithBoundary.isEmpty) {
-        (unitigs, boundary, boundary.map(x => (x.id -> x.id)).toArray, remove)
-      } else {
-        val mbs = mergedParts.map(m => {
-          val fromCore = m._2
-          val fromBoundaryOverlaps = m._3.flatMap(b => boundaryLookup(b).core)
-          BoundaryBucket(m._1, fromCore ++ fromBoundaryOverlaps, core.k, core.generation + 1)
-        })
+      val nonIntersectParts = identityMerge(nonOverlapBoundary.map(boundaryLookup))
 
-        val relabelIds = mergedParts.flatMap(m => m._3.map(_ -> m._1)) ++ nonOverlapBoundary.map(x => (x -> x))
-//        println(s"Relabel IDs: $relabelIds")
-        (unitigs, mbs, relabelIds.toArray, remove)
-      }
+      val intersectParts = mergedParts.map(m => {
+        val fromCore = m._2
+        val fromBoundaryOverlaps = m._3.flatMap(b => boundaryLookup(b).core)
+        (BoundaryBucket(m._1, fromCore ++ fromBoundaryOverlaps, core.k, core.generation - 1, 1),
+          m._3.map(_ -> m._1).toArray)
+      })
+
+    (unitigs, List() ++ nonIntersectParts._2 ++ intersectParts.map(_._1),
+      Array() ++ nonIntersectParts._3 ++ intersectParts.flatMap(_._2),
+      remove)
     }
 
   def simpleMerge(id: Long, k: Int, parts: Iterable[BoundaryBucket]): MergedBuckets = {
     (List(),
-        List(BoundaryBucket(id, parts.flatMap(_.core).toArray, k, parts.map(_.generation).min)),
+        List(BoundaryBucket(id, parts.iterator.flatMap(_.core).toArray, k,
+          parts.map(_.generation).min, parts.map(_.nodeCount).sum)),
         parts.map(p => (p.id -> id)).toArray, Array())
   }
 
@@ -168,12 +168,12 @@ object BoundaryBucket {
   }
 }
 
-case class BoundaryBucket(id: Long, core: Array[String], k: Int, generation: Int = 0) {
+case class BoundaryBucket(id: Long, core: Array[String], k: Int, generation: Int = 0, nodeCount: Int = 1) {
   import BoundaryBucket._
 
   def kmers = core.flatMap(Read.kmers(_, k))
 
-  def coreStats = BucketStats(core.size, 0, kmers.size)
+  def coreStats = BucketStats(core.size, 0, kmers.size, generation, nodeCount)
 
   def potentialOutSet: CSet[String] = potentialOut(core.iterator, k).to[MSet]
 
