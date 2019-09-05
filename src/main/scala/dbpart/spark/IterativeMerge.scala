@@ -116,7 +116,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       map(seizeUnitigs(k)(_)).cache
 
     val ml = minLength
-    mergeData.flatMap(_._1.flatMap(lengthFilter(ml))).map(u => formatUnitig(u)).
+    mergeData.selectExpr("explode(_1)").select("col.*").as[Contig].
+      flatMap(c => lengthFilter(ml)(c).map(u => formatUnitig(u))).
       write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
 
