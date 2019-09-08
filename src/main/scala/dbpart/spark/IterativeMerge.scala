@@ -20,7 +20,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   /**
    * Graph where vertices contain IDs only, and a DataFrame that maps IDs to BoundaryBucket.
    */
-  type IterationData = (GraphFrame, DataFrame)
+  type IterationData = GraphFrame
 
   var iteration = 1
   var firstWrite = true
@@ -45,11 +45,11 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     df
   }
 
-  def stats(data: IterationData) {
-    val buckets = data._2.select("bucket.*").as[BoundaryBucket]
+  def stats(data: GraphFrame) {
+    val buckets = data.vertices.select("bucket.*").as[BoundaryBucket]
     println("Bucket stats")
     buckets.map(_.coreStats).describe().show
-    data._1.degrees.describe().show
+    data.degrees.describe().show
   }
 
   /**
@@ -62,21 +62,15 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         "struct(monotonically_increasing_id() as id, bucket.sequences as core, bucket.k as k)").as[(Array[Byte], BoundaryBucket)].
           toDF("bucketId", "bucket")
 
-    val relabelSrc = buckets.selectExpr("bucketId as src", "bucket.id as newSrc").cache
-    val relabelDst = relabelSrc.toDF("dst", "newDst")
-    val relabelEdges = graph.edges.join(relabelSrc, Seq("src")).join(relabelDst, Seq("dst")).
-      selectExpr("newSrc", "newDst").
-      toDF("src", "dst").filter("! (src == dst)").distinct
+    val edgeTranslation = buckets.selectExpr("bucketId", "bucket.id").cache
+    val edges = translateEdges(graph.edges, edgeTranslation).cache
 
-      //TODO this duplicates data
-    val nextBuckets = buckets.selectExpr("bucket.id as id", "bucket")
-//    val idGraph = GraphFrame.fromEdges(relabelEdges.cache)
-    val idGraph = GraphFrame(buckets.selectExpr("bucket.id as id", "bucket.core as core").cache,
-      relabelEdges.cache)
-    materialize(relabelEdges)
-    relabelSrc.unpersist
+    val idGraph = GraphFrame(buckets.selectExpr("bucket.*").cache,
+      edges)
+    materialize(edges)
+    edgeTranslation.unpersist
 
-    (idGraph, nextBuckets)
+    idGraph
   }
 
   /**
@@ -88,23 +82,23 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * sequence as possible. A new, smaller graph and a new set of merged buckets
    * is produced for the next iteration.
    */
-  def merge(data: IterationData): IterationData = {
-    val (graph, buckets) = data
-
+  def merge(graph: IterationData): IterationData = {
     if (showStats) {
-      stats(data)
+      stats(graph)
     }
 
-    finishIsolatedBuckets(data)
+    finishIsolatedBuckets(graph)
 
     val AM = AggregateMessages
     val idSrc = AM.src("id")
     val idDst = AM.dst("id")
+    val coreSrc = AM.src("core")
+    val coreDst = AM.dst("core")
 
     //    println(graph.edges.as[(Long, Long)].collect().toList.groupBy(_._1))
-
     val withBoundary = graph.aggregateMessages.
-      sendToDst(AM.src).sendToSrc(AM.dst).
+      sendToDst(struct(idSrc, coreSrc)).
+      sendToSrc(struct(idDst, coreDst)).
       agg(collect_list(AM.msg).as("boundary"))
 
     //    Will drop isolated buckets here
@@ -112,7 +106,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val withBuckets = withBoundary.join(graph.vertices, Seq("id"))
 
     val k = this.k
-    val mergeData = withBuckets.as[MergingBuckets].
+    val mergeData = withBuckets.select("id", "core", "boundary").as[MergingBuckets].
       map(seizeUnitigs(k)(_)).cache
 
     val ml = minLength
@@ -126,22 +120,23 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     //Each bucket becomes multiple new buckets
     //old ID -> newly gen ID
-    val relabelVerts = preBuckets.selectExpr("col._1", "id")
+    val relabelVerts = preBuckets.select("col._1", "id")
 
     //New edges in old ID space
     val newNeighbors = preBuckets.selectExpr("col._1", "explode(col._3)")
     //in new ID space
     val relabelNeighbors = translateEdges(newNeighbors, relabelVerts)
 
+    //TODO optimize away map, then possibly avoid caching
     val nextBuckets = preBuckets.select("id", "col._2").as[(Long, Array[String])].map(r => {
       (r._1, BoundaryBucket(r._1, r._2, k))
     }).toDF("id", "bucket")
 
-    val nextGraph = GraphFrame(nextBuckets.selectExpr("id", "bucket.core as core").cache,
+    val nextGraph = GraphFrame(nextBuckets.select("id", "bucket.core").cache,
       relabelNeighbors.cache)
 
     if (showStats) {
-      stats((nextGraph, nextBuckets))
+      stats(nextGraph)
     }
 
     val minIds = nextGraph.aggregateMessages.sendToDst(idSrc).
@@ -154,24 +149,23 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       sendToSrc(when(idSrc === AM.dst("minId") && idSrc < idDst, struct(AM.dst("id"), AM.dst("core")))).
       agg(collect_list(AM.msg).as("boundary"))
 
-    val withBuckets2 = mergeBoundary.join(nextGraph.vertices, Seq("id")).selectExpr("id", "core", "boundary")
+    val withBuckets2 = mergeBoundary.join(nextGraph.vertices, Seq("id")).select("id", "core", "boundary")
     val mergeData2 = withBuckets2.as[MergingBuckets].
       flatMap(simpleMerge(k)(_)).cache
 
-    val nextBuckets2 = materialize(removeLineage(mergeData2.selectExpr("_1", "_2").toDF("id", "bucket")))
+    val nextBuckets2 = mergeData2.selectExpr("_1", "_2").toDF("id", "bucket")
     val nextEdges2 = translateEdges(nextGraph.edges, mergeData2.selectExpr("explode(_3)", "_1"))
-    val nextGraph2 = GraphFrame(materialize(removeLineage(nextBuckets2.selectExpr("id", "bucket.core as core"))),
+    val nextGraph2 = GraphFrame(materialize(removeLineage(nextBuckets2.selectExpr("id", "bucket.core", "bucket.k"))),
       materialize(removeLineage(nextEdges2)))
 
-    preBuckets.unpersist
     mergeData.unpersist
+    preBuckets.unpersist
     mergeData2.unpersist
     graph.unpersist
     mergeBoundary.unpersist
     nextGraph.unpersist
-    buckets.unpersist
 
-    (nextGraph2, nextBuckets2)
+    nextGraph2
   }
 
   /**
@@ -186,12 +180,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         filter("!(src == dst)")
   }
 
-  def finishIsolatedBuckets(data: IterationData) {
-    val (graph, buckets) = data
-
-    val isolated = buckets.join(graph.degrees, Seq("id"), "left_outer").
-      filter("degree is null").selectExpr("id", "bucket.core",
-        "bucket.k").as[BoundaryBucket]
+  def finishIsolatedBuckets(graph: GraphFrame) {
+    val isolated = graph.vertices.join(graph.degrees, Seq("id"), "left_outer").
+      filter("degree is null").as[BoundaryBucket]
 
     //    println(s"${isolated.collect().toList.map(_.id)}")
 
@@ -214,12 +205,12 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   def iterate(graph: GraphFrame) {
     var data = initialize(graph)
 
-    var n = data._1.edges.count
+    var n = data.edges.count
     while (n > 0) {
       println(s"Begin iteration $iteration ($n edges)")
 
       data = merge(data)
-      n = data._1.edges.count
+      n = data.edges.count
       iteration += 1
     }
     println("No edges left, finishing")
