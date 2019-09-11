@@ -34,8 +34,7 @@ object CountingSeqBucket {
   var mergeCount = 0
 }
 
-case class BucketStats(sequences: Int, totalAbundance: Int, kmers: Int, generation: Int = 0,
-                       nodeCount: Int = 0)
+case class BucketStats(sequences: Int, totalAbundance: Int, kmers: Int)
 
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.

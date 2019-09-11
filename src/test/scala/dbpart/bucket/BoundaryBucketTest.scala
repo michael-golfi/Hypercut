@@ -63,7 +63,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val un = BoundaryBucket.unifyParts(testData)
 
     //Should merge 3 parts into 2
-    un.map(x => (x._2.toSet, x._3.toSet)) should contain theSameElementsAs(
+    un.map(x => (x._1.toSet, x._2.toSet)) should contain theSameElementsAs(
       List(
         (Set("a", "b"), Set(1L, 2L, 3L, 4L)),
         (Set("c"), Set(5L, 6L))
@@ -72,7 +72,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     //Adding this part should force all the parts to merge into one
     val testData2 = (List(5L, 4L), List("d")) :: testData
     val un2 = BoundaryBucket.unifyParts(testData2)
-    un2.map(x => (x._2.toSet, x._3.toSet)) should contain theSameElementsAs(
+    un2.map(x => (x._1.toSet, x._2.toSet)) should contain theSameElementsAs(
       List(
         (Set("a", "b", "c", "d"), Set[Long](1, 2, 3, 4, 5, 6))
         ))
@@ -96,10 +96,10 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val unitigs = mrg._1.map(_.seq)
     unitigs.toSeq should contain theSameElementsAs(List("ACTG", "CTGGGA", "CTGAA"))
 
-    val newBkts = mrg._2.map(_.core)
+    val newBkts = mrg._2.map(_._1)
     newBkts.toSeq should contain theSameElementsAs(List(
-      List("TTTT", "TTTA"),
-      List("CCCC", "GCCC")
+      Array("TTTT"),
+      Array("CCCC")
       ))
   }
 
