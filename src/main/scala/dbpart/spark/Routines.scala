@@ -43,7 +43,6 @@ class Routines(spark: SparkSession) {
 
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
-
   /**
    * Load reads and their reverse complements from DNA files.
    */
@@ -124,31 +123,45 @@ class Routines(spark: SparkSession) {
       segments.groupBy($"hash", $"segment").count.
         as[CountedHashSegment]
 
-    val byBucket = countedSegments.groupByKey(_.hash)
+//    val byBucket = countedSegments.groupByKey(_.hash)
+//    
+    val grouped = countedSegments.groupBy($"hash")
+    
+    val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
+      as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
 
-    byBucket.mapGroups {
-      case (key, segmentsCounts) => {
+    collected.map { case (hash, segmentsCounts) => {
         val empty = SimpleCountingBucket.empty(ext.k)
         val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-          (x.segment.toString, clipAbundance(x.count))).toList)
-        (key, bkt)
+          (x._1.toString, clipAbundance(x._2))).toList)
+        (hash, bkt)
       }
     }
+//    collected.show()
+    
+//    byBucket.mapGroups {
+//      case (key, segmentsCounts) => {
+//        val empty = SimpleCountingBucket.empty(ext.k)
+//        val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+//          (x.segment.toString, clipAbundance(x.count))).toList)
+//        (key, bkt)
+//      }
+//    }
   }
 
   def log10(x: Double) = Math.log(x) / Math.log(10)
 
-  def plotBuckets(location: String) {
+  def plotBuckets(location: String, numBins: Int) {
     //Get the buckets
     val buckets = loadBuckets(location)
-    val hist = new Histogram(buckets.map(_._2.numKmers).collect, 50)
+    val hist = new Histogram(buckets.map(_._2.numKmers).collect, numBins)
     val bins = (hist.bins.map(b => "%.1f".format(b)))
     val counts = hist.counts.map(x => log10(x))
     val points = bins zip counts
     //
     //      println(bins)
     hist.print("number of kmers")
-    val plot = Vegas("Bucket Histogram").
+    val plot = Vegas("Bucket Histogram", width=800, height=600).
       withData(
         points.map(p => Map("bins" -> p._1, "Kmers" -> p._2))).
         encodeX("bins", Quant).
