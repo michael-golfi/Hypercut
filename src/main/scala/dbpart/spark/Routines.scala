@@ -129,10 +129,8 @@ class Routines(spark: SparkSession) {
       val revSegments = createHashSegments(rc, ext)
       revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
     } )
-    val countedRev = reverseSegments.groupBy($"hash", $"segment").agg(expr("sum(count) as count")).
-      as[CountedHashSegment]
     
-    val grouped = countedSegments.union(countedRev).groupBy($"hash")
+    val grouped = countedSegments.union(reverseSegments).groupBy($"hash")
     
     val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
