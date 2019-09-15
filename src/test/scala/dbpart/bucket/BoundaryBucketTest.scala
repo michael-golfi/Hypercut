@@ -1,6 +1,7 @@
 package dbpart.bucket
 
 import dbpart.Testing
+import dbpart.shortread.Read
 import org.scalatest.Matchers
 import org.scalatest.FunSuite
 
@@ -101,6 +102,14 @@ class BoundaryBucketTest extends FunSuite with Matchers {
       Array("TTTT"),
       Array("CCCC")
       ))
+  }
+
+  test("withoutDuplicates") {
+    val existing = Array("ACTGG", "CCGGT", "GGTTAA")
+    val incoming = Array("GCGTGGTTCGTGATTAA") //duplicates GGTT and TTAA
+    val r = BoundaryBucket.withoutDuplicates(existing.iterator,
+      incoming.flatMap(Read.kmers(_, 4)).toList, 4)
+    r should contain theSameElementsAs(List("GCGTGGT", "GTTCGTGATTA"))
   }
 
 }

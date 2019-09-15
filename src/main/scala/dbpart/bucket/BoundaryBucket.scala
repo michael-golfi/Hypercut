@@ -100,12 +100,12 @@ object BoundaryBucket {
   }
 
   /**
-   * From an iterator of new (potentially long) sequences, remove any k-mers contained in
-   * the set of existing k-mers. Sequences may be split as a reuslt.
+   * From an iterator of k-mers, remove any k-mers contained in
+   * the set of (potentially long) existing sequences, and join the iterator back into strings as much as possible.
    */
-  def withoutDuplicates(existingKmers: Iterator[NTSeq], incoming: List[NTSeq], k: Int): List[String] = {
-    val removeKmers = existingKmers.flatMap(Read.kmers(_, k)).to[MSet]
-    Read.flattenKmers(incoming.filter(s => !removeKmers.contains(s)), k, Nil)
+  def withoutDuplicates(existingSeq: Iterator[NTSeq], incomingKmers: List[NTSeq], k: Int): List[String] = {
+    val removeKmers = existingSeq.flatMap(Read.kmers(_, k)).to[MSet]
+    Read.flattenKmers(incomingKmers.filter(s => !removeKmers.contains(s)), k, Nil)
   }
 
   //Contigs ready for output, new buckets, relabelled IDs, edges to be removed (in terms of old IDs)
