@@ -1,5 +1,8 @@
 package dbpart.spark
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.graphframes.GraphFrame
 import dbpart.bucket.BoundaryBucket
 import org.apache.spark.sql.SparkSession
@@ -234,18 +237,22 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * Run iterative merge until completion.
    */
   def iterate(graph: GraphFrame) {
-    var data = initialize(graph)
+    val dtf = new SimpleDateFormat("HH:mm:ss")
+    println(s"[${dtf.format(new Date)}] Initialize iterative merge")
 
+    var data = initialize(graph)
     var n = data.edges.count
+
     while (n > 0) {
-      println(s"Begin iteration $iteration ($n edges)")
+      println(s"[${dtf.format(new Date)}] Begin iteration $iteration ($n edges)")
 
       data = merge(data)
       n = data.edges.count
       iteration += 1
     }
-    println("No edges left, finishing")
+    println(s"[${dtf.format(new Date)}] No edges left, finishing")
     finishIsolatedBuckets(data)
+    println(s"[${dtf.format(new Date)}] Iterative merge finished")
   }
 }
 
@@ -297,9 +304,11 @@ object IterativeSerial {
 
       //At this point, some of the surrounding buckets may not truly connect with the core
       val main = BoundaryBucket(bkts.id, bkts.core, k)
-      val mainIn = main.prefixSet
-      val mainOut = main.suffixSet
-      val (overlap, noOverlap) = surround.partition(s => BoundaryBucket.overlapsWith(s._2, mainOut, mainIn, k))
+      val mainIn = main.purePrefixSet
+      val mainOut = main.pureSuffixSet
+      val mainInAndOut = main.prefixAndSuffixSet
+      val (overlap, noOverlap) = surround.partition(s =>
+        BoundaryBucket.overlapsWith(mainInAndOut, mainOut, mainIn, k, s._2))
 
       val allData = bkts.core ++ overlap.flatMap(_._2)
       val km = allData.flatMap(Read.kmers(_, k)).toList

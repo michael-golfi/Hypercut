@@ -17,20 +17,11 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val ss = Array("ACTGGG", "TTGTTA")
     var post = Array("CCGAT", "GTTAA")
     var prior = Array[String]()
-    BoundaryBucket.sharedOverlapsThroughPrior(it(prior), it(ss), k).toSeq should equal (Seq())
-    BoundaryBucket.sharedOverlapsThroughPrior(it(ss), it(post), k).toSeq should equal (Seq("GTTA"))
+    BoundaryBucket.sharedOverlapsThroughPrior(prior, ss, k).toSeq should equal (Seq())
+    BoundaryBucket.sharedOverlapsThroughPrior(ss, post, k).toSeq should equal (Seq("GTTA"))
 
     prior = Array("CCGAG", "AACTGAA")
-    BoundaryBucket.sharedOverlapsThroughPrior(it(prior), it(ss), k).toSeq should equal(Seq("ACTG"))
-
-    var inSet = Set("CCGA", "CGAG", "CTGA", "CGAT", "GTTA")
-    //cannot contain initial k-1-mers in prior
-    BoundaryBucket.sharedOverlapsFrom(prior.iterator, inSet, k).toList should
-      contain theSameElementsAs(Seq("CGAG", "CTGA"))
-
-    //Cannot contain final k-1-mers in post
-    BoundaryBucket.sharedOverlapsTo(post.iterator, inSet, k).toList should
-      contain theSameElementsAs(Seq("CCGA", "GTTA"))
+    BoundaryBucket.sharedOverlapsThroughPrior(prior, ss, k).toSeq should equal(Seq("ACTG"))
   }
 
   test("containedUnitigs") {

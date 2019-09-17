@@ -1,7 +1,7 @@
 package dbpart.bucket
 
-import scala.collection.mutable.{Map => MMap}
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.{Set => CSet}
+import scala.collection.mutable.{Set => MSet}
 import scala.annotation.tailrec
 
 object Util {
@@ -15,7 +15,7 @@ object Util {
     var r = List[List[A]]()
     for {
       i <- items
-      ks = keys(i).toSeq
+      ks = keys(i).to[MSet]
     } {
       r = unify(List(i), ks, r, keys)
     }
@@ -23,12 +23,12 @@ object Util {
   }
 
   @tailrec
-  def unify[A, K](from: List[A], fromKeys: Seq[K],
+  def unify[A, K](from: List[A], fromKeys: CSet[K],
       lists: List[List[A]], keys: A => Iterable[K], acc: List[List[A]] = Nil): List[List[A]] = {
     lists match {
       case l :: ls =>
-        val ks = l.flatMap(keys)
-        if (fromKeys.intersect(ks).nonEmpty) {
+        val ks = l.iterator.flatMap(keys)
+        if (ks.filter(fromKeys.contains).nonEmpty) {
           unify(l ::: from, fromKeys, ls, keys, acc)
         } else {
           unify(from, fromKeys, ls, keys, l :: acc)

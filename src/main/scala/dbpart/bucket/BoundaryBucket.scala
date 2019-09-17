@@ -35,22 +35,42 @@ object BoundaryBucket {
     }
   }
 
-  def prefixes(ss: Iterator[String], k: Int) =
+  def prefixesAndSuffixes(ss: Iterator[String], k: Int) =
     ss.flatMap(s => {
       //Number of (k-1)-mers
       val num = s.length() - (k - 2)
-      Read.kmers(s, k - 1).take(num - 1)
+      Read.kmers(s, k - 1).drop(1).take(num - 2)
     })
 
-  def suffixes(ss: Iterator[String], k: Int) =
-    ss.flatMap(Read.kmers(_, k - 1).drop(1))
+  def purePrefixes(ss: Iterator[String], k: Int) =
+    ss.flatMap(s => {
+      if (s.length > k - 1) {
+        Some(DNAHelpers.kmerPrefix(s, k))
+      } else {
+        None
+      }
+    })
+
+  def pureSuffixes(ss: Iterator[String], k: Int) =
+    ss.flatMap(s => {
+      if (s.length > k - 1) {
+        Some(DNAHelpers.kmerSuffix(s, k))
+      } else {
+        None
+      }
+    })
+
+  def suffixes(ss: Iterable[String], k: Int) =
+    pureSuffixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
+
+  def prefixes(ss: Iterable[String], k: Int) =
+    purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
 
   /**
    * Function for computing shared k-1 length overlaps between sequences of prior
-   * and post k-mers. Intended for computing inOpenings and outOpenings.
-   * Prior gets cached as a set.
+   * and post k-mers. Prior gets cached as a set.
    */
-  def sharedOverlapsThroughPrior(prior: Iterator[String], post: Iterator[String], k: Int): Iterator[String] = {
+  def sharedOverlapsThroughPrior(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
     val preKmers = suffixes(prior, k).to[MSet]
     val postKmers = prefixes(post, k)
     postKmers.filter(preKmers.contains)
@@ -59,25 +79,28 @@ object BoundaryBucket {
   /**
    * As above, but post gets cached as a set.
    */
-  def sharedOverlapsThroughPost(prior: Iterator[String], post: Iterator[String], k: Int): Iterator[String] = {
+  def sharedOverlapsThroughPost(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
     val preKmers = suffixes(prior, k)
     val postKmers = prefixes(post, k).to[MSet]
     preKmers.filter(postKmers.contains)
   }
 
-  def overlapsWith(other: Iterable[String], suffix: CSet[String], prefix: CSet[String], k: Int) = {
-    !sharedOverlapsTo(other.iterator, suffix, k).isEmpty ||
-      !sharedOverlapsFrom(other.iterator, prefix, k).isEmpty
+  def overlapsWith(suffixAndPrefix: CSet[String], suffix: CSet[String], prefix: CSet[String],
+                   k: Int, other: Iterable[String]) = {
+    val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
+    val otherPre = purePrefixes(other.iterator, k).toList
+    val otherSuf = pureSuffixes(other.iterator, k).toList
+
+    otherPreSuf.filter(suffixAndPrefix.contains).nonEmpty ||
+      otherPre.iterator.filter(suffixAndPrefix.contains).nonEmpty ||
+      otherSuf.iterator.filter(suffixAndPrefix.contains).nonEmpty ||
+      otherPre.iterator.filter(suffix.contains).nonEmpty ||
+      otherSuf.iterator.filter(prefix.contains).nonEmpty
   }
 
-  def overlapsWith(other: BoundaryBucket, suffix: CSet[String], prefix: CSet[String], k: Int): Boolean =
-    overlapsWith(other.core, suffix, prefix, k)
-
-  def sharedOverlapsFrom(prior: Iterator[String], inSet: CSet[String], k: Int): Iterator[String] =
-    suffixes(prior, k).filter(inSet.contains(_))
-
-  def sharedOverlapsTo(post: Iterator[String], outSet: CSet[String], k: Int): Iterator[String] =
-    prefixes(post, k).filter(outSet.contains(_))
+  def overlapsWith(suffixAndPrefix: CSet[String], suffix: CSet[String], prefix: CSet[String], k: Int,
+                   other: BoundaryBucket): Boolean =
+    overlapsWith(suffixAndPrefix, suffix, prefix, k, other.core)
 
   /**
    * Split sequences into maximal groups that are not connected
@@ -127,11 +150,12 @@ object BoundaryBucket {
     //Pair each split part with the boundary IDs that it intersects with
     val splitWithBoundary = split.map(s => {
       //Note: might save memory by sharing strings between these two sets
-      val potentialSuffixes = suffixes(s.iterator, core.k).to[MSet]
-      val potentialPrefixes = prefixes(s.iterator, core.k).to[MSet]
+      val potSuffixes = pureSuffixes(s.iterator, core.k).to[MSet]
+      val potPrefixes = purePrefixes(s.iterator, core.k).to[MSet]
+      val suffixesOrPrefixes = prefixesAndSuffixes(s.iterator, core.k).to[MSet]
 
-      val merge = boundary.filter(
-        overlapsWith(_, potentialSuffixes, potentialPrefixes, core.k))
+      val merge = boundary.filter(b =>
+        overlapsWith(suffixesOrPrefixes, potSuffixes, potPrefixes, core.k, b))
       (merge.map(_.id), s)
     }).filter(_._1.nonEmpty)
 
@@ -163,16 +187,18 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
 
   def coreStats = BucketStats(core.size, 0, kmers.size)
 
-  def suffixSet: CSet[String] = suffixes(core.iterator, k).to[MSet]
+  def pureSuffixSet: CSet[String] = pureSuffixes(core.iterator, k).to[MSet]
 
-  def prefixSet: CSet[String] = prefixes(core.iterator, k).to[MSet]
+  def purePrefixSet: CSet[String] = purePrefixes(core.iterator, k).to[MSet]
+
+  def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(core.iterator, k).to[MSet]
 
   import Searching._
 
   def nodesForGraph(boundary: Iterable[String]) = {
     //Possible optimization: try to do this with boundary as a simple iterator instead
-    val in = sharedOverlapsThroughPost(boundary.iterator, core.iterator, k).toArray.sorted
-    val out = sharedOverlapsThroughPrior(core.iterator, boundary.iterator, k).toArray.sorted
+    val in = sharedOverlapsThroughPost(boundary, core, k).toArray.sorted
+    val out = sharedOverlapsThroughPrior(core, boundary, k).toArray.sorted
 
     //TODO is this the right place to de-duplicate kmers?
     kmers.distinct.iterator.map(s => {
