@@ -43,16 +43,22 @@ class Routines(spark: SparkSession) {
 
   //For graph partitioning, it may help if this number is a square
   val NUM_PARTITIONS = 400
-
+  
   /**
    * Load reads and their reverse complements from DNA files.
    */
-  def getReads(fileSpec: String, frac: Option[Double] = None): Dataset[String] = {
+  def getReads(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
+    //TODO: add boolean flag to include/not include RCs
     val reads = frac match {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
     }
-    reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
+    
+    if (withRC) {
+      reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
+    } else {
+      reads
+    }
   }
 
   /**
@@ -68,7 +74,7 @@ class Routines(spark: SparkSession) {
   }
 
   def createSampledSpace(input: String, fraction: Double, space: MarkerSpace): MarkerSpace = {
-    val in = getReads(input, Some(fraction))
+    val in = getReads(input, true, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(s"Discovered frequencies in fraction $fraction")
     counter.toSpaceByFrequency(space.n)
@@ -97,14 +103,7 @@ class Routines(spark: SparkSession) {
    * (thus, counting k-mers), not collecting edges.
    */
   def bucketsOnly(reads: Dataset[String], ext: MarkerSetExtractor) = {
-    val segments = reads.flatMap(r => {
-      val buckets = ext.markerSetsInRead(r)._2
-      val hashesSegments = ext.splitRead(r, buckets)
-      hashesSegments.flatMap(x =>
-        removeN(x._2, ext.k).map(s =>
-          HashSegment(x._1.compact.data, BPBuffer.wrap(s)))
-      )
-    })
+    val segments = reads.flatMap(r => createHashSegments(r, ext))
     processedToBuckets(segments, ext)
   }
 
@@ -113,7 +112,7 @@ class Routines(spark: SparkSession) {
    * and write them to the output location.
    */
   def bucketsOnly(input: String, ext: MarkerSetExtractor, output: String) {
-    val reads = getReads(input)
+    val reads = getReads(input, false)
     val bkts = bucketsOnly(reads, ext)
     writeBuckets(bkts, output)
   }
@@ -122,33 +121,42 @@ class Routines(spark: SparkSession) {
                             reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val countedSegments =
       segments.groupBy($"hash", $"segment").count.
-        as[CountedHashSegment]
-
-    val byBucket = countedSegments.groupByKey(_.hash)
-
-    byBucket.mapGroups {
-      case (key, segmentsCounts) => {
+        as[CountedHashSegment].cache
+      
+    val reverseSegments = countedSegments.flatMap(x => {
+      val s = x.segment.toString
+      val rc = DNAHelpers.reverseComplement(s)
+      val revSegments = createHashSegments(rc, ext)
+      revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
+    } )
+    
+    val grouped = countedSegments.union(reverseSegments).groupBy($"hash")
+    
+    val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
+      as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
+    
+    collected.map { case (hash, segmentsCounts) => {
         val empty = SimpleCountingBucket.empty(ext.k)
         val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-          (x.segment.toString, clipAbundance(x.count))).toList)
-        (key, bkt)
+          (x._1.toString, clipAbundance(x._2))).toList)
+        (hash, bkt)
       }
     }
   }
 
   def log10(x: Double) = Math.log(x) / Math.log(10)
 
-  def plotBuckets(location: String) {
+  def plotBuckets(location: String, numBins: Int) {
     //Get the buckets
     val buckets = loadBuckets(location)
-    val hist = new Histogram(buckets.map(_._2.numKmers).collect, 50)
+    val hist = new Histogram(buckets.map(_._2.numKmers).collect, numBins)
     val bins = (hist.bins.map(b => "%.1f".format(b)))
     val counts = hist.counts.map(x => log10(x))
     val points = bins zip counts
     //
     //      println(bins)
     hist.print("number of kmers")
-    val plot = Vegas("Bucket Histogram").
+    val plot = Vegas("Bucket Histogram", width=800, height=600).
       withData(
         points.map(p => Map("bins" -> p._1, "Kmers" -> p._2))).
         encodeX("bins", Quant).
@@ -161,17 +169,16 @@ class Routines(spark: SparkSession) {
    * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: Dataset[String], ext: MarkerSetExtractor,
+  def bucketGraph(reads: String, ext: MarkerSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
-    val edges = splitReadsToEdges(reads, ext).distinct
-    val verts = bucketsOnly(reads, ext)
+    val edges = splitReadsToEdges(getReads(reads, false), ext).distinct
+    val verts = bucketsOnly(getReads(reads, true), ext)
 
     edges.cache
     verts.cache
     for (output <- writeLocation) {
       edges.write.mode(SaveMode.Overwrite).parquet(s"${output}_edges")
       writeBuckets(verts, output)
-      reads.unpersist()
     }
 
     toGraphFrame(verts, edges)
@@ -272,8 +279,8 @@ class Routines(spark: SparkSession) {
    */
   def graphFromReads(input: String, ext: MarkerSetExtractor,
                      outputLocation: Option[String] = None) = {
-    val reads = getReads(input)
-    val r = bucketGraph(reads, ext, outputLocation)
+
+    val r = bucketGraph(input, ext, outputLocation)
     r
   }
 
@@ -307,5 +314,13 @@ object SerialRoutines {
   def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
     case Some(ml) => if (c.length >= ml) Some(c) else None
     case _        => Some(c)
+  }
+
+  def createHashSegments(r: String, ext: MarkerSetExtractor) = {
+    val buckets = ext.markerSetsInRead(r)._2
+    val hashesSegments = ext.splitRead(r, buckets)
+    hashesSegments.flatMap(x =>
+      removeN(x._2, ext.k).map(s =>
+        HashSegment(x._1.compact.data, BPBuffer.wrap(s))))
   }
 }
