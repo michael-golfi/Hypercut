@@ -76,7 +76,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(top)
 
-    val compact = new Subcommand("compact") with RunnableCommand {
+    val merge = new Subcommand("merge") with RunnableCommand {
       val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
       val showStats = opt[Boolean](required = false, descr = "Show statistics for each merge iteration")
@@ -88,7 +88,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         it.iterate(graph)
       }
     }
-    addSubcommand(compact)
+    addSubcommand(merge)
 
     val stats = new HCCommand("stats") (
       routines.bucketStats(location())

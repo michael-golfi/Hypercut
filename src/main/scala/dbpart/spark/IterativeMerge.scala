@@ -89,8 +89,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       sendToSrc(struct(idDst, coreDst)).
       agg(collect_list(AM.msg).as("boundary"))
 
-    //Will drop isolated buckets here (no messages received)
-    val withBuckets = withBoundary.join(graph.vertices, Seq("id"))
+    val withBuckets = withBoundary.join(graph.vertices, Seq("id"), "left_outer")
 
     val k = this.k
     //Identify boundary and output/remove unitigs
@@ -180,11 +179,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       stats(graph)
     }
 
-    /**
-     * Finish buckets with no neighbors
-     */
-    finishIsolatedBuckets(graph)
-
     val mergeData = seizeUnitigsAtBoundary(graph)
     val nextGraph = graphWithNewIds(mergeData)
     val neighborAggregated = aggregateAtMinNeighbor(nextGraph)
@@ -214,23 +208,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         filter("!(src == dst)")
   }
 
-  def finishIsolatedBuckets(graph: GraphFrame) {
-    val isolated = graph.vertices.join(graph.degrees, Seq("id"), "left_outer").
-      filter("degree is null").as[BoundaryBucket]
-
-    //    println(s"${isolated.collect().toList.map(_.id)}")
-
-    if (!isolated.isEmpty) {
-      println(s"There are isolated nodes")
-      val ml = minLength
-      val unitigs = isolated.flatMap(i => {
-        val unitigs = BoundaryBucket.seizeUnitigsAndMerge(i, List())
-        unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
-      }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
-      firstWrite = false
-    } else {
-      println(s"No isolated nodes")
-    }
+  def finishBuckets(graph: GraphFrame) {
+    val isolated = graph.vertices.as[BoundaryBucket]
+    val ml = minLength
+    val unitigs = isolated.flatMap(i => {
+      val unitigs = BoundaryBucket.seizeUnitigsAndMerge(i, List())
+      unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
+    }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
+    firstWrite = false
   }
 
   /**
@@ -251,7 +236,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       iteration += 1
     }
     println(s"[${dtf.format(new Date)}] No edges left, finishing")
-    finishIsolatedBuckets(data)
+    finishBuckets(data)
     println(s"[${dtf.format(new Date)}] Iterative merge finished")
   }
 }
