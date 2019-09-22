@@ -288,12 +288,8 @@ object IterativeSerial {
       val surround = boundMap.values.map(_.head)
 
       //At this point, some of the surrounding buckets may not truly connect with the core
-      val main = BoundaryBucket(bkts.id, bkts.core, k)
-      val mainIn = main.purePrefixSet
-      val mainOut = main.pureSuffixSet
-      val mainInAndOut = main.prefixAndSuffixSet
-      val (overlap, noOverlap) = surround.partition(s =>
-        BoundaryBucket.overlapsWith(mainInAndOut, mainOut, mainIn, k, s._2))
+      val finder  = BoundaryBucket.overlapFinder(bkts.core, k)
+      val (overlap, noOverlap) = surround.partition(s => finder.check(s._2))
 
       val allData = bkts.core ++ overlap.flatMap(_._2)
       val km = allData.flatMap(Read.kmers(_, k)).toList

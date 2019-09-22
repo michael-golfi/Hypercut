@@ -85,22 +85,37 @@ object BoundaryBucket {
     preKmers.filter(postKmers.contains)
   }
 
-  def overlapsWith(suffixAndPrefix: CSet[String], suffix: CSet[String], prefix: CSet[String],
-                   k: Int, other: Iterable[String]) = {
-    val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
-    val otherPre = purePrefixes(other.iterator, k).toList
-    val otherSuf = pureSuffixes(other.iterator, k).toList
+  def overlapFinder(data: Iterable[String], k: Int) =
+    new OverlapFinder(prefixesAndSuffixes(data.iterator, k).to[MSet],
+      pureSuffixes(data.iterator, k).to[MSet],
+      purePrefixes(data.iterator, k).to[MSet],
+      k)
 
-    otherPreSuf.filter(suffixAndPrefix.contains).nonEmpty ||
-      otherPre.iterator.filter(suffixAndPrefix.contains).nonEmpty ||
-      otherSuf.iterator.filter(suffixAndPrefix.contains).nonEmpty ||
-      otherPre.iterator.filter(suffix.contains).nonEmpty ||
-      otherSuf.iterator.filter(prefix.contains).nonEmpty
+  /**
+   * A class that simplifies repeated checking for overlaps against some collection of k-mers.
+   */
+  class OverlapFinder(val prefixAndSuffix: CSet[String], val suffix: CSet[String], val prefix: CSet[String],
+                      k: Int) {
+
+    def check(other: Iterable[String]): Boolean = {
+      val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
+      val otherPre = purePrefixes(other.iterator, k).toList
+      val otherSuf = pureSuffixes(other.iterator, k).toList
+
+      check(otherPreSuf, otherSuf, otherPre)
+    }
+
+    def check(other: OverlapFinder): Boolean =
+      check(other.prefixAndSuffix.iterator, other.suffix, other.prefix)
+
+    def check(othPreSuf: Iterator[String], othSuf: Iterable[String], othPre: Iterable[String]): Boolean = {
+      othPreSuf.filter(prefixAndSuffix.contains).nonEmpty ||
+        othPre.iterator.filter(prefixAndSuffix.contains).nonEmpty ||
+        othSuf.iterator.filter(prefixAndSuffix.contains).nonEmpty ||
+        othPre.iterator.filter(suffix.contains).nonEmpty ||
+        othSuf.iterator.filter(prefix.contains).nonEmpty
+    }
   }
-
-  def overlapsWith(suffixAndPrefix: CSet[String], suffix: CSet[String], prefix: CSet[String], k: Int,
-                   other: BoundaryBucket): Boolean =
-    overlapsWith(suffixAndPrefix, suffix, prefix, k, other.core)
 
   /**
    * Split sequences into maximal groups that are not connected
@@ -147,29 +162,32 @@ object BoundaryBucket {
     //Split the core into parts that have no mutual overlap
     val split = updated.splitSequences
 
-    //Pair each split part with the boundary IDs that it intersects with
-    val splitWithBoundary = split.map(s => {
-      //Note: might save memory by sharing strings between these two sets
-      val potSuffixes = pureSuffixes(s.iterator, core.k).to[MSet]
-      val potPrefixes = purePrefixes(s.iterator, core.k).to[MSet]
-      val suffixesOrPrefixes = prefixesAndSuffixes(s.iterator, core.k).to[MSet]
+    val splitFinders = split.map(s => (s, overlapFinder(s, core.k)))
 
-      val merge = boundary.filter(b =>
-        overlapsWith(suffixesOrPrefixes, potSuffixes, potPrefixes, core.k, b))
-      (merge.map(_.id), s)
-    }).filter(_._1.nonEmpty)
+
+    //Pair each split part with the boundary IDs that it intersects with
+
+    //On the assumption that buckets maintain roughly equal size,
+    //it is cheaper to retain finders for s (bucket subparts) and traverse
+    //the boundary (full buckets) rather than the opposite
+    val swb = boundary.map(b => {
+      val bfinder = b.overlapFinder
+      splitFinders.map { case (s, sfinder) => {
+        if (bfinder.check(sfinder)) {
+          Some(b.id)
+        } else {
+          None
+        }
+      } }
+    })
+    val bySplit = swb.transpose
+
+    val splitWithBoundary = bySplit.map(_.flatten) zip split
 
     //Split parts that had no intersection with the boundary will be output as
     //unitigs at this stage, so OK to drop them
 
     val mergedParts = unifyParts(splitWithBoundary)
-//    val nonOverlapBoundary = (boundary.map(_.id).to[MSet] -- (mergedParts.flatMap(_._2))).toSeq
-
-    def removableEdges(ids: Seq[Long]) = ids.flatMap(i =>
-      Seq((core.id, i), (i, core.id))).toArray
-
-    //Boundary buckets will have edges to/from the old core removed
-    val remove = removableEdges(boundary.map(_.id))
 
     val intersectParts = mergedParts.map(m => {
       val fromCore = m._1
@@ -192,6 +210,9 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
   def purePrefixSet: CSet[String] = purePrefixes(core.iterator, k).to[MSet]
 
   def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(core.iterator, k).to[MSet]
+
+  def overlapFinder = new OverlapFinder(prefixAndSuffixSet, pureSuffixSet,
+    purePrefixSet, k)
 
   import Searching._
 
