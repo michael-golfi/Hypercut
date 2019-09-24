@@ -15,15 +15,15 @@ class PathGraphBuilder(k: Int) {
   def fromKmers(kmers: List[String]): Graph[KmerNode] = {
     //Currently setting all abundances to 1
     val nodes = kmers.map(s => new KmerNode(s, 1))
-    fromNodes(nodes)
+    fromNodes(nodes.toArray)
   }
 
-  def fromNodes(nodes: List[KmerNode]): Graph[KmerNode] = {
-    val result = new DoubleArrayListGraph[KmerNode](nodes.toArray)
+  def fromNodes(nodes: Array[KmerNode]): Graph[KmerNode] = {
+    val result = new DoubleArrayListGraph[KmerNode](nodes)
     val byStart = nodes.sortBy(_.seq)
     val byEnd = nodes.sortBy(_.end)
 
-    val gotEdges = findEdges(byStart, byEnd, false,
+    val gotEdges = findEdges(byStart.toList, byEnd.toList, false,
       (f, t) => result.addEdge(f, t))
     result
   }

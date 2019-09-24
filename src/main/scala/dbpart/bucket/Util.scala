@@ -40,7 +40,7 @@ object Util {
                   keys: A => Iterable[K], acc: List[WithKeys[A, K]] = Nil): List[WithKeys[A, K]] = {
     clusters match {
       case (l, ks) :: ls =>
-        if (ks.iterator.filter(fromKeys.contains).nonEmpty) {
+        if (ks.exists(fromKeys.contains)) {
           unify(l ::: from, fromKeys ++ ks, ls, keys, acc)
         } else {
           unify(from, fromKeys, ls, keys, (l, ks) :: acc)

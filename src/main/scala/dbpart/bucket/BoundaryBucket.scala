@@ -44,7 +44,7 @@ object BoundaryBucket {
 
   def purePrefixes(ss: Iterator[String], k: Int) =
     ss.flatMap(s => {
-      if (s.length > k - 1) {
+      if (s.length >= k - 1) {
         Some(DNAHelpers.kmerPrefix(s, k))
       } else {
         None
@@ -53,7 +53,7 @@ object BoundaryBucket {
 
   def pureSuffixes(ss: Iterator[String], k: Int) =
     ss.flatMap(s => {
-      if (s.length > k - 1) {
+      if (s.length >= k - 1) {
         Some(DNAHelpers.kmerSuffix(s, k))
       } else {
         None
@@ -66,54 +66,53 @@ object BoundaryBucket {
   def prefixes(ss: Iterable[String], k: Int) =
     purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
 
-  /**
-   * Function for computing shared k-1 length overlaps between sequences of prior
-   * and post k-mers. Prior gets cached as a set.
-   */
-  def sharedOverlapsThroughPrior(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
-    val preKmers = suffixes(prior, k).to[MSet]
-    val postKmers = prefixes(post, k)
-    postKmers.filter(preKmers.contains)
-  }
-
-  /**
-   * As above, but post gets cached as a set.
-   */
-  def sharedOverlapsThroughPost(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
-    val preKmers = suffixes(prior, k)
-    val postKmers = prefixes(post, k).to[MSet]
-    preKmers.filter(postKmers.contains)
-  }
-
   def overlapFinder(data: Iterable[String], k: Int) =
     new OverlapFinder(prefixesAndSuffixes(data.iterator, k).to[MSet],
-      pureSuffixes(data.iterator, k).to[MSet],
       purePrefixes(data.iterator, k).to[MSet],
+      pureSuffixes(data.iterator, k).to[MSet],
       k)
 
   /**
    * A class that simplifies repeated checking for overlaps against some collection of k-mers.
    */
-  class OverlapFinder(val prefixAndSuffix: CSet[String], val suffix: CSet[String], val prefix: CSet[String],
+  class OverlapFinder(val prefixAndSuffix: CSet[String], val prefix: CSet[String], val suffix: CSet[String],
                       k: Int) {
 
-    def check(other: Iterable[String]): Boolean = {
+    def find(other: Iterable[String]): Iterator[String] = {
       val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
-      val otherPre = purePrefixes(other.iterator, k).toList
-      val otherSuf = pureSuffixes(other.iterator, k).toList
+      val otherPre = purePrefixes(other.iterator, k)
+      val otherSuf = pureSuffixes(other.iterator, k)
 
-      check(otherPreSuf, otherSuf, otherPre)
+      find(otherPreSuf, otherPre, otherSuf)
     }
 
-    def check(other: OverlapFinder): Boolean =
-      check(other.prefixAndSuffix.iterator, other.suffix, other.prefix)
+    def check(other: Iterable[String]): Boolean = {
+      find(other).nonEmpty
+    }
 
-    def check(othPreSuf: Iterator[String], othSuf: Iterable[String], othPre: Iterable[String]): Boolean = {
-      othPreSuf.filter(prefixAndSuffix.contains).nonEmpty ||
-        othPre.iterator.filter(prefixAndSuffix.contains).nonEmpty ||
-        othSuf.iterator.filter(prefixAndSuffix.contains).nonEmpty ||
-        othPre.iterator.filter(suffix.contains).nonEmpty ||
-        othSuf.iterator.filter(prefix.contains).nonEmpty
+    def find(other: OverlapFinder): Iterator[String] =
+      find(other.prefixAndSuffix.iterator, other.prefix.iterator, other.suffix.iterator)
+
+    def check(other: OverlapFinder): Boolean =
+      find(other).nonEmpty
+
+    def find(othPreSuf: Iterator[String], othPre: Iterator[String], othSuf: Iterator[String]): Iterator[String] = {
+      othPreSuf.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x) || prefix.contains(x)) ++
+        othPre.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x)) ++
+        othSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x))
+    }
+
+    def check(othPreSuf: Iterator[String], othPre: Iterator[String], othSuf: Iterator[String]): Boolean =
+      find(othPreSuf, othPre, othSuf).nonEmpty
+
+    def suffixes(othPreSuf: Iterator[String], othPre: Iterator[String]): Iterator[String] = {
+      othPreSuf.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x)) ++
+        othPre.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x))
+    }
+
+    def prefixes(othPreSuf: Iterator[String], othSuf: Iterator[String]): Iterator[String] = {
+      othPreSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x)) ++
+        othSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x))
     }
   }
 
@@ -138,13 +137,33 @@ object BoundaryBucket {
   }
 
   /**
-   * From an iterator of k-mers, remove any k-mers contained in
-   * the set of (potentially long) existing sequences, and join the iterator back into strings as much as possible.
+   * From a list of k-mers, remove any k-mers contained in
+   * the iterator of (potentially long) existing sequences, and join the iterator back into strings as much as possible.
    */
-  def withoutDuplicates(existingSeq: Iterator[NTSeq], incomingKmers: List[NTSeq], k: Int): List[String] = {
-    val removeKmers = existingSeq.flatMap(Read.kmers(_, k)).to[MSet]
-    Read.flattenKmers(incomingKmers.filter(s => !removeKmers.contains(s)), k, Nil)
+  def removeKmers(toRemove: Iterator[NTSeq], removeFrom: List[NTSeq], k: Int): List[String] = {
+    val removeSet = toRemove.flatMap(Read.kmers(_, k)).to[MSet]
+    removeKmers(removeSet, removeFrom, k)
   }
+
+  /**
+   * Remove k-mers
+   * @param toRemove k-mers to remove
+   * @param removeFrom long sequences that will be filtered
+   * @param k
+   * @return
+   */
+  def removeKmers(toRemove: CSet[NTSeq], removeFrom: List[NTSeq], k: Int): List[String] =
+    Read.flattenKmers(removeFrom.filter(s => !toRemove.contains(s)), k, Nil)
+
+  /**
+   * Remove k-mers
+   * @param toRemove long sequences to remove
+   * @param removeFrom long sequences that will be filtered
+   * @param k
+   * @return
+   */
+  def removeKmers(toRemove: Iterable[NTSeq], removeFrom: Iterable[NTSeq], k: Int): Seq[String] =
+    removeKmers(toRemove.iterator, removeFrom.flatMap(Read.kmers(_, k)).toList, k)
 
   //Contigs ready for output, new buckets, relabelled IDs, edges to be removed (in terms of old IDs)
   type MergedBuckets = (List[Contig], List[(Array[String], List[Long])])
@@ -211,32 +230,37 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
 
   def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(core.iterator, k).to[MSet]
 
-  def overlapFinder = new OverlapFinder(prefixAndSuffixSet, pureSuffixSet,
-    purePrefixSet, k)
+  def overlapFinder = new OverlapFinder(prefixAndSuffixSet, purePrefixSet,
+    pureSuffixSet, k)
 
   import Searching._
 
-  def nodesForGraph(boundary: Iterable[String]) = {
-    //Possible optimization: try to do this with boundary as a simple iterator instead
-    val in = sharedOverlapsThroughPost(boundary, core, k).toArray.sorted
-    val out = sharedOverlapsThroughPrior(core, boundary, k).toArray.sorted
+
+  def nodesForGraph(boundary: Iterable[String]): Iterator[KmerNode] = {
+    val finder = overlapFinder
+
+    val preSuf = prefixesAndSuffixes(boundary.iterator, k).toList
+    val in = finder.prefixes(preSuf.iterator,
+      pureSuffixes(boundary.iterator, k)).to[MSet]
+
+    val out = finder.suffixes(preSuf.iterator,
+      purePrefixes(boundary.iterator, k)).to[MSet]
 
     //TODO is this the right place to de-duplicate kmers?
+    //Could easily do this as part of sorting in PathGraphBuilder.
+
     kmers.distinct.iterator.map(s => {
       val n = new KmerNode(s, 1)
 
       val suf = DNAHelpers.kmerSuffix(s, k)
-      out.search(suf) match {
+      if (out.contains(suf)) {
         //Pseudo-partition 1.
-        //Setting the boundary flag blocks premature path finding.
-        case Found(i) => n.boundaryPartition = Some(1)
-        case _        =>
-      }
-
-      val pre = DNAHelpers.kmerPrefix(s, k)
-      in.search(pre) match {
-        case Found(i) => n.boundaryPartition = Some(1)
-        case _        =>
+        n.boundaryPartition = Some(1)
+      } else {
+        val pre = DNAHelpers.kmerPrefix(s, k)
+        if (in.contains(pre)) {
+          n.boundaryPartition = Some(1)
+        }
       }
 
       n
@@ -245,7 +269,7 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
 
   def kmerGraph(boundary: Iterable[String]) = {
     val builder = new PathGraphBuilder(k)
-    builder.fromNodes(nodesForGraph(boundary).toList)
+    builder.fromNodes(nodesForGraph(boundary).toArray)
   }
 
   /**
@@ -261,7 +285,7 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
    * Remove sequences from the core of this bucket.
    */
   def removeSequences(ss: Iterable[NTSeq]): BoundaryBucket = {
-    val filtered = withoutDuplicates(ss.iterator, kmers.toList, k)
+    val filtered = removeKmers(ss, kmers, k)
     copy(core = filtered.toArray)
   }
 
@@ -293,8 +317,13 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
     BoundaryBucket.splitSequences(core, k)
   }
 
+  /**
+   * For testing since arrays do not have deep equals
+   */
+  def structure = (id, core.toSet, k)
+
   override def toString = {
-    s"BoundaryBucket($id\t${core.mkString(",")}"
+    s"BoundaryBucket($id\t${core.mkString(",")})"
   }
 
 }

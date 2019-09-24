@@ -1,27 +1,37 @@
 package dbpart.bucket
 
-import dbpart.Testing
 import dbpart.shortread.Read
 import org.scalatest.Matchers
 import org.scalatest.FunSuite
 
 class BoundaryBucketTest extends FunSuite with Matchers {
-  import Testing._
-
-  def it[T](d: Iterable[T]) = d.iterator
 
   test("sharedOverlaps") {
+
+    import BoundaryBucket._
 
     //Check that in- and out-openings are correct
     val k = 5
     val ss = Array("ACTGGG", "TTGTTA")
     var post = Array("CCGAT", "GTTAA")
+    val postPre = purePrefixes(post.iterator, k).toList
+    val postPreSuf = prefixesAndSuffixes(post.iterator, k).toList
     var prior = Array[String]()
-    BoundaryBucket.sharedOverlapsThroughPrior(prior, ss, k).toSeq should equal (Seq())
-    BoundaryBucket.sharedOverlapsThroughPrior(ss, post, k).toSeq should equal (Seq("GTTA"))
+
+    val of = BoundaryBucket(0, ss, k).overlapFinder
+    of.prefixes(Iterator.empty, Iterator.empty) should be(empty)
+    of.suffixes(postPreSuf.iterator, postPre.iterator).toSeq should equal(Seq("GTTA"))
 
     prior = Array("CCGAG", "AACTGAA")
-    BoundaryBucket.sharedOverlapsThroughPrior(prior, ss, k).toSeq should equal(Seq("ACTG"))
+    val priPreSuf = prefixesAndSuffixes(prior.iterator, k).toSeq
+    val priSuf = pureSuffixes(prior.iterator, k).toSeq
+    of.prefixes(priPreSuf.iterator, priSuf.iterator).toSeq should equal(Seq("ACTG"))
+
+    val all = prior ++ post
+
+    of.find(prefixesAndSuffixes(all.iterator, k),
+      purePrefixes(all.iterator, k),
+      pureSuffixes(all.iterator, k)).toList should equal(Seq("ACTG", "GTTA"))
   }
 
   test("containedUnitigs") {
@@ -95,12 +105,15 @@ class BoundaryBucketTest extends FunSuite with Matchers {
       ))
   }
 
-  test("withoutDuplicates") {
+  test("removeKmers") {
     val existing = Array("ACTGG", "CCGGT", "GGTTAA")
     val incoming = Array("GCGTGGTTCGTGATTAA") //duplicates GGTT and TTAA
-    val r = BoundaryBucket.withoutDuplicates(existing.iterator,
+    val r = BoundaryBucket.removeKmers(existing.iterator,
       incoming.flatMap(Read.kmers(_, 4)).toList, 4)
     r should contain theSameElementsAs(List("GCGTGGT", "GTTCGTGATTA"))
+
+    val r2 = BoundaryBucket.removeKmers(existing, incoming, 4)
+    r2 should contain theSameElementsAs(List("GCGTGGT", "GTTCGTGATTA"))
   }
 
 }
