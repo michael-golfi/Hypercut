@@ -66,6 +66,25 @@ object BoundaryBucket {
   def prefixes(ss: Iterable[String], k: Int) =
     purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
 
+  /**
+   * Function for computing shared k-1 length overlaps between sequences of prior
+   * and post k-mers. Prior gets cached as a set.
+   */
+  def sharedOverlapsThroughPrior(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
+    val preKmers = suffixes(prior, k).to[MSet]
+    val postKmers = prefixes(post, k)
+    postKmers.filter(preKmers.contains)
+  }
+
+  /**
+   * As above, but post gets cached as a set.
+   */
+  def sharedOverlapsThroughPost(prior: Iterable[String], post: Iterable[String], k: Int): Iterator[String] = {
+    val preKmers = suffixes(prior, k)
+    val postKmers = prefixes(post, k).to[MSet]
+    preKmers.filter(postKmers.contains)
+  }
+
   def overlapFinder(data: Iterable[String], k: Int) =
     new OverlapFinder(prefixesAndSuffixes(data.iterator, k).to[MSet],
       purePrefixes(data.iterator, k).to[MSet],
@@ -235,16 +254,12 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
 
   import Searching._
 
+  def nodesForGraph(boundary: Iterable[String]) = {
+    //Possible optimization: try to do this with boundary as a simple iterator instead
 
-  def nodesForGraph(boundary: Iterable[String]): Iterator[KmerNode] = {
-    val finder = overlapFinder
-
-    val preSuf = prefixesAndSuffixes(boundary.iterator, k).toList
-    val in = finder.prefixes(preSuf.iterator,
-      pureSuffixes(boundary.iterator, k)).to[MSet]
-
-    val out = finder.suffixes(preSuf.iterator,
-      purePrefixes(boundary.iterator, k)).to[MSet]
+    //boundary is assumed to potentially be much larger than core.
+    val in = sharedOverlapsThroughPost(boundary, core, k).toArray.sorted
+    val out = sharedOverlapsThroughPrior(core, boundary, k).toArray.sorted
 
     //TODO is this the right place to de-duplicate kmers?
     //Could easily do this as part of sorting in PathGraphBuilder.
@@ -253,14 +268,17 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
       val n = new KmerNode(s, 1)
 
       val suf = DNAHelpers.kmerSuffix(s, k)
-      if (out.contains(suf)) {
+      out.search(suf) match {
         //Pseudo-partition 1.
-        n.boundaryPartition = Some(1)
-      } else {
-        val pre = DNAHelpers.kmerPrefix(s, k)
-        if (in.contains(pre)) {
-          n.boundaryPartition = Some(1)
-        }
+        //Setting the boundary flag blocks premature path finding.
+        case Found(i) => n.boundaryPartition = Some(1)
+        case _        =>
+      }
+
+      val pre = DNAHelpers.kmerPrefix(s, k)
+      in.search(pre) match {
+        case Found(i) => n.boundaryPartition = Some(1)
+        case _        =>
       }
 
       n

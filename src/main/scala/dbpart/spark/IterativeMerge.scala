@@ -51,9 +51,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     }
   }
 
-  def materialize(df: DataFrame) = {
-    df.foreachPartition((r: Iterator[Row]) => () )
-    df
+  def materialize[R](ds: Dataset[R]) = {
+    ds.foreachPartition((r: Iterator[R]) => () )
+    ds
   }
 
   def stats(data: GraphFrame) {
@@ -165,17 +165,16 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       join(aggVerts, Seq("id"), "right_outer").
       selectExpr("id", "(minId == id) as centre", "core", "boundary")
 
-    materialize(withBuckets2)
-
     val k = this.k
     if (showStats) {
       println("MergingBuckets")
       withBuckets2.as[MergingBuckets].map(_.stats(k)).describe().show
     }
 
+    val r = materialize(withBuckets2.as[MergingBuckets].
+      flatMap(simpleMerge(k)(_)).cache)
     aggVerts.unpersist
-    withBuckets2.as[MergingBuckets].
-      flatMap(simpleMerge(k)(_)).cache
+    r
   }
 
   /**
