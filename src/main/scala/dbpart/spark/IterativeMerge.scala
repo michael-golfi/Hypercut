@@ -12,6 +12,10 @@ import dbpart.shortread.Read
 
 import scala.collection.mutable.{Set => MSet}
 
+/**
+ * Iterative merge process that gradually collapses the graph by merging buckets with neighbors,
+ * outputting sequence as we go along.
+ */
 class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   minLength: Option[Int], k: Int, output: String) {
 
@@ -28,8 +32,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   import org.apache.spark.sql._
   import org.apache.spark.sql.functions._
 
-  /**
-   * Graph where vertices contain IDs only, and a DataFrame that maps IDs to BoundaryBucket.
+  /*
+   * Data being generated and consumed by each iteration.
+   * Each vertex in the graph is a BoundaryBucket.
    */
   type IterationData = GraphFrame
 
@@ -86,8 +91,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
 
   /**
-   * By looking at the boundary, output unitigs that are ready for output
-   * and then split each bucket into disjoint parts.
+   * By looking at the boundary, output unitigs that are ready
+   * and then split each bucket into maximal disjoint parts.
    */
   def seizeUnitigsAtBoundary(graph: GraphFrame): DataFrame = {
     //Send all data to all bucket neighbors so that buckets can identify their own boundary and
@@ -114,6 +119,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     mergeData.selectExpr("_2")
   }
 
+  /**
+   * Generate new IDs for each vertex, and a new graph structure,
+   * after the buckets have been split.
+   */
   def graphWithNewIds(mergeData: DataFrame): GraphFrame = {
     //Assign new IDs to the split core parts
     val preBuckets = mergeData.selectExpr("explode(_2)", "monotonically_increasing_id() as id").
@@ -142,6 +151,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     nextGraph
   }
 
+  /**
+   * Speculatively join buckets with their neighborings based on minimum ID.
+   * This enables larger unitigs to be identified and removed in the next iteration.
+   */
   def aggregateAtMinNeighbor(graph: GraphFrame) = {
 
     //Figure out the minimum neighboring ID to send neighboring parts to for speculative merge
@@ -221,6 +234,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
   }
 
+  /**
+   * After all iterations have finished, output any remaining data. Buckets are
+   * treated as if they have no neighbors/unknown boundary.
+   */
   def finishBuckets(graph: GraphFrame) {
     val isolated = graph.vertices.select($"id", $"core", lit(k).as("k")).as[BoundaryBucket]
     val ml = minLength
@@ -272,6 +289,9 @@ final case class MergingBuckets(id: Long, centre: Boolean, core: Array[String],
       includeData.map(_.size - (k-1)).sum)
 }
 
+/**
+ * Helper routines available for serializable functions.
+ */
 object IterativeSerial {
   def formatUnitig(u: Contig) = {
     (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
