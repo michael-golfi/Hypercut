@@ -6,11 +6,13 @@ import miniasm.genome.util.DNAHelpers
 import dbpart.graph.PathGraphBuilder
 import dbpart.graph.KmerNode
 import dbpart.graph.PathFinder
+
 import scala.collection.immutable.SortedSet
-import scala.collection.{ Searching, Set => CSet }
-import scala.collection.mutable.{ Map => MMap, Set => MSet }
+import scala.collection.{Searching, Set => CSet}
+import scala.collection.mutable.{Map => MMap, Set => MSet}
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 object BoundaryBucket {
   /**
@@ -138,17 +140,19 @@ object BoundaryBucket {
   /**
    * Split sequences into maximal groups that are not connected
    * by any k-1 overlaps.
+   * The flag indicating whether a sequence is boundary or core (true iff boundary)
+   * is preserved.
    */
-  def splitSequences(ss: Seq[String], k: Int): List[List[String]] = {
-    Util.partitionByKeys(ss.toList, (s: String) => Read.kmers(s, k - 1).toList)
+  def splitSequences(ss: Seq[(String, Boolean)], k: Int): List[List[(String, Boolean)]] = {
+    Util.partitionByKeys(ss.toList, (s: (String, Boolean)) => Read.kmers(s._1, k - 1).toList)
   }
 
   /**
    * Unify pairs of ID and sequences where the ID sequences have
    * intersection.
    */
-  def unifyParts(parts: List[(List[Long], List[String])]) = {
-    val unified = Util.partitionByKeys(parts, (x: (List[Long], List[String])) => x._1)
+  def unifyParts[T : ClassTag](parts: List[(List[Long], List[T])]) = {
+    val unified = Util.partitionByKeys(parts, (x: (List[Long], List[T])) => x._1)
     unified.map(u => {
       val (ks, vs) = (u.flatMap(_._1).distinct, u.flatMap(_._2))
       (vs.toArray, ks)
@@ -184,8 +188,8 @@ object BoundaryBucket {
   def removeKmers(toRemove: Iterable[NTSeq], removeFrom: Iterable[NTSeq], k: Int): Seq[String] =
     removeKmers(toRemove.iterator, removeFrom.flatMap(Read.kmers(_, k)).toList, k)
 
-  //Contigs ready for output, new buckets, relabelled IDs, edges to be removed (in terms of old IDs)
-  type MergedBuckets = (List[Contig], List[(Array[String], List[Long])])
+  //Contigs ready for output, (new core sequences, new boundary sequences, relabelled IDs)
+  type MergedBuckets = (List[Contig], List[(Array[String], Array[String], List[Long])])
 
   /**
    * Remove unitigs from the core (whose boundary is known)
@@ -193,14 +197,17 @@ object BoundaryBucket {
    * after unitig removal.
    */
   def seizeUnitigsAndMerge(
-    core:     BoundaryBucket,
-    boundary: List[BoundaryBucket]): MergedBuckets = {
-    val (unitigs, updated) = core.seizeUnitigs(boundary.flatMap(_.core))
+                            core:     BoundaryBucket,
+                            surroundingBuckets: List[BoundaryBucket]): MergedBuckets = {
+    val (unitigs, updated) = core.seizeUnitigs(surroundingBuckets.flatMap(_.core))
 
     //Split the core into parts that have no mutual overlap
     val split = updated.splitSequences
 
-    val splitFinders = split.map(s => (s, overlapFinder(s, core.k)))
+    val splitFinders = split.map(s => {
+      val boundaryOnly = s.filter(_._2).map(_._1)
+      (s, overlapFinder(boundaryOnly, core.k))
+    })
 
 
     //Pair each split part with the boundary IDs that it intersects with
@@ -208,7 +215,7 @@ object BoundaryBucket {
     //On the assumption that buckets maintain roughly equal size,
     //it is cheaper to retain finders for s (bucket subparts) and traverse
     //the boundary (full buckets) rather than the opposite
-    val swb = boundary.map(b => {
+    val swb = surroundingBuckets.map(b => {
       val bfinder = b.overlapFinder
       splitFinders.map { case (s, sfinder) => {
         if (bfinder.check(sfinder)) {
@@ -228,43 +235,63 @@ object BoundaryBucket {
     val mergedParts = unifyParts(splitWithBoundary)
 
     val intersectParts = mergedParts.map(m => {
-      val fromCore = m._1
-      (fromCore, m._2)
+      val core = m._1.filter(! _._2).map(_._1)
+      val boundary = m._1.filter(_._2).map(_._1)
+      (core, boundary, m._2)
     })
 
     (unitigs, intersectParts)
   }
 }
 
-case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
+case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
+  boundarySequences: Int, boundaryKmers: Int)
+
+/**
+ * A bucket of sequences being merged together.
+ * @param id
+ * @param core Sequences whose neighborhood is fully known and inside this bucket.
+ * @param boundary Sequences that may connect with other buckets.
+ * @param k
+ */
+case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String], k: Int) {
   import BoundaryBucket._
 
-  def kmers = core.flatMap(Read.kmers(_, k))
+  def coreAndBoundary = core.iterator ++ boundary.iterator
 
-  def coreStats = BucketStats(core.size, 0, kmers.size)
+  def kmers = coreKmers ++ boundaryKmers
+  def coreKmers = core.flatMap(Read.kmers(_, k))
+  def boundaryKmers = boundary.flatMap(Read.kmers(_, k))
 
-  def pureSuffixSet: CSet[String] = pureSuffixes(core.iterator, k).to[MSet]
+  def coreStats = BoundaryBucketStats(core.size, core.map(Read.numKmers(_, k)).sum,
+    boundary.size, boundary.map(Read.numKmers(_, k)).sum)
 
-  def purePrefixSet: CSet[String] = purePrefixes(core.iterator, k).to[MSet]
+  def pureSuffixSet: CSet[String] = pureSuffixes(boundary.iterator, k).to[MSet]
 
-  def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(core.iterator, k).to[MSet]
+  def purePrefixSet: CSet[String] = purePrefixes(boundary.iterator, k).to[MSet]
 
+  def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(boundary.iterator, k).to[MSet]
+
+  /**
+   * Constructs an overlap finder that can test this bucket's overlaps (through boundary)
+   * with other buckets
+   */
   def overlapFinder = new OverlapFinder(prefixAndSuffixSet, purePrefixSet,
     pureSuffixSet, k)
 
   import Searching._
 
-  def nodesForGraph(boundary: Iterable[String]) = {
+  def nodesForGraph(surroundingBoundary: Iterable[String]): Iterator[KmerNode] = {
     //Possible optimization: try to do this with boundary as a simple iterator instead
 
-    //boundary is assumed to potentially be much larger than core.
-    val in = sharedOverlapsThroughPost(boundary, core, k).toArray.sorted
-    val out = sharedOverlapsThroughPrior(core, boundary, k).toArray.sorted
+    val in = sharedOverlapsThroughPost(surroundingBoundary, boundary, k).toArray.sorted
+    val out = sharedOverlapsThroughPrior(boundary, surroundingBoundary, k).toArray.sorted
 
     //TODO is this the right place to de-duplicate kmers?
     //Could easily do this as part of sorting in PathGraphBuilder.
 
-    kmers.distinct.iterator.map(s => {
+    coreKmers.distinct.iterator.map(s => new KmerNode(s, 1)) ++
+      (boundaryKmers.distinct.iterator.map(s => {
       val n = new KmerNode(s, 1)
 
       val suf = DNAHelpers.kmerSuffix(s, k)
@@ -282,29 +309,29 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
       }
 
       n
-    })
+    }))
   }
 
-  def kmerGraph(boundary: Iterable[String]) = {
+  def kmerGraph(surroundingBoundary: Iterable[String]) = {
     val builder = new PathGraphBuilder(k)
-    builder.fromNodes(nodesForGraph(boundary).toArray)
+    builder.fromNodes(nodesForGraph(surroundingBoundary).toArray)
   }
 
   /**
    * Find unitigs that we know to be contained in this bucket.
    * This includes unitigs that touch the boundary.
    */
-  def containedUnitigs(boundary: Iterable[String]) = {
-    new PathFinder(k).findSequences(kmerGraph(boundary))
+  def containedUnitigs(surroundingBoundary: Iterable[String]) = {
+    new PathFinder(k).findSequences(kmerGraph(surroundingBoundary))
   }
 
 
   /**
-   * Remove sequences from the core of this bucket.
+   * Remove sequences from this bucket.
    */
   def removeSequences(ss: Iterable[NTSeq]): BoundaryBucket = {
-    val filtered = removeKmers(ss, kmers, k)
-    copy(core = filtered.toArray)
+    copy(core = removeKmers(ss, coreKmers, k).toArray,
+      boundary = removeKmers(ss, boundaryKmers, k).toArray)
   }
 
   /**
@@ -313,14 +340,14 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
    * Returns the unitigs as well as an updated copy of the bucket with remaining
    * sequences.
    */
-  def seizeUnitigs(boundary: Iterable[String]) = {
+  def seizeUnitigs(surroundingBoundary: Iterable[String]) = {
 //    println(s"Core: ${core.toList}")
 //    println(s"Boundary: ${boundary.toList}")
 
 //    println("Taking unitigs from graph:")
 //    kmerGraph(boundary).printBare()
 
-    val unit = containedUnitigs(boundary)
+    val unit = containedUnitigs(surroundingBoundary)
     val (atBound, noBound) = unit.partition(_.touchesBoundary)
 
     val updated = removeSequences(noBound.map(_.seq))
@@ -331,17 +358,21 @@ case class BoundaryBucket(id: Long, core: Array[String], k: Int) {
    * Split the core sequences into groups that are not connected
    * by any k-1 overlaps.
    */
-  def splitSequences: List[List[String]] = {
-    BoundaryBucket.splitSequences(core, k)
+  def splitSequences: List[List[(String, Boolean)]] = {
+    val withBoundaryFlag = core.map(x => (x, false)) ++
+      boundary.map(x => (x, true))
+
+    //TODO core/boundary handling
+    BoundaryBucket.splitSequences(withBoundaryFlag, k)
   }
 
   /**
    * For testing since arrays do not have deep equals
    */
-  def structure = (id, core.toSet, k)
+  def structure = (id, core.toSet, boundary.toSet, k)
 
   override def toString = {
-    s"BoundaryBucket($id\t${core.mkString(",")})"
+    s"BoundaryBucket($id\t${core.mkString(",")})\t${boundary.mkString(",")})"
   }
 
 }

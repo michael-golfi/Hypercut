@@ -4,6 +4,8 @@ import miniasm.genome.util.DNAHelpers
 import scala.annotation.tailrec
 
 object Read {
+  def numKmers(data: String, k: Int) = data.length - (k-1)
+
   /**
    * Extract all k-mers from a read.
    */

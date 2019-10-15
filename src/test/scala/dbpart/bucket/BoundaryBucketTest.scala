@@ -18,7 +18,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val postPreSuf = prefixesAndSuffixes(post.iterator, k).toList
     var prior = Array[String]()
 
-    val of = BoundaryBucket(0, ss, k).overlapFinder
+    val of = BoundaryBucket(0, Array(), ss, k).overlapFinder
     of.prefixes(Iterator.empty, Iterator.empty) should be(empty)
     of.suffixes(postPreSuf.iterator, postPre.iterator).toSeq should equal(Seq("GTTA"))
 
@@ -45,14 +45,14 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     //afterward
 
     val bnd = Array("TTTA")
-    val bkt = BoundaryBucket(1, Array("ACTGGG", "GGGTG", "GTGCA", "GTTT"), 4)
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GGGTG", "GTGCA", "GTTT"), Array(), 4)
     val (contigs, updated) = bkt.seizeUnitigs(bnd)
     contigs.map(_.seq) should contain theSameElementsAs(Seq("ACTGGGTGCA"))
     updated.core.toSeq should equal(Seq("GTTT"))
   }
 
   test("removeSequences") {
-    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), 4)
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array(), 4)
     bkt.removeSequences(Seq("ACTG")).kmers.toList should
       contain theSameElementsAs(Seq("CTGG", "TGGG", "GTGC", "TGCA"))
   }
@@ -81,7 +81,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
   }
 
   test("splitSequences") {
-    val bkt = BoundaryBucket(1, Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), 4)
+    val bkt = BoundaryBucket(1, Array(), Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), 4)
     bkt.splitSequences should contain theSameElementsAs(List(
       List("ACTGGG", "CTGAA", "GGGA"),
       List("CCCC"),
@@ -90,11 +90,11 @@ class BoundaryBucketTest extends FunSuite with Matchers {
   }
 
   test("seizeUnitigsAndMerge") {
-    val core = BoundaryBucket(1, Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), 4)
-    val boundary = List(BoundaryBucket(2, Array("TTTA"), 4),
-      BoundaryBucket(3, Array("GCCC"), 4))
+    val core = BoundaryBucket(1, Array(), Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), 4)
+    val surrounding = List(BoundaryBucket(2, Array(), Array("TTTA"), 4),
+      BoundaryBucket(3, Array(), Array("GCCC"), 4))
 
-    val mrg = BoundaryBucket.seizeUnitigsAndMerge(core, boundary)
+    val mrg = BoundaryBucket.seizeUnitigsAndMerge(core, surrounding)
     val unitigs = mrg._1.map(_.seq)
     unitigs.toSeq should contain theSameElementsAs(List("ACTG", "CTGGGA", "CTGAA"))
 

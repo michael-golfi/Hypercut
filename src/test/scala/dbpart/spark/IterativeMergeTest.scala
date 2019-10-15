@@ -18,13 +18,20 @@ class IterativeMergeTest extends FunSuite with Matchers {
     val b6 = Array("AATGGA") //join core through end
     val b7 = Array("AGCCAA") //join core through front
 
-    val boundary = Array((2L, b2), (3L, b3), (4L, b4), (5L, b5), (6L, b6), (7L, b7))
-    val mb = MergingBuckets(1, true, core, boundary)
+    //TODO enhance test to check core/boundary behaviour properly
+    val surrounding: Array[(Long, Array[String], Array[String])] =
+      Array((2L, Array(), b2),
+        (3L, Array(), b3),
+        (4L, Array(), b4),
+        (5L, Array(), b5),
+        (6L, Array(), b6),
+        (7L, Array(), b7))
+    val mb = MergingBuckets(1, true, Array(), core, surrounding)
     val merged = simpleMerge(k)(mb).map(x => (x._1, x._2.structure, x._3.toSet))
 
     merged should contain theSameElementsAs(Seq(
-      (1L, (1, core.toSet ++ b2s ++ b4 ++ b5 ++ b6 ++ b7, k), Set(1L, 2L, 4L, 5L, 6L, 7L)),
-      (3L, (3, b3.toSet, k), Set(3L))
+      (1L, (1, Set(), core.toSet ++ b2s ++ b4 ++ b5 ++ b6 ++ b7, k), Set(1L, 2L, 4L, 5L, 6L, 7L)),
+      (3L, (3, Set(), b3.toSet, k), Set(3L))
     ))
   }
 
