@@ -26,6 +26,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   val coreDst = AM.dst("core")
   val bndSrc = AM.src("boundary")
   val bndDst = AM.dst("boundary")
+  val degSrc = AM.src("degree")
+  val degDst = AM.dst("degree")
 
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
@@ -90,8 +92,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     materialize(edges)
     edgeTranslation.unpersist
 
-    //idGraph
-    refineEdges(idGraph)
+    idGraph
   }
 
 
@@ -157,72 +158,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     nextGraph
   }
 
-  /**
-   * Speculatively join buckets with their neighborings based on minimum ID.
-   * This enables larger unitigs to be identified and removed in the next iteration.
-   */
-  def aggregateAtMinNeighbor(graph: GraphFrame) = {
-
-    //Figure out the minimum neighboring ID to send neighboring parts to for speculative merge
-    val minIds = graph.aggregateMessages.
-      sendToDst(idDst).sendToSrc(idSrc).
-      sendToDst(idSrc).sendToSrc(idDst).
-      agg(min(AM.msg).as("minId"))
-
-    val aggVerts = graph.vertices.join(minIds, Seq("id")).cache
-
-    //Note that data duplication is expected here. A node can send its data as a boundary but
-    //still be used as a merge core by other nodes.
-    val mergeBoundary = GraphFrame(aggVerts, graph.edges).
-      aggregateMessages.
-      sendToDst(when(idDst === AM.src("minId"), struct(idSrc, coreSrc, bndSrc))).
-      sendToSrc(when(idSrc === AM.dst("minId"), struct(idDst, coreDst, bndDst))).
-      agg(collect_list(AM.msg).as("surrounding"))
-
-
-    val withBuckets2 = mergeBoundary.
-      join(aggVerts, Seq("id"), "right_outer").
-      selectExpr("id", "(minId == id) as centre", "core", "surrounding")
-
-    val k = this.k
-    if (showStats) {
-      println("MergingBuckets")
-      withBuckets2.as[MergingBuckets].map(_.stats(k)).describe().show
-    }
-
-    val r = materialize(withBuckets2.as[MergingBuckets].
-      flatMap(simpleMerge(k)(_)).cache)
-    aggVerts.unpersist
-    r
-  }
-
-  /**
-   * Run one merge iteration, output data, remove sequences from buckets and
-   * merge them.
-   */
-  def merge(graph: IterationData): IterationData = {
-    if (showStats) {
-      println("Start of merge")
-      stats(graph)
-    }
-
-    val mergeData = seizeUnitigsAtBoundary(graph)
-    val nextGraph = graphWithNewIds(mergeData)
-    val neighborAggregated = aggregateAtMinNeighbor(nextGraph)
-
-    val nextBuckets2 = neighborAggregated.selectExpr("_1", "_2").toDF("id", "bucket")
-    val nextEdges2 = translateAndNormalizeEdges(nextGraph.edges, neighborAggregated.selectExpr("explode(_3)", "_1"))
-    val nextGraph2 = GraphFrame(materialize(removeLineage(nextBuckets2.select($"id", $"bucket.core",
-      $"bucket.boundary", lit(k)))),
-      materialize(removeLineage(nextEdges2)))
-
-    mergeData.unpersist
-    neighborAggregated.unpersist
-    graph.unpersist
-    nextGraph.unpersist
-
-    nextGraph2
-  }
 
   /**
    * Translate edges according to an ID translation table and
@@ -258,11 +193,50 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   //begin work in progress
 
   /**
+   * Collect neighbors and promote boundary to core where possible,
+   * returning the result as a graph with larger, unified buckets.
+   * @param graph
+   * @return
+   */
+  def collectBuckets(graph: GraphFrame): GraphFrame = {
+
+    //Figure out the minimum neighboring ID to send neighboring parts to for speculative merge
+    val minIds = graph.aggregateMessages.
+      sendToDst(idDst).sendToSrc(idSrc).
+      sendToDst(idSrc).sendToSrc(idDst).
+      agg(min(AM.msg).as("minId"))
+
+    val aggVerts = graph.vertices.join(minIds, Seq("id")).join(graph.degrees, Seq("id")).cache
+
+    val k = this.k
+
+    //Note that data duplication is expected here. A node can send its data as a boundary but
+    //still be used as a merge core by other nodes.
+    val mergeBoundary = GraphFrame(aggVerts, graph.edges).
+      aggregateMessages.
+      sendToDst(when(idDst === AM.src("minId"),
+        struct(struct(idSrc.as("id"), coreSrc.as("core"), bndSrc.as("boundary"), lit(k).as("k")), degSrc))).
+      sendToSrc(when(idSrc === AM.dst("minId"),
+        struct(struct(idDst.as("id"), coreDst.as("core"), bndDst.as("boundary"), lit(k).as("k")), degDst))).
+      agg(collect_list(AM.msg).as("surrounding"))
+
+    val withBuckets2 = mergeBoundary.
+      join(aggVerts, Seq("id"), "right_outer").
+      selectExpr("struct(id, core, boundary, k) as at", "(minId == id) as fullSurrounding", "surrounding")
+
+    //TODO tune caching
+    val r = materialize(withBuckets2.as[CollectedBuckets].map(_.unified).cache)
+    val edgeTranslation = withBuckets2.as[CollectedBuckets].flatMap(_.edgeTranslation)
+    val nextEdges = materialize(translateAndNormalizeEdges(graph.edges, edgeTranslation.toDF).cache)
+    aggVerts.unpersist
+    GraphFrame(r.toDF, nextEdges)
+  }
+
+  /**
    * Starting from a graph where edges represent potential bucket intersection,
    * construct a new one where only edges corresponding to actual intersection
    * remain.
    */
-
   def refineEdges(graph: GraphFrame): GraphFrame = {
     val boundaryOnly = graph.vertices.select("id", "boundary")
     //join edges with boundary data
@@ -279,9 +253,45 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         remain.map(r => (d.id, r._1))
       })
 
-    GraphFrame(graph.vertices, remEdges.toDF("src", "dst").cache)
+    val newEdges = materialize(remEdges.toDF("src", "dst").cache)
+    graph.edges.unpersist
+    GraphFrame(graph.vertices, newEdges)
   }
   //end work in progress
+
+
+  /**
+   * Run one merge iteration, output data, remove sequences from buckets and
+   * merge them.
+   */
+  def runIteration(graph: IterationData): IterationData = {
+    if (showStats) {
+      println("Start of iteration")
+      stats(graph)
+    }
+
+    val refined = refineEdges(graph)
+    val collected = collectBuckets(refined)
+    val mergeData = seizeUnitigsAtBoundary(refined)
+    val nextGraph = graphWithNewIds(mergeData)
+//    val neighborAggregated = aggregateAtMinNeighbor(nextGraph)
+
+//    val nextBuckets2 = neighborAggregated.selectExpr("_1", "_2").toDF("id", "bucket")
+//    val nextEdges2 = translateAndNormalizeEdges(nextGraph.edges, neighborAggregated.selectExpr("explode(_3)", "_1"))
+//    val nextGraph2 = GraphFrame(materialize(removeLineage(nextBuckets2.select($"id", $"bucket.core",
+//      $"bucket.boundary", lit(k)))),
+//      materialize(removeLineage(nextEdges2)))
+//
+//    mergeData.unpersist
+//    neighborAggregated.unpersist
+    refined.unpersist
+    nextGraph.unpersist
+    collected.unpersist
+
+//    nextGraph2
+    ???
+  }
+
 
   /**
    * Run iterative merge until completion.
@@ -296,7 +306,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     while (n > 0) {
       println(s"[${dtf.format(new Date)}] Begin iteration $iteration ($n edges)")
 
-      data = merge(data)
+      data = runIteration(data)
       n = data.edges.count
       iteration += 1
     }
@@ -326,8 +336,49 @@ final case class MergingBuckets(id: Long, centre: Boolean, coreData: Array[Strin
       allBoundary.map(Read.numKmers(_, k)).sum)
 }
 
-case class EdgeData(id: Long, boundary: Array[String],
+final case class EdgeData(id: Long, boundary: Array[String],
   dstData: Array[(Long, Array[String])], k: Int)
+
+/**
+ * A bucket and some of its neighbors.
+ * @param at The central bucket
+ * @param fullSurrounding Whether all surrounding buckets could be collected
+ * @param surrounding Surrounding buckets (that were collected) and their degrees in the graph
+ */
+final case class CollectedBuckets(at: BoundaryBucket, fullSurrounding: Boolean,
+                                  surrounding: Array[(BoundaryBucket, Int)]) {
+
+  @transient
+  lazy val (lone, shared) = surrounding.partition(_._2 == 1)
+
+  /**
+   * Boundary is promoted to core if we have the full surroundings.
+   * Lone neighbor boundary is always promoted to core since "at" was their only neighbor.
+   */
+  def unifiedCore =
+    if (fullSurrounding)
+      at.core ++ surrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary) ++ at.boundary
+    else
+      at.core ++ surrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary)
+
+  /**
+   * If we have the full surroundings, we only need to use the shared neighbors' boundary
+   * as the new boundary.
+   * Otherwise we keep the existing boundary and add to it.
+   * @return
+   */
+  def unifiedBoundary =
+    if (fullSurrounding)
+      shared.flatMap(_._1.boundary)
+    else
+      shared.flatMap(_._1.boundary) ++ at.boundary
+
+  def unified =
+    BoundaryBucket(at.id, unifiedCore, unifiedBoundary, at.k)
+
+  def edgeTranslation =
+    Seq(at.id -> at.id) ++ surrounding.map(_._1.id -> at.id)
+}
 
 /**
  * Helper routines available for serializable functions.
@@ -350,45 +401,4 @@ object IterativeSerial {
 
   def nonMergeResult(id: Long, k: Int, core: Array[String], boundary: Array[String]) =
     (id, BoundaryBucket(id, core, boundary, k), Seq(id))
-
-  /**
-   * Merge neighboring buckets together.
-   * The boundary of the centre can be promoted to core only if all neighbors could be gathered.
-   * Surrounding cores remain core, surrounding boundaries remain boundary.
-   * @param k
-   * @param bkts
-   * @return
-   */
-  def simpleMerge(k: Int)(bkts: MergingBuckets) = {
-    if (bkts.surrounding.isEmpty) {
-      if (bkts.centre) {
-        //minId node that did not receive anything (neighbours were moved elsewhere)
-        Seq(nonMergeResult(bkts.id, k, bkts.coreData, bkts.coreBoundary))
-      } else {
-        Seq()
-      }
-    } else {
-      val surround = bkts.surrounding
-
-      //some of the surrounding buckets may not truly connect with the core
-      //Check boundary against boundary
-      val finder  = BoundaryBucket.overlapFinder(bkts.coreBoundary, k)
-      val (overlap, noOverlap) = surround.partition(s => finder.check(s._3))
-
-      val newBucket = if (bkts.centre) {
-        val newCore = bkts.coreData ++ bkts.coreBoundary ++ bkts.removeFrom(overlap.flatMap(_._2).toList, k)
-        val newBoundary = bkts.removeFrom(overlap.flatMap(_._3).toList, k)
-        BoundaryBucket(bkts.id, newCore, newBoundary.toArray, k)
-      } else {
-        val newCore = bkts.coreData ++ bkts.removeFrom(overlap.flatMap(_._2).toList, k)
-        val newBoundary = bkts.coreBoundary ++ bkts.removeFrom(overlap.flatMap(_._3).toList, k)
-        BoundaryBucket(bkts.id, newCore, newBoundary, k)
-      }
-
-      val mergedBucket = (bkts.id, newBucket,
-        Seq(bkts.id) ++ overlap.map(_._1))
-      val nonMergeBuckets = noOverlap.map(n => nonMergeResult(n._1, k, n._2, n._3))
-      Seq(mergedBucket) ++ nonMergeBuckets
-    }
-  }
 }

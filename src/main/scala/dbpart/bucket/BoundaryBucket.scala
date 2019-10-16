@@ -257,6 +257,8 @@ case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
 case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String], k: Int) {
   import BoundaryBucket._
 
+  //TODO remove k
+
   def coreAndBoundary = core.iterator ++ boundary.iterator
 
   def kmers = coreKmers ++ boundaryKmers
