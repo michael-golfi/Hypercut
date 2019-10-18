@@ -145,7 +145,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         select(when($"src" <= $"dst", $"src").otherwise($"dst").as("src"),
           when($"src" <= $"dst", $"dst").otherwise($"src").as("dst")
         ).distinct()
-
   }
 
   /**
@@ -209,10 +208,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * remain.
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
-    val boundaryOnly = graph.vertices.select("id", "boundary")
+    val boundaryOnly = graph.vertices.selectExpr("id as dst", "boundary as dstBoundary")
     //join edges with boundary data
     val bySrc = graph.edges.toDF("id", "dst").
-      join(boundaryOnly.toDF("dst", "dstBoundary"), Seq("dst")).
+      join(boundaryOnly, Seq("dst")).
       groupBy("id").
       agg(collect_list(struct("dst", "dstBoundary")).as("dstData")).
       as[(Long, Array[(Long, Array[String])])]
@@ -251,7 +250,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     data
   }
 
-
   /**
    * Run iterative merge until completion.
    */
@@ -273,26 +271,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     finishBuckets(data)
     println(s"[${dtf.format(new Date)}] Iterative merge finished")
   }
-}
-
-/**
- * A group of buckets (a centre and its neighbors) ready for merging.
- * @param centre true if and only if all the surrounding neighbors could be gathered here.
- *               If false, only some of them are present.
- */
-final case class MergingBuckets(id: Long, centre: Boolean, coreData: Array[String], coreBoundary: Array[String],
-                                surrounding: Array[(Long, Array[String], Array[String])]) {
-
-  def surroundingData = surrounding.flatMap(_._2)
-  def allBoundary = coreBoundary ++ surrounding.flatMap(_._3)
-  def removeFrom(from: List[String], k: Int) =
-    BoundaryBucket.removeKmers(coreData.iterator ++ coreBoundary.iterator, from, k)
-
-  def stats(k: Int) =
-    BoundaryBucketStats(coreData.size,
-      coreData.map(Read.numKmers(_, k)).sum,
-      allBoundary.size,
-      allBoundary.map(Read.numKmers(_, k)).sum)
 }
 
 final case class EdgeData(id: Long, boundary: Array[String],
