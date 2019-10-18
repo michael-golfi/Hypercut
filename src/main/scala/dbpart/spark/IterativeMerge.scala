@@ -65,11 +65,13 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     ds
   }
 
-  def stats(data: GraphFrame) {
-    val buckets = data.vertices.select($"id", $"core", $"boundary", lit(k).as("k")).as[BoundaryBucket]
-    println("Bucket stats")
-    buckets.map(_.coreStats).describe().show
-    data.degrees.describe().show
+  def stats(show: Boolean, label: String, data: GraphFrame) {
+    if (show) {
+      println(label)
+      val buckets = data.vertices.as[BoundaryBucket]
+      buckets.map(_.coreStats).describe().show
+      data.degrees.describe().show
+    }
   }
 
   /**
@@ -97,25 +99,17 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
 
   /**
-   * By looking at the boundary, output unitigs that are ready
-   * and then split each bucket into maximal disjoint parts.
+   * Output unitigs that are ready and then split each bucket into maximal disjoint parts.
    */
-  def seizeUnitigsAtBoundary(graph: GraphFrame): DataFrame = {
-    //Send all data to all bucket neighbors so that buckets can identify their own boundary and
-    //split themselves
-    val withBoundary = graph.aggregateMessages.
-      sendToDst(struct(idSrc, bndSrc)).
-      sendToSrc(struct(idDst, bndDst)).
-      agg(collect_list(AM.msg).as("surrounding"))
-
-    val withBuckets = withBoundary.join(graph.vertices, Seq("id"), "left_outer")
+  def seizeUnitigsAndSplit(graph: GraphFrame): GraphFrame = {
 
     val k = this.k
     //Identify boundary and output/remove unitigs
     //Returns cores split into subparts based on remaining data
-    val mergeData = withBuckets.selectExpr("id", "false as centre", "core as coreData",
-      "boundary as coreBoundary", "surrounding").as[MergingBuckets].
-      map(seizeUnitigs(k)(_)).cache
+    val mergeData = graph.vertices.as[BoundaryBucket].map(b => {
+      val (unitigs, parts) = BoundaryBucket.seizeUnitigsAndSplit(b)
+      (unitigs, parts)
+    })
 
     val ml = minLength
     mergeData.selectExpr("explode(_1)").select("col.*").as[Contig].
@@ -123,41 +117,19 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
 
-    mergeData.selectExpr("_2")
+    val splitBuckets = mergeData.selectExpr("explode(_2)", "monotonically_increasing_id() as nid").cache
+    val translate = splitBuckets.select("col.id", "nid")
+
+    val nbkts = materialize(removeLineage(
+      splitBuckets.selectExpr("nid as id", "col.core", "col.boundary", "col.k").toDF
+    ))
+    val nedges = materialize(removeLineage(
+      translateAndNormalizeEdges(graph.edges, translate).cache
+    ))
+    splitBuckets.unpersist()
+
+    GraphFrame(nbkts, nedges)
   }
-
-  /**
-   * Generate new IDs for each vertex, and a new graph structure,
-   * after the buckets have been split.
-   */
-  def graphWithNewIds(mergeData: DataFrame): GraphFrame = {
-    //Assign new IDs to the split core parts
-    val preBuckets = mergeData.selectExpr("explode(_2)", "monotonically_increasing_id() as id").
-      cache
-
-    //old ID -> newly gen ID
-    val relabelVerts = preBuckets.select("col._1", "id")
-
-    //New edges in old ID space
-    val newNeighbors = preBuckets.selectExpr("col._1", "explode(col._3)")
-    //in new ID space
-    val relabelNeighbors = translateAndNormalizeEdges(newNeighbors, relabelVerts)
-
-    val k = this.k
-
-    val nextGraph = GraphFrame(preBuckets.select($"id", $"col._2".as("core")).cache,
-      relabelNeighbors.cache)
-
-    if (showStats) {
-      println("End of graphWithNewIds")
-      stats(nextGraph)
-    }
-    materialize(nextGraph.edges)
-    materialize(nextGraph.vertices)
-    preBuckets.unpersist
-    nextGraph
-  }
-
 
   /**
    * Translate edges according to an ID translation table and
@@ -178,19 +150,18 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
   /**
    * After all iterations have finished, output any remaining data. Buckets are
-   * treated as if they have no neighbors/unknown boundary.
+   * treated as if they have no neighbors.
    */
   def finishBuckets(graph: GraphFrame) {
-    val isolated = graph.vertices.select($"id", $"core", lit(k).as("k")).as[BoundaryBucket]
+    val isolated = graph.vertices.as[BoundaryBucket]
     val ml = minLength
     val unitigs = isolated.flatMap(i => {
-      val unitigs = BoundaryBucket.seizeUnitigsAndMerge(i, List())
+      val joint = BoundaryBucket(i.id, i.core ++ i.boundary, Array(), i.k)
+      val unitigs = BoundaryBucket.seizeUnitigsAndSplit(joint)
       unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
     }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
   }
-
-  //begin work in progress
 
   /**
    * Collect neighbors and promote boundary to core where possible,
@@ -257,39 +228,27 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     graph.edges.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
-  //end work in progress
-
 
   /**
-   * Run one merge iteration, output data, remove sequences from buckets and
-   * merge them.
+   * Run one merge iteration
    */
   def runIteration(graph: IterationData): IterationData = {
-    if (showStats) {
-      println("Start of iteration")
-      stats(graph)
-    }
+    var data = graph
+    stats(showStats, "Start of iteration", data)
+//    data.vertices.show()
 
-    val refined = refineEdges(graph)
-    val collected = collectBuckets(refined)
-    val mergeData = seizeUnitigsAtBoundary(refined)
-    val nextGraph = graphWithNewIds(mergeData)
-//    val neighborAggregated = aggregateAtMinNeighbor(nextGraph)
+    data = collectBuckets(data)
+    stats(showStats, "Collected/promoted", data)
+//    data.vertices.show()
 
-//    val nextBuckets2 = neighborAggregated.selectExpr("_1", "_2").toDF("id", "bucket")
-//    val nextEdges2 = translateAndNormalizeEdges(nextGraph.edges, neighborAggregated.selectExpr("explode(_3)", "_1"))
-//    val nextGraph2 = GraphFrame(materialize(removeLineage(nextBuckets2.select($"id", $"bucket.core",
-//      $"bucket.boundary", lit(k)))),
-//      materialize(removeLineage(nextEdges2)))
-//
-//    mergeData.unpersist
-//    neighborAggregated.unpersist
-    refined.unpersist
-    nextGraph.unpersist
-    collected.unpersist
+    data = seizeUnitigsAndSplit(data)
+    stats(showStats, "Seize/split", data)
+//    data.vertices.show()
 
-//    nextGraph2
-    ???
+    data = refineEdges(data)
+    stats(showStats, "Refined", data)
+
+    data
   }
 
 
@@ -300,7 +259,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val dtf = new SimpleDateFormat("HH:mm:ss")
     println(s"[${dtf.format(new Date)}] Initialize iterative merge")
 
-    var data = initialize(graph)
+    var data = refineEdges(initialize(graph))
     var n = data.edges.count
 
     while (n > 0) {
@@ -387,18 +346,4 @@ object IterativeSerial {
   def formatUnitig(u: Contig) = {
     (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
   }
-
-  def seizeUnitigs(k: Int)(bkts: MergingBuckets) = {
-    val main = BoundaryBucket(bkts.id, bkts.coreData, bkts.coreBoundary, k)
-    val surround = bkts.surrounding.map(b => {
-      val noDupCore = BoundaryBucket.removeKmers(main.coreAndBoundary, b._2.toList, k)
-      val noDupBound = BoundaryBucket.removeKmers(main.coreAndBoundary, b._3.toList, k)
-      BoundaryBucket(b._1, noDupCore.toArray, noDupBound.toArray, k)
-    }).toList
-    val (unitigs, parts) = BoundaryBucket.seizeUnitigsAndMerge(main, surround)
-    (unitigs, parts.map(p => (bkts.id, p._1, p._2)))
-  }
-
-  def nonMergeResult(id: Long, k: Int, core: Array[String], boundary: Array[String]) =
-    (id, BoundaryBucket(id, core, boundary, k), Seq(id))
 }

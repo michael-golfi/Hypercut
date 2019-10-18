@@ -188,59 +188,27 @@ object BoundaryBucket {
   def removeKmers(toRemove: Iterable[NTSeq], removeFrom: Iterable[NTSeq], k: Int): Seq[String] =
     removeKmers(toRemove.iterator, removeFrom.flatMap(Read.kmers(_, k)).toList, k)
 
-  //Contigs ready for output, (new core sequences, new boundary sequences, relabelled IDs)
-  type MergedBuckets = (List[Contig], List[(Array[String], Array[String], List[Long])])
-
   /**
    * Remove unitigs from the core (whose boundary is known)
-   * and merge it with its boundary buckets when there is still a shared (k-1)-mer
-   * after unitig removal.
+   * and split the bucket into parts without overlap.
    */
-  def seizeUnitigsAndMerge(
-                            core:     BoundaryBucket,
-                            surroundingBuckets: List[BoundaryBucket]): MergedBuckets = {
-    val (unitigs, updated) = core.seizeUnitigs(surroundingBuckets.flatMap(_.core))
+  def seizeUnitigsAndSplit(bucket: BoundaryBucket): (List[Contig], List[BoundaryBucket]) = {
+    val (unitigs, updated) = bucket.seizeUnitigs(bucket.boundary)
 
     //Split the core into parts that have no mutual overlap
     val split = updated.splitSequences
 
-    val splitFinders = split.map(s => {
-      val boundaryOnly = s.filter(_._2).map(_._1)
-      (s, overlapFinder(boundaryOnly, core.k))
+    val newBuckets = split.flatMap(s => {
+      val (bound, core) = s.toArray.partition(_._2)
+      if (!bound.isEmpty) {
+        Some(BoundaryBucket(bucket.id, core.map(_._1), bound.map(_._1), bucket.k))
+      } else {
+        //All output at this stage
+        None
+      }
     })
 
-
-    //Pair each split part with the boundary IDs that it intersects with
-
-    //On the assumption that buckets maintain roughly equal size,
-    //it is cheaper to retain finders for s (bucket subparts) and traverse
-    //the boundary (full buckets) rather than the opposite
-    val swb = surroundingBuckets.map(b => {
-      val bfinder = b.overlapFinder
-      splitFinders.map { case (s, sfinder) => {
-        if (bfinder.check(sfinder)) {
-          Some(b.id)
-        } else {
-          None
-        }
-      } }
-    })
-    val bySplit = swb.transpose
-
-    val splitWithBoundary = bySplit.map(_.flatten) zip split
-
-    //Split parts that had no intersection with the boundary will be output as
-    //unitigs at this stage, so OK to drop them
-
-    val mergedParts = unifyParts(splitWithBoundary)
-
-    val intersectParts = mergedParts.map(m => {
-      val core = m._1.filter(! _._2).map(_._1)
-      val boundary = m._1.filter(_._2).map(_._1)
-      (core, boundary, m._2)
-    })
-
-    (unitigs, intersectParts)
+    (unitigs, newBuckets)
   }
 }
 
@@ -364,7 +332,6 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
     val withBoundaryFlag = core.map(x => (x, false)) ++
       boundary.map(x => (x, true))
 
-    //TODO core/boundary handling
     BoundaryBucket.splitSequences(withBoundaryFlag, k)
   }
 

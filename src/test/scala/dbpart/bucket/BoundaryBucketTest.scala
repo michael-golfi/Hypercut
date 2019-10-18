@@ -94,7 +94,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val surrounding = List(BoundaryBucket(2, Array(), Array("TTTA"), 4),
       BoundaryBucket(3, Array(), Array("GCCC"), 4))
 
-    val mrg = BoundaryBucket.seizeUnitigsAndMerge(core, surrounding)
+    val mrg = BoundaryBucket.seizeUnitigsAndSplit(core, surrounding)
     val unitigs = mrg._1.map(_.seq)
     unitigs.toSeq should contain theSameElementsAs(List("ACTG", "CTGGGA", "CTGAA"))
 
