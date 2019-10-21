@@ -24,8 +24,9 @@ final class KmerNode(val seq: NTSeq, val abundance: Double) extends HasID {
 
   def boundary: Boolean = (boundaryPartition != None)
   var boundaryPartition: Option[Int] = None
+  def bndFlag = if(boundary) "b" else ""
 
-  override def toString: String = s"$seq($abundance)"
+  override def toString: String = s"$seq($abundance)$bndFlag"
 
   def k: Int = seq.length()
 

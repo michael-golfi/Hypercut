@@ -193,7 +193,7 @@ object BoundaryBucket {
    * and split the bucket into parts without overlap.
    */
   def seizeUnitigsAndSplit(bucket: BoundaryBucket): (List[Contig], List[BoundaryBucket]) = {
-    val (unitigs, updated) = bucket.seizeUnitigs(bucket.boundary)
+    val (unitigs, updated) = bucket.seizeUnitigs
 
     //Split the core into parts that have no mutual overlap
     val split = updated.splitSequences
@@ -207,7 +207,6 @@ object BoundaryBucket {
         None
       }
     })
-
     (unitigs, newBuckets)
   }
 }
@@ -251,17 +250,16 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
 
   import Searching._
 
-  def nodesForGraph(surroundingBoundary: Iterable[String]): Iterator[KmerNode] = {
+  def nodesForGraph: Iterator[KmerNode] = {
     //Possible optimization: try to do this with boundary as a simple iterator instead
 
-    val in = sharedOverlapsThroughPost(surroundingBoundary, boundary, k).toArray.sorted
-    val out = sharedOverlapsThroughPrior(boundary, surroundingBoundary, k).toArray.sorted
+    val in = sharedOverlapsThroughPrior(boundary, core, k).toArray.sorted
+    val out = sharedOverlapsThroughPost(core, boundary, k).toArray.sorted
 
     //TODO is this the right place to de-duplicate kmers?
     //Could easily do this as part of sorting in PathGraphBuilder.
 
-    coreKmers.distinct.iterator.map(s => new KmerNode(s, 1)) ++
-      (boundaryKmers.distinct.iterator.map(s => {
+      coreKmers.distinct.iterator.map(s => {
       val n = new KmerNode(s, 1)
 
       val suf = DNAHelpers.kmerSuffix(s, k)
@@ -279,29 +277,26 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
       }
 
       n
-    }))
+    })
   }
 
-  def kmerGraph(surroundingBoundary: Iterable[String]) = {
+  def kmerGraph = {
     val builder = new PathGraphBuilder(k)
-    builder.fromNodes(nodesForGraph(surroundingBoundary).toArray)
+    builder.fromNodes(nodesForGraph.toArray)
   }
 
   /**
    * Find unitigs that we know to be contained in this bucket.
    * This includes unitigs that touch the boundary.
    */
-  def containedUnitigs(surroundingBoundary: Iterable[String]) = {
-    new PathFinder(k).findSequences(kmerGraph(surroundingBoundary))
-  }
-
+  def containedUnitigs =
+    new PathFinder(k).findSequences(kmerGraph)
 
   /**
-   * Remove sequences from this bucket.
+   * Remove sequences from the core of this bucket.
    */
   def removeSequences(ss: Iterable[NTSeq]): BoundaryBucket = {
-    copy(core = removeKmers(ss, coreKmers, k).toArray,
-      boundary = removeKmers(ss, boundaryKmers, k).toArray)
+    copy(core = removeKmers(ss, coreKmers, k).toArray)
   }
 
   /**
@@ -310,14 +305,14 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
    * Returns the unitigs as well as an updated copy of the bucket with remaining
    * sequences.
    */
-  def seizeUnitigs(surroundingBoundary: Iterable[String]) = {
+  def seizeUnitigs = {
 //    println(s"Core: ${core.toList}")
 //    println(s"Boundary: ${boundary.toList}")
 
 //    println("Taking unitigs from graph:")
-//    kmerGraph(boundary).printBare()
+//    kmerGraph.printBare()
 
-    val unit = containedUnitigs(surroundingBoundary)
+    val unit = containedUnitigs
     val (atBound, noBound) = unit.partition(_.touchesBoundary)
 
     val updated = removeSequences(noBound.map(_.seq))
