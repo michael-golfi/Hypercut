@@ -1,17 +1,13 @@
 package dbpart.bucket
 
 import dbpart._
+import dbpart.graph.{KmerNode, PathFinder, PathGraphBuilder}
 import dbpart.shortread.Read
 import miniasm.genome.util.DNAHelpers
-import dbpart.graph.PathGraphBuilder
-import dbpart.graph.KmerNode
-import dbpart.graph.PathFinder
 
-import scala.collection.immutable.SortedSet
-import scala.collection.{Searching, Set => CSet}
-import scala.collection.mutable.{Map => MMap, Set => MSet}
 import scala.annotation.tailrec
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{Set => MSet}
+import scala.collection.{Searching, Set => CSet}
 import scala.reflect.ClassTag
 
 object BoundaryBucket {
@@ -330,13 +326,5 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
     BoundaryBucket.splitSequences(withBoundaryFlag, k)
   }
 
-  /**
-   * For testing since arrays do not have deep equals
-   */
-  def structure = (id, core.toSet, boundary.toSet, k)
-
-  override def toString = {
-    s"BoundaryBucket($id\t${core.mkString(",")})\t${boundary.mkString(",")})"
-  }
-
+  override def toString = s"BoundaryBucket($id\t${core.mkString(",")})\t${boundary.mkString(",")})"
 }
