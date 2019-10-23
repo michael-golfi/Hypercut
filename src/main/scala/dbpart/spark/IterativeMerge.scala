@@ -191,6 +191,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val collected = aggVerts.
       join(mergeBoundary, Seq("id"), "left_outer").
       selectExpr("struct(id, core, boundary, k) as centre",
+        "(if (isnotnull(degree), degree, 0)) as degree",
         "(if (isnotnull(minId), (minId == id), true)) as receiver",
         "surrounding").as[CollectedBuckets].cache
 
@@ -286,9 +287,10 @@ final case class EdgeData(id: Long, boundary: Array[String],
  *                    If not it is duplicated.
  * @param surrounding Surrounding buckets (that were collected) and their degrees in the graph
  */
-final case class CollectedBuckets(centre: BoundaryBucket, receiver: Boolean,
+final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver: Boolean,
                                   surrounding: Array[(BoundaryBucket, Int)]) {
 
+  //Handle the possibility of a null value safely
   def safeSurrounding = Option(surrounding).getOrElse(Array())
 
   @transient
@@ -303,16 +305,17 @@ final case class CollectedBuckets(centre: BoundaryBucket, receiver: Boolean,
    * Lone neighbor boundary is always promoted to core since "centre" was their only neighbor.
    */
   def unifiedCore =
-    if (receiver && safeSurrounding.isEmpty)
+    if (degree == 0)
       centre.core ++ centre.boundary
     else
-      centre.core ++ deduplicate(safeSurrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary))
+        centre.core ++ safeSurrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary)
+//      centre.core ++ deduplicate(safeSurrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary))
 
   def unifiedBoundary =
-    if (receiver && safeSurrounding.isEmpty)
-      Seq()
+    if (degree == 0)
+      Array[String]()
     else
-      deduplicate(shared.flatMap(_._1.boundary)) ++ centre.boundary
+      shared.flatMap(_._1.boundary) ++ centre.boundary
 
   def unified: Iterable[BoundaryBucket] = {
     if (safeSurrounding.isEmpty && !receiver) {
@@ -325,7 +328,7 @@ final case class CollectedBuckets(centre: BoundaryBucket, receiver: Boolean,
   }
 
   def unifiedBucketId = if (safeSurrounding.isEmpty) centre.id else safeSurrounding.head._1.id
-  
+
   def edgeTranslation: Seq[(Long, Long)] = {
     if (receiver) {
       safeSurrounding.toSeq.map(_._1.id -> unifiedBucketId) :+ (centre.id -> unifiedBucketId)
