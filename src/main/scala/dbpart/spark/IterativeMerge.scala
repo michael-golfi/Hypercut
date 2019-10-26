@@ -5,6 +5,7 @@ import java.util.Date
 
 import dbpart.Contig
 import dbpart.bucket.BoundaryBucket
+import dbpart.bucket.BoundaryBucket.OverlapFinder
 import org.apache.spark.sql.SparkSession
 import org.graphframes.GraphFrame
 import org.graphframes.lib.AggregateMessages
@@ -213,22 +214,24 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * remain.
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
-    val boundaryOnly = graph.vertices.selectExpr("id as dst", "boundary as dstBoundary")
+    val boundaryOnly = graph.vertices.selectExpr("id as dst", "boundary as dstBoundary").
+      as[(Long, Array[String])]
+
+    val k = this.k
+
+    val srcFinders = boundaryOnly.map { case (id, boundary) => {
+      (id, BoundaryBucket.overlapFinder(boundary, k))
+    } }.toDF("id", "finder").as[EdgeChecker]
+
     //join edges with boundary data
     val bySrc = graph.edges.toDF("id", "dst").
       join(boundaryOnly, Seq("dst")).
-      groupBy("id").
-      agg(collect_list(struct("dst", "dstBoundary")).as("dstData")).
-      as[(Long, Array[(Long, Array[String])])]
-
-    val remEdges = graph.vertices.join(bySrc, Seq("id")).as[EdgeData].
-      flatMap(d => {
-        val finder = BoundaryBucket.overlapFinder(d.boundary, d.k)
-        val remain = d.dstData.filter(x => finder.check(x._2))
-        remain.map(r => (d.id, r._1))
+      join(srcFinders, Seq("id")).as[(Long, Long, Array[String], OverlapFinder)].
+      flatMap(x => {
+        if (x._4.check(x._3)) Some ((x._1, x._2)) else None
       })
 
-    val newEdges = materialize(normalizeEdges(remEdges.toDF).cache)
+    val newEdges = materialize(normalizeEdges(bySrc.toDF).cache)
     graph.edges.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
@@ -347,4 +350,6 @@ object IterativeSerial {
   def formatUnitig(u: Contig) = {
     (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
   }
+
+  case class EdgeChecker(id: Long, finder: OverlapFinder)
 }

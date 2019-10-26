@@ -84,16 +84,22 @@ object BoundaryBucket {
   }
 
   def overlapFinder(data: Iterable[String], k: Int) =
-    new OverlapFinder(prefixesAndSuffixes(data.iterator, k).to[MSet],
-      purePrefixes(data.iterator, k).to[MSet],
-      pureSuffixes(data.iterator, k).to[MSet],
+    new OverlapFinder(prefixesAndSuffixes(data.iterator, k).toArray,
+      purePrefixes(data.iterator, k).toArray,
+      pureSuffixes(data.iterator, k).toArray,
       k)
 
   /**
    * A class that simplifies repeated checking for overlaps against some collection of k-mers.
    */
-  class OverlapFinder(val prefixAndSuffix: CSet[String], val prefix: CSet[String], val suffix: CSet[String],
+  case class OverlapFinder(val pas: Array[String], val p: Array[String], val s: Array[String],
                       k: Int) {
+    @transient
+    val prefixAndSuffix = pas.to[MSet]
+    @transient
+    val prefix = p.to[MSet]
+    @transient
+    val suffix = s.to[MSet]
 
     def find(other: Iterable[String]): Iterator[String] = {
       val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
@@ -231,11 +237,11 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def coreStats = BoundaryBucketStats(core.size, core.map(Read.numKmers(_, k)).sum,
     boundary.size, boundary.map(Read.numKmers(_, k)).sum)
 
-  def pureSuffixSet: CSet[String] = pureSuffixes(boundary.iterator, k).to[MSet]
+  def pureSuffixSet = pureSuffixes(boundary.iterator, k).toArray
 
-  def purePrefixSet: CSet[String] = purePrefixes(boundary.iterator, k).to[MSet]
+  def purePrefixSet = purePrefixes(boundary.iterator, k).toArray
 
-  def prefixAndSuffixSet: CSet[String] = prefixesAndSuffixes(boundary.iterator, k).to[MSet]
+  def prefixAndSuffixSet = prefixesAndSuffixes(boundary.iterator, k).toArray
 
   /**
    * Constructs an overlap finder that can test this bucket's overlaps (through boundary)
