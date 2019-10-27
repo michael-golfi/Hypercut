@@ -1,5 +1,7 @@
 package dbpart.bucket
 
+import com.github.pathikrit.scalgos.DisjointSet
+
 import scala.collection.{Set => CSet}
 import scala.collection.mutable.{Set => MSet}
 import scala.annotation.tailrec
@@ -15,37 +17,35 @@ object Util {
    * Items are expected to be distinct.
    */
   def partitionByKeys[A, K](items: List[A], keys: A => Iterable[K]): List[List[A]] = {
-    val withKeys = items.map(i => (i, keys(i)))
-
-    withKeys.foldLeft(List[WithKeys[A, K]]())((acc, i) => {
-      val ks = i._2.to[MSet]
-      unify(List(i._1), ks, acc, keys)
-    }).map(_._1)
-  }
-
-  /**
-   * Iterate through clusters, unifying them
-   * @param from list to unify with as many clusters as possible
-   * @param fromKeys keys of from
-   * @param clusters iterate through this list of existing clusters
-   * @param keys key construction function
-   * @param acc result accumulator
-   * @tparam A
-   * @tparam K
-   * @return
-   */
-  @tailrec
-  def unify[A, K](from: List[A], fromKeys: CSet[K],
-                  clusters: List[WithKeys[A, K]],
-                  keys: A => Iterable[K], acc: List[WithKeys[A, K]] = Nil): List[WithKeys[A, K]] = {
-    clusters match {
-      case (l, ks) :: ls =>
-        if (ks.exists(fromKeys.contains)) {
-          unify(l ::: from, fromKeys ++ ks, ls, keys, acc)
-        } else {
-          unify(from, fromKeys, ls, keys, (l, ks) :: acc)
-        }
-      case _ => (from, fromKeys.toSeq):: acc
+    val disjoint = DisjointSet.empty[K, A]
+    for {
+      i <- items
+      ks = keys(i)
+      head <- ks.headOption
+    } {
+      if (!disjoint.contains(head)) {
+        disjoint += head
+      }
+      disjoint.assignData(head, i)
+      for {
+        k <- ks
+        if !disjoint.contains(k)
+      } {
+        disjoint += k
+      }
     }
+
+    for {
+      i <- items
+      ks = keys(i)
+      head <- ks.headOption
+      k <- ks
+    } {
+      disjoint.union(head, k)
+    }
+    val partitioned = disjoint.setAnnotations
+    partitioned.toList
   }
+
+
 }
