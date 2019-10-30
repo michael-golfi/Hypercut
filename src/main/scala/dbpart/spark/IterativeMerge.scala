@@ -17,16 +17,6 @@ import org.graphframes.lib.AggregateMessages
 class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
                      minLength: Option[Int], k: Int, output: String) {
 
-  val AM = AggregateMessages
-  val idSrc = AM.src("id")
-  val idDst = AM.dst("id")
-  val coreSrc = AM.src("core")
-  val coreDst = AM.dst("core")
-  val bndSrc = AM.src("boundary")
-  val bndDst = AM.dst("boundary")
-  val degSrc = AM.src("degree")
-  val degDst = AM.dst("degree")
-
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
 
   import IterativeSerial._
@@ -94,7 +84,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
 
   /**
-   * Output unitigs that are ready and then split each bucket into maximal disjoint parts.
+   * Output unitigs that are ready and then split the remainder of
+   * each bucket into disjoint parts when possible.
    */
   def seizeUnitigsAndSplit(graph: GraphFrame): GraphFrame = {
 
@@ -112,7 +103,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
 
+    //Assign new unique IDs to all split buckets that were generated
     val splitBuckets = splitData.selectExpr("explode(_2)", "monotonically_increasing_id() as nid").cache
+    //Translate the old IDs into the new ones
     val translate = splitBuckets.select("col.id", "nid")
 
     val nbkts = materialize(removeLineage(
@@ -128,16 +121,26 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
   /**
    * Translate edges according to an ID translation table and
-   * remove duplicates.
+   * remove duplicates. The format of rows in the translation table is (old, new)
+   * where old IDs will be renamed to new ones. This need not be one-to-one,
+   * can be potentially many-to-many etc.
    * Also ensures that both A->B and B->A do not exist simultaneously for any A,B.
+   * The double join is a performance concern and the size of the dataset can grow very large
+   * if the translation map contains a lot of duplicates.
    */
   def translateAndNormalizeEdges(edges: DataFrame, translation: DataFrame) = {
+
     normalizeEdges(edges.toDF("src", "dst").
       join(translation.toDF("src", "newSrc"), Seq("src")).
       join(translation.toDF("dst", "newDst"), Seq("dst")).
       selectExpr("newSrc", "newDst"))
   }
 
+  /**
+   * Removes duplicates, orders edges in a standardized way, removes self edges.
+   * @param edges
+   * @return
+   */
   def normalizeEdges(edges: DataFrame) = {
     edges.toDF("src", "dst").
       filter("!(src == dst)").
@@ -164,13 +167,26 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   /**
    * Collect neighbors and promote boundary to core where possible,
    * returning the result as a graph with larger, unified buckets.
+   * To do this with a minimum of redundancy, we identify the minimum ID of the neighborhood of each bucket,
+   * and send its data there.
    *
    * @param graph
    * @return
    */
   def collectBuckets(graph: GraphFrame): GraphFrame = {
+    val AM = AggregateMessages
+    val idSrc = AM.src("id")
+    val idDst = AM.dst("id")
+    val coreSrc = AM.src("core")
+    val coreDst = AM.dst("core")
+    val bndSrc = AM.src("boundary")
+    val bndDst = AM.dst("boundary")
+    val degSrc = AM.src("degree")
+    val degDst = AM.dst("degree")
 
     //Figure out the minimum neighboring ID to send neighboring parts to for speculative merge
+    //This is the minimum of the IDs of all surrounding buckets plus the bucket's own ID.
+    //Since edges are bidirectional, we send in both directions.
     val minIds = graph.aggregateMessages.
       sendToDst(array_min(array(idDst, idSrc))).
       sendToSrc(array_min(array(idDst, idSrc))).
@@ -184,9 +200,11 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val mergeBoundary = GraphFrame(aggVerts, graph.edges).
       aggregateMessages.
       sendToDst(when(idDst === AM.src("minId"),
-        struct(struct(idSrc.as("id"), coreSrc.as("core"), bndSrc.as("boundary"), lit(k).as("k")), degSrc))).
+        struct(struct(idSrc.as("id"), coreSrc.as("core"), bndSrc.as("boundary"),
+          lit(k).as("k")), degSrc))).
       sendToSrc(when(idSrc === AM.dst("minId"),
-        struct(struct(idDst.as("id"), coreDst.as("core"), bndDst.as("boundary"), lit(k).as("k")), degDst))).
+        struct(struct(idDst.as("id"), coreDst.as("core"), bndDst.as("boundary"),
+          lit(k).as("k")), degDst))).
       agg(collect_list(AM.msg).as("surrounding"))
 
     val collected = aggVerts.
@@ -244,14 +262,20 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     stats(showStats, "Start of iteration/refined edges", data)
     //    data.vertices.show()
 
+    //At the start of each iteration, edges are refined (validated, guaranteed to correspond
+    //to actual (k-1)-mer intersection between boundaries of two adjacent buckets.
+
+    //Collect the neighborhood of selected buckets
     data = collectBuckets(data)
     stats(showStats, "Collected/promoted", data)
     //    data.vertices.show()
 
+    //Extract and output unitigs from each bucket, splitting the remaining data if possible
     data = seizeUnitigsAndSplit(data)
     stats(showStats, "Seize/split", data)
     //    data.vertices.show()
 
+    //Refine edges as above
     data = refineEdges(data)
     data
   }
@@ -287,7 +311,7 @@ final case class EdgeData(id: Long, boundary: Array[String],
  *
  * @param centre      The central bucket
  * @param receiver    Whether this centre is a local minimum (receiver of neighbors).
- *                    If not it is duplicated.
+ *                    If not it is duplicated elsewhere.
  * @param surrounding Surrounding buckets (that were collected) and their degrees in the graph
  */
 final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver: Boolean,
