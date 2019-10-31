@@ -94,29 +94,54 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     //Returns cores split into subparts based on remaining data
     val splitData = graph.vertices.as[BoundaryBucket].map(b => {
       val (unitigs, parts) = BoundaryBucket.seizeUnitigsAndSplit(b)
-      (unitigs, parts)
+      (b.id, unitigs, parts)
     })
+    //TODO should splitData be cached?
 
     val ml = minLength
-    splitData.selectExpr("explode(_1)").select("col.*").as[Contig].
+    splitData.selectExpr("explode(_2)").select("col.*").as[Contig].
       flatMap(c => lengthFilter(ml)(c).map(u => formatUnitig(u))).
       write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
 
-    //Assign new unique IDs to all split buckets that were generated
-    val splitBuckets = splitData.selectExpr("explode(_2)", "monotonically_increasing_id() as nid").cache
-    //Translate the old IDs into the new ones
-    val translate = splitBuckets.select("col.id", "nid")
+    val provisionalParts = splitData.selectExpr("_1 as id",
+      "transform(_3, x -> x.boundary) as boundary",
+      "transform(_3, x -> x.core) as core",
+      "transform(_3, x -> monotonically_increasing_id()) as newIds").cache
+    val splitBoundary = provisionalParts.as[SplitBoundary]
 
-    val nbkts = materialize(removeLineage(
-      splitBuckets.selectExpr("nid as id", "col.core", "col.boundary", "col.k").toDF
-    ))
-    val nedges = materialize(removeLineage(
-      translateAndNormalizeEdges(graph.edges, translate).cache
-    ))
-    splitBuckets.unpersist()
+    val builtEdges = edgesFromSplitBoundaries(splitBoundary, graph.edges.as[(Long, Long)])
+    val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
+    val nextBuckets = builtBuckets.selectExpr("col.newIds as id", "col.core as core", "col.boundary as boundary").
+      withColumn("k", lit(k)).as[BoundaryBucket]
 
-    GraphFrame(nbkts, nedges)
+    val nb = materialize(removeLineage(nextBuckets.toDF.cache))
+    val ne = materialize(removeLineage(normalizeEdges(builtEdges.toDF("src", "dst")).cache))
+    provisionalParts.unpersist
+
+    GraphFrame(nb, ne)
+  }
+
+  /**
+   * Given split buckets and old edges, compute all the new edges that correspond to actual intersection
+   * between the next-iteration split buckets.
+   */
+  def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]): Dataset[(Long, Long)] = {
+    val joint = boundaries.joinWith(edges, boundaries("id") === edges("src"))
+    val joint2 = joint.joinWith(boundaries, joint("_2.dst") === boundaries("id"))
+
+    val k = this.k
+    joint2.flatMap(row => {
+      val fromParts = row._1._1
+      val toParts = row._2
+      for {
+        (from, fromNid) <- fromParts.boundary zip fromParts.newIds
+        finder = BoundaryBucket.overlapFinder(from, k)
+        (to, toNid) <- toParts.boundary zip toParts.newIds
+        if finder.check(to)
+        edge = (fromNid, toNid)
+      } yield edge
+    })
   }
 
   /**
@@ -270,13 +295,11 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     stats(showStats, "Collected/promoted", data)
     //    data.vertices.show()
 
-    //Extract and output unitigs from each bucket, splitting the remaining data if possible
+    //Extract and output unitigs from each bucket, splitting the remaining data if possible.
+    //New edges will be correct by construction (no need to refine)
     data = seizeUnitigsAndSplit(data)
     stats(showStats, "Seize/split", data)
-    //    data.vertices.show()
 
-    //Refine edges as above
-    data = refineEdges(data)
     data
   }
 
@@ -303,9 +326,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 }
 
+final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long])
+
 final case class EdgeData(id: Long, boundary: Array[String],
                           dstData: Array[(Long, Array[String])], k: Int)
-
 /**
  * A bucket and some of its neighbors.
  *
