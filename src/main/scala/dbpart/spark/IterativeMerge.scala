@@ -75,8 +75,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val edges = translateAndNormalizeEdges(graph.edges, edgeTranslation).cache
 
     val idGraph = GraphFrame(buckets.selectExpr("bucket.*").cache,
-      edges)
-    materialize(edges)
+      materialize(edges))
     edgeTranslation.unpersist
 
     idGraph
@@ -119,6 +118,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val ne = materialize(removeLineage(normalizeEdges(builtEdges.toDF("src", "dst")).cache))
     provisionalParts.unpersist
 
+    graph.edges.unpersist
+    graph.vertices.unpersist
     GraphFrame(nb, ne)
   }
 
@@ -128,18 +129,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]): Dataset[(Long, Long)] = {
     val joint = boundaries.joinWith(edges, boundaries("id") === edges("src"))
-    val joint2 = joint.joinWith(boundaries, joint("_2.dst") === boundaries("id"))
-
+    val srcByDst = joint.groupByKey(_._2._2)
+    val byDst = boundaries.groupByKey(_.id)
     val k = this.k
-    joint2.flatMap(row => {
-      val fromParts = row._1._1
-      val toParts = row._2
+    byDst.cogroup(srcByDst)((key, it1, it2) => {
       for {
-        (from, fromNid) <- fromParts.boundary zip fromParts.newIds
-        finder = BoundaryBucket.overlapFinder(from, k)
-        (to, toNid) <- toParts.boundary zip toParts.newIds
-        if finder.check(to)
-        edge = (fromNid, toNid)
+        from <- it1
+        to <- it2.map(_._1)
+        edge <- from.edgesTo(to, k)
       } yield edge
     })
   }
@@ -248,6 +245,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val nextEdges = materialize(translateAndNormalizeEdges(graph.edges, edgeTranslation.toDF).cache)
     aggVerts.unpersist
     collected.unpersist
+    graph.edges.unpersist
+    graph.vertices.unpersist
     GraphFrame(r.toDF, nextEdges)
   }
 
@@ -261,20 +260,22 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       as[(Long, Array[String])]
 
     val k = this.k
+    val es = graph.edges.as[(Long, Long)]
+    val bySrc = es.
+      joinWith(boundaryOnly, es("dst") === boundaryOnly("dst"))
 
-    val srcFinders = boundaryOnly.map { case (id, boundary) => {
-      (id, BoundaryBucket.overlapFinder(boundary, k))
-    } }.toDF("id", "finder").as[EdgeChecker]
+    val foundEdges = boundaryOnly.groupByKey(_._1).cogroup(
+      bySrc.groupByKey(_._1._1))((key, it1, it2) => {
+      for {
+        from <- it1
+        finder = BoundaryBucket.overlapFinder(from._2, k)
+        to <- it2
+        if finder.check(to._2._2)
+        edge = (from._1, to._2._1)
+      } yield edge
+    })
 
-    //join edges with boundary data
-    val bySrc = graph.edges.toDF("id", "dst").
-      join(boundaryOnly, Seq("dst")).
-      join(srcFinders, Seq("id")).as[(Long, Long, Array[String], OverlapFinder)].
-      flatMap(x => {
-        if (x._4.check(x._3)) Some ((x._1, x._2)) else None
-      })
-
-    val newEdges = materialize(normalizeEdges(bySrc.toDF).cache)
+    val newEdges = materialize(normalizeEdges(foundEdges.toDF).cache)
     graph.edges.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
@@ -326,10 +327,17 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 }
 
-final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long])
+final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
+  def edgesTo(other: SplitBoundary, k: Int) =
+    for {
+      (from, fromNid) <- boundary.iterator zip newIds.iterator
+      finder = BoundaryBucket.overlapFinder(from, k)
+      (to, toNid) <- other.boundary.iterator zip other.newIds.iterator
+      if finder.check(to)
+      edge = (fromNid, toNid)
+    } yield edge
+}
 
-final case class EdgeData(id: Long, boundary: Array[String],
-                          dstData: Array[(Long, Array[String])], k: Int)
 /**
  * A bucket and some of its neighbors.
  *
