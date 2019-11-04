@@ -92,14 +92,14 @@ object BoundaryBucket {
   /**
    * A class that simplifies repeated checking for overlaps against some collection of k-mers.
    */
-  case class OverlapFinder(val pas: Array[String], val p: Array[String], val s: Array[String],
-                      k: Int) {
+  case class OverlapFinder(val preAndSuf: Array[String], val pre: Array[String], val suf: Array[String],
+                           k: Int) {
     @transient
-    val prefixAndSuffix = pas.to[MSet]
+    val prefixAndSuffix = preAndSuf.to[MSet]
     @transient
-    val prefix = p.to[MSet]
+    val prefix = pre.to[MSet]
     @transient
-    val suffix = s.to[MSet]
+    val suffix = suf.to[MSet]
 
     def find(other: Iterable[String]): Iterator[String] = {
       val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
