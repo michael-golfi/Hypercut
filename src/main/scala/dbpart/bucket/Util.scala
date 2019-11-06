@@ -43,7 +43,7 @@ object Util {
     } {
       disjoint.union(head, k)
     }
-    val partitioned = disjoint.setAnnotations
+    val partitioned = disjoint.setAnnotations.map(_.toList)
     partitioned.toList
   }
 

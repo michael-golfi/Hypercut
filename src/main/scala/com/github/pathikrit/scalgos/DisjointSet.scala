@@ -2,6 +2,7 @@
 package com.github.pathikrit.scalgos
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
 import scala.language.implicitConversions
 
@@ -51,13 +52,13 @@ class DisjointSet[A, Annot] {
     if (xRoot != yRoot) {
       if (xRoot.rank < yRoot.rank) {        // change the root of the shorter/less-depth one
         xRoot.parent = yRoot
-        yRoot.annotation = yRoot.annotation ::: xRoot.annotation
+        yRoot.annotation = yRoot.annotation ++ xRoot.annotation
       } else if (xRoot.rank > yRoot.rank) {
         yRoot.parent = xRoot
-        xRoot.annotation = yRoot.annotation ::: xRoot.annotation
+        xRoot.annotation = yRoot.annotation ++ xRoot.annotation
       } else {
         yRoot.parent = xRoot
-        xRoot.annotation = yRoot.annotation ::: xRoot.annotation
+        xRoot.annotation = yRoot.annotation ++ xRoot.annotation
         xRoot.rank += 1   // else if there is tie, increment
       }
     }
@@ -78,7 +79,7 @@ class DisjointSet[A, Annot] {
    * @param d
    */
   def assignData(x: A, d: Annot): Unit = {
-    x.root.annotation = (d :: x.root.annotation).distinct
+    x.root.annotation = (x.root.annotation :+ d).distinct
   }
 
   def setAnnotations = parent.keys.map(_.root).toSeq.distinct.map(_.annotation)
@@ -102,7 +103,7 @@ object DisjointSet {
       parent
     }
 
-    var annotation: List[Annot] = Nil
+    var annotation: ArrayBuffer[Annot] = ArrayBuffer.empty
   }
 
   /**
