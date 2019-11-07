@@ -113,6 +113,9 @@ object BoundaryBucket {
       find(other).nonEmpty
     }
 
+    def check(other: String): Boolean =
+      check(Seq(other))
+
     def find(other: OverlapFinder): Iterator[String] =
       find(other.prefixAndSuffix.iterator, other.prefix.iterator, other.suffix.iterator)
 
@@ -249,6 +252,12 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
    */
   def overlapFinder = new OverlapFinder(prefixAndSuffixSet, purePrefixSet,
     pureSuffixSet, k)
+
+  def shiftBoundary(intersecting: Iterable[String]) = {
+    val finder = new OverlapFinder(intersecting.toArray, Array(), Array(), k)
+    val (stayInBound, boundToCore) = boundary.partition(b => finder.check(b))
+    BoundaryBucket(id, core ++ boundToCore, stayInBound, k)
+  }
 
   import Searching._
 

@@ -25,6 +25,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
 
+  val AM = AggregateMessages
+  val idSrc = AM.src("id")
+  val idDst = AM.dst("id")
+  val coreSrc = AM.src("core")
+  val coreDst = AM.dst("core")
+  val bndSrc = AM.src("boundary")
+  val bndDst = AM.dst("boundary")
+
   var iteration = 1
   var firstWrite = true
 
@@ -114,21 +122,23 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val nextBuckets = builtBuckets.selectExpr("col.newIds as id", "col.core as core", "col.boundary as boundary").
       withColumn("k", lit(k)).as[BoundaryBucket]
 
-    val nb = materialize(removeLineage(nextBuckets.toDF.cache))
-    val ne = materialize(removeLineage(normalizeEdges(builtEdges.toDF("src", "dst")).cache))
+    val nb = materialize(removeLineage(nextBuckets.toDF))
+    val ne = materialize(removeLineage(builtEdges.toDF("src", "dst", "intersection")))
     provisionalParts.unpersist
 
     graph.edges.unpersist
     graph.vertices.unpersist
-    GraphFrame(nb, ne)
+    shiftBoundary(GraphFrame(nb, ne))
   }
 
   /**
    * Given split buckets and old edges, compute all the new edges that correspond to actual intersection
    * between the next-iteration split buckets.
    */
-  def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]): Dataset[(Long, Long)] = {
-    val joint = boundaries.joinWith(edges, boundaries("id") === edges("src"))
+  def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]):
+    Dataset[(Long, Long, Array[String])] = {
+    val ne = normalizeEdges(edges.toDF).as[(Long, Long)]
+    val joint = boundaries.joinWith(ne, boundaries("id") === ne("src"))
     val srcByDst = joint.groupByKey(_._2._2)
     val byDst = boundaries.groupByKey(_.id)
     val k = this.k
@@ -196,13 +206,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * @return
    */
   def collectBuckets(graph: GraphFrame): GraphFrame = {
-    val AM = AggregateMessages
-    val idSrc = AM.src("id")
-    val idDst = AM.dst("id")
-    val coreSrc = AM.src("core")
-    val coreDst = AM.dst("core")
-    val bndSrc = AM.src("boundary")
-    val bndDst = AM.dst("boundary")
     val degSrc = AM.src("degree")
     val degDst = AM.dst("degree")
 
@@ -260,7 +263,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       as[(Long, Array[String])]
 
     val k = this.k
-    val es = graph.edges.as[(Long, Long)]
+    val es = normalizeEdges(graph.edges).as[(Long, Long)]
     val bySrc = es.
       joinWith(boundaryOnly, es("dst") === boundaryOnly("dst"))
 
@@ -270,14 +273,40 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         from <- it1
         finder = BoundaryBucket.overlapFinder(from._2, k)
         to <- it2
-        if finder.check(to._2._2)
-        edge = (from._1, to._2._1)
+        overlap = finder.find(to._2._2)
+        if overlap.hasNext
+        edge = (from._1, to._2._1, overlap.toArray)
       } yield edge
     })
 
-    val newEdges = materialize(normalizeEdges(foundEdges.toDF).cache)
+    val newEdges = materialize(foundEdges.cache).toDF("src", "dst", "intersection")
+//      normalized.join(withInt.select("src", "intersection"), Seq("src", "dst")).cache)
+
     graph.edges.unpersist
+//    withInt.unpersist
     GraphFrame(graph.vertices, newEdges)
+  }
+
+  def shiftBoundary(graph: GraphFrame): GraphFrame = {
+    val allIntersecting = graph.aggregateMessages.
+      sendToDst(AM.edge("intersection")).
+      sendToSrc(AM.edge("intersection")).
+      agg(collect_list(AM.msg).as("intersection")).
+      selectExpr("id", "(if (isnotnull(intersection), intersection, array(array()))) as intersection")
+
+    val shiftedVert =
+      graph.vertices.as[BoundaryBucket].joinWith(
+        allIntersecting.as[(Long, Array[Array[String]])], graph.vertices("id") === allIntersecting("id"), "left_outer").
+        map(row => {
+          Option(row._2) match {
+            case Some(int) => row._1.shiftBoundary(int._2.toSeq.flatten)
+            case None => row._1.copy(core = row._1.core ++ row._1.boundary, boundary = Array())
+          }
+        })
+
+    val newVerts = materialize(shiftedVert.cache)
+    graph.vertices.unpersist
+    GraphFrame(newVerts.toDF, graph.edges.select("src", "dst"))
   }
 
   /**
@@ -285,7 +314,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def runIteration(graph: GraphFrame): GraphFrame = {
     var data = graph
-    stats(showStats, "Start of iteration/refined edges", data)
+    stats(showStats, "Start of iteration/split buckets", data)
     //    data.vertices.show()
 
     //At the start of each iteration, edges are refined (validated, guaranteed to correspond
@@ -299,8 +328,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     //Extract and output unitigs from each bucket, splitting the remaining data if possible.
     //New edges will be correct by construction (no need to refine)
     data = seizeUnitigsAndSplit(data)
-    stats(showStats, "Seize/split", data)
-
     data
   }
 
@@ -311,7 +338,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val dtf = new SimpleDateFormat("HH:mm:ss")
     println(s"[${dtf.format(new Date)}] Initialize iterative merge")
 
-    var data = refineEdges(initialize(graph))
+    var data = shiftBoundary(refineEdges(initialize(graph)))
     var n = data.edges.count
 
     while (n > 0) {
@@ -328,13 +355,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 }
 
 final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
-  def edgesTo(other: SplitBoundary, k: Int) =
+  def edgesTo(other: SplitBoundary, k: Int): Iterator[(Long, Long, Array[String])] =
     for {
       (from, fromNid) <- boundary.iterator zip newIds.iterator
       finder = BoundaryBucket.overlapFinder(from, k)
       (to, toNid) <- other.boundary.iterator zip other.newIds.iterator
-      if finder.check(to)
-      edge = (fromNid, toNid)
+      overlap = finder.find(to)
+      if overlap.hasNext
+      edge = (fromNid, toNid, overlap.toArray)
     } yield edge
 }
 
@@ -367,6 +395,7 @@ final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver:
     if (degree == 0)
       centre.core ++ centre.boundary
     else
+    //TODO why can centre.boundary not be promoted to centre.core here in some cases?
         centre.core ++ safeSurrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary)
 //      centre.core ++ deduplicate(safeSurrounding.flatMap(_._1.core) ++ lone.flatMap(_._1.boundary))
 
@@ -406,6 +435,4 @@ object IterativeSerial {
   def formatUnitig(u: Contig) = {
     (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
   }
-
-  case class EdgeChecker(id: Long, finder: OverlapFinder)
 }
