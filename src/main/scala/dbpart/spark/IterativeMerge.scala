@@ -115,7 +115,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       "transform(_3, x -> x.boundary) as boundary",
       "transform(_3, x -> x.core) as core",
       "transform(_3, x -> monotonically_increasing_id()) as newIds").cache
-    val splitBoundary = provisionalParts.as[SplitBoundary]
+    val splitBoundary = provisionalParts.select("id", "boundary", "newIds").as[SplitBoundary]
 
     val builtEdges = edgesFromSplitBoundaries(splitBoundary, graph.edges.as[(Long, Long)])
     val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
@@ -137,8 +137,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]):
     Dataset[(Long, Long, Array[String])] = {
-    val ne = normalizeEdges(edges.toDF).as[(Long, Long)]
-    val joint = boundaries.joinWith(ne, boundaries("id") === ne("src"))
+    val joint = boundaries.joinWith(edges, boundaries("id") === edges("src"))
     val srcByDst = joint.groupByKey(_._2._2)
     val byDst = boundaries.groupByKey(_.id)
     val k = this.k
