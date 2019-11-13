@@ -34,17 +34,20 @@ class Routines(spark: SparkSession) {
   /**
    * Load reads and their reverse complements from DNA files.
    */
-  def getReads(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
+  def getReadsFromFasta(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
     //TODO: add boolean flag to include/not include RCs
-    val reads = frac match {
+    val lines = frac match {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
     }
     
     if (withRC) {
-      reads.flatMap(r => Seq(r, DNAHelpers.reverseComplement(r)))
+      lines.flatMap(r => {
+        if (r.startsWith(">")) Seq() else
+          Seq(r, DNAHelpers.reverseComplement(r))
+      })
     } else {
-      reads
+      lines.filter(r => !r.startsWith(">"))
     }
   }
 
@@ -61,7 +64,7 @@ class Routines(spark: SparkSession) {
   }
 
   def createSampledSpace(input: String, fraction: Double, space: MarkerSpace): MarkerSpace = {
-    val in = getReads(input, true, Some(fraction))
+    val in = getReadsFromFasta(input, true, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(s"Discovered frequencies in fraction $fraction")
     counter.toSpaceByFrequency(space.n)
@@ -99,7 +102,7 @@ class Routines(spark: SparkSession) {
    * and write them to the output location.
    */
   def bucketsOnly(input: String, ext: MarkerSetExtractor, output: String) {
-    val reads = getReads(input, false)
+    val reads = getReadsFromFasta(input, false)
     val bkts = bucketsOnly(reads, ext)
     writeBuckets(bkts, output)
   }
@@ -158,8 +161,8 @@ class Routines(spark: SparkSession) {
    */
   def bucketGraph(reads: String, ext: MarkerSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
-    val edges = splitReadsToEdges(getReads(reads, false), ext).distinct
-    val verts = bucketsOnly(getReads(reads, true), ext)
+    val edges = splitReadsToEdges(getReadsFromFasta(reads, false), ext).distinct
+    val verts = bucketsOnly(getReadsFromFasta(reads, true), ext)
 
     edges.cache
     verts.cache
