@@ -1,27 +1,17 @@
 package dbpart.spark
 
-import java.io.File
-import java.io.PrintStream
-
-import org.apache.spark.sql.Dataset
-import org.apache.spark.sql.SaveMode
-import org.apache.spark.sql.SparkSession
-import org.graphframes.GraphFrame
-import org.graphframes.lib.AggregateMessages
-import org.graphframes.lib.Pregel
+import java.io.{File, PrintStream}
 
 import dbpart._
 import dbpart.bucket._
-import dbpart.hash._
-import miniasm.genome.util.DNAHelpers
-
-import dbpart.hash.FeatureScanner
+import dbpart.hash.{FeatureScanner, _}
+import friedrich.util._
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
-
+import miniasm.genome.util.DNAHelpers
+import org.apache.spark.sql.SparkSession
+import org.graphframes.GraphFrame
 import vegas._
-import vegas.render.WindowRenderer._
-import friedrich.util._
 
 final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
 final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
@@ -33,17 +23,14 @@ class Routines(spark: SparkSession) {
   import SerialRoutines._
 
   val sc: org.apache.spark.SparkContext = spark.sparkContext
-  import spark.sqlContext.implicits._
   import dbpart.bucket.CountingSeqBucket._
   import org.apache.spark.sql._
   import org.apache.spark.sql.functions._
+  import spark.sqlContext.implicits._
 
   type Kmer = String
   type Segment = String
 
-  //For graph partitioning, it may help if this number is a square
-  val NUM_PARTITIONS = 400
-  
   /**
    * Load reads and their reverse complements from DNA files.
    */
@@ -190,9 +177,6 @@ class Routines(spark: SparkSession) {
     val vertDF = bkts.toDF("id", "bucket")
     val edgeDF = edges.toDF("src", "dst")
 
-//    GraphFrame(vertDF.repartition(NUM_PARTITIONS, vertDF("id")).cache,
-//      edgeDF.repartition(NUM_PARTITIONS, edgeDF("src")).cache)
-//
     GraphFrame(vertDF, edgeDF)
   }
 
@@ -302,13 +286,6 @@ class Routines(spark: SparkSession) {
 object SerialRoutines {
   def removeN(segment: String, k: Int): Array[String] = {
     segment.split("N", -1).filter(s => s.length() >= k)
-  }
-
-  def safeFlatten(ss: Array[Array[String]]) = {
-    Option(ss) match {
-      case Some(ss) => ss.iterator.filter(_ != null).flatten.toList
-      case _        => List()
-    }
   }
 
   def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {

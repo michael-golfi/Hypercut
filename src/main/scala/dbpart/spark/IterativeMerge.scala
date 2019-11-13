@@ -5,7 +5,6 @@ import java.util.Date
 
 import dbpart.Contig
 import dbpart.bucket.BoundaryBucket
-import dbpart.bucket.BoundaryBucket.OverlapFinder
 import org.apache.spark.sql.SparkSession
 import org.graphframes.GraphFrame
 import org.graphframes.lib.AggregateMessages
