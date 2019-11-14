@@ -354,10 +354,27 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 }
 
 final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
+  import BoundaryBucket.OverlapFinder
+
+  private def finders(k: Int) =
+    (boundary zip newIds).toList.map {
+    case (bound, id) => {
+      (BoundaryBucket.overlapFinder(bound, k), id)
+    }
+  }
+
+  @transient
+  private var cachedFinders: Option[List[(OverlapFinder, Long)]] = None
+  def getFinders(k: Int) = cachedFinders match {
+    case Some(f) => f
+    case None =>
+      cachedFinders = Some(finders(k))
+      cachedFinders.get
+  }
+
   def edgesTo(other: SplitBoundary, k: Int): Iterator[(Long, Long, Array[String])] =
     for {
-      (from, fromNid) <- boundary.iterator zip newIds.iterator
-      finder = BoundaryBucket.overlapFinder(from, k)
+      (finder, fromNid) <- getFinders(k).iterator
       (to, toNid) <- other.boundary.iterator zip other.newIds.iterator
       overlap = finder.find(to)
       if overlap.hasNext
