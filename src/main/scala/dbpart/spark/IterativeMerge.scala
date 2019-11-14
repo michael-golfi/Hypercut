@@ -137,14 +137,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]):
     Dataset[(Long, Long, Array[String])] = {
-    val joint = boundaries.joinWith(edges, boundaries("id") === edges("src"))
-    val srcByDst = joint.groupByKey(_._2._2)
-    val byDst = boundaries.groupByKey(_.id)
+    val joint = edges.joinWith(boundaries, boundaries("id") === edges("dst"))
+    val jointSrc = joint.groupByKey(_._1._1)
+    val bySrc = boundaries.groupByKey(_.id)
     val k = this.k
-    byDst.cogroup(srcByDst)((key, it1, it2) => {
+    bySrc.cogroup(jointSrc)((key, it1, it2) => {
       for {
         from <- it1
-        to <- it2.map(_._1)
+        to <- it2.map(_._2)
         edge <- from.edgesTo(to, k)
       } yield edge
     })
@@ -258,31 +258,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * remain.
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
-    val boundaryOnly = graph.vertices.selectExpr("id as dst", "boundary as dstBoundary").
-      as[(Long, Array[String])]
+    val boundaryOnly = graph.vertices.selectExpr("id", "array(boundary) as boundary",
+      "array(id) as newIds").as[SplitBoundary]
 
     val k = this.k
-    val es = normalizeEdges(graph.edges).as[(Long, Long)]
-    val bySrc = es.
-      joinWith(boundaryOnly, es("dst") === boundaryOnly("dst"))
-
-    val foundEdges = boundaryOnly.groupByKey(_._1).cogroup(
-      bySrc.groupByKey(_._1._1))((key, it1, it2) => {
-      for {
-        from <- it1
-        finder = BoundaryBucket.overlapFinder(from._2, k)
-        to <- it2
-        overlap = finder.find(to._2._2)
-        if overlap.hasNext
-        edge = (from._1, to._2._1, overlap.toArray)
-      } yield edge
-    })
+    val foundEdges = edgesFromSplitBoundaries(boundaryOnly, normalizeEdges(graph.edges).as[(Long, Long)])
 
     val newEdges = materialize(foundEdges.cache).toDF("src", "dst", "intersection")
-//      normalized.join(withInt.select("src", "intersection"), Seq("src", "dst")).cache)
-
     graph.edges.unpersist
-//    withInt.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
 
