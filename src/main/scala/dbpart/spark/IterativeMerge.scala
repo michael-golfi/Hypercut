@@ -110,10 +110,11 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
 
-    val provisionalParts = splitData.selectExpr("_1 as id",
+    val provisionalParts = materialize(splitData.selectExpr("_1 as id",
       "transform(_3, x -> x.boundary) as boundary",
       "transform(_3, x -> x.core) as core",
-      "transform(_3, x -> monotonically_increasing_id()) as newIds").cache
+      "transform(_3, x -> monotonically_increasing_id()) as newIds").cache)
+
     val splitBoundary = provisionalParts.select("id", "boundary", "newIds").as[SplitBoundary]
 
     val builtEdges = edgesFromSplitBoundaries(splitBoundary, graph.edges.as[(Long, Long)])
@@ -123,8 +124,8 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     val nb = materialize(removeLineage(nextBuckets.toDF))
     val ne = materialize(removeLineage(builtEdges.toDF("src", "dst", "intersection")))
-    provisionalParts.unpersist
 
+    provisionalParts.unpersist
     graph.edges.unpersist
     graph.vertices.unpersist
     shiftBoundary(GraphFrame(nb, ne))
