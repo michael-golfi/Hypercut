@@ -37,7 +37,7 @@ object BoundaryBucket {
     ss.flatMap(s => {
       //Number of (k-1)-mers
       val num = s.length() - (k - 2)
-      Read.kmers(s, k - 1).drop(1).take(num - 2)
+      Read.kmers(s, k - 1).slice(1, num - 2 + 1)
     })
 
   def purePrefixes(ss: Iterator[String], k: Int) =

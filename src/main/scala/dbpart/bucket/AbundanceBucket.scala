@@ -1,10 +1,6 @@
 package dbpart.bucket
 import dbpart._
 
-object AbundanceBucket {
-
-}
-
 trait AbundanceBucket extends Serializable {
   def abundances: Array[Array[Abundance]]
 
