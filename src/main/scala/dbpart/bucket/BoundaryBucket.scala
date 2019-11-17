@@ -192,28 +192,6 @@ object BoundaryBucket {
    */
   def removeKmers(toRemove: Iterable[NTSeq], removeFrom: Iterable[NTSeq], k: Int): Seq[String] =
     removeKmers(toRemove.iterator, removeFrom.flatMap(Read.kmers(_, k)).toList, k)
-
-  /**
-   * Remove unitigs from the core (whose boundary is known)
-   * and split the bucket into parts without overlap.
-   */
-  def seizeUnitigsAndSplit(bucket: BoundaryBucket): (List[Contig], List[BoundaryBucket]) = {
-    val (unitigs, updated) = bucket.seizeUnitigs
-
-    //Split the core into parts that have no mutual overlap
-    val split = updated.splitSequences
-
-    val newBuckets = split.flatMap(s => {
-      val (bound, core) = s.toArray.partition(_._2)
-      if (!bound.isEmpty) {
-        Some(BoundaryBucket(bucket.id, core.map(_._1), bound.map(_._1), bucket.k))
-      } else {
-        //All output at this stage
-        None
-      }
-    })
-    (unitigs, newBuckets)
-  }
 }
 
 case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
@@ -232,6 +210,7 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   //TODO remove k
 
   def coreAndBoundary = core.iterator ++ boundary.iterator
+  def numSequences = core.length + boundary.length
 
   def kmers = coreKmers ++ boundaryKmers
   def coreKmers = core.flatMap(Read.kmers(_, k))
@@ -339,6 +318,41 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
       boundary.map(x => (x, true))
 
     BoundaryBucket.splitSequences(withBoundaryFlag, k)
+  }
+
+  /**
+   * Remove unitigs from the core (whose boundary is known)
+   * and split the bucket into parts without overlap.
+   */
+  def seizeUnitigsAndSplit: (List[Contig], List[BoundaryBucket]) = {
+    val (unitigs, updated) = seizeUnitigs
+
+    //Simple way of avoiding too small buckets.
+    //Note: large buckets could still splinter into many small parts.
+    val minSplitSize = 25
+
+    if (numSequences >= minSplitSize) {
+      //Split the core into parts that have no mutual overlap
+      val split = updated.splitSequences
+
+      val newBuckets = split.flatMap(s => {
+        val (bound, core) = s.toArray.partition(_._2)
+        if (!bound.isEmpty) {
+          Some(BoundaryBucket(id, core.map(_._1), bound.map(_._1), k))
+        } else {
+          //All output at this stage
+          None
+        }
+      })
+      (unitigs, newBuckets)
+    } else {
+      if (!updated.boundary.isEmpty) {
+        (unitigs, List(updated))
+      } else {
+        //All output at this stage
+t        (unitigs, List())
+      }
+    }
   }
 
   override def toString = s"BoundaryBucket($id\t${core.mkString(",")})\t${boundary.mkString(",")})"

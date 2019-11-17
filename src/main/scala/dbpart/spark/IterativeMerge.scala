@@ -99,7 +99,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     //Identify boundary and output/remove unitigs
     //Returns cores split into subparts based on remaining data
     val splitData = graph.vertices.as[BoundaryBucket].map(b => {
-      val (unitigs, parts) = BoundaryBucket.seizeUnitigsAndSplit(b)
+      val (unitigs, parts) = b.seizeUnitigsAndSplit
       (b.id, unitigs, parts)
     })
     //TODO should splitData be cached?
@@ -189,7 +189,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val ml = minLength
     val unitigs = isolated.flatMap(i => {
       val joint = BoundaryBucket(i.id, i.core ++ i.boundary, Array(), i.k)
-      val unitigs = BoundaryBucket.seizeUnitigsAndSplit(joint)
+      val unitigs = joint.seizeUnitigsAndSplit
       unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
     }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
