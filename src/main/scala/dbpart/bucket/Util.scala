@@ -1,6 +1,8 @@
 package dbpart.bucket
 
 import com.github.pathikrit.scalgos.DisjointSet
+import dbpart.shortread.Read
+import miniasm.genome.util.DNAHelpers
 
 import scala.collection.{Set => CSet}
 import scala.collection.mutable.{Set => MSet}
@@ -47,5 +49,35 @@ object Util {
     partitioned.toList
   }
 
+  def prefixesAndSuffixes(ss: Iterator[String], k: Int) =
+    ss.flatMap(s => {
+      //Number of (k-1)-mers
+      val num = s.length() - (k - 2)
+      Read.kmers(s, k - 1).slice(1, num - 2 + 1)
+    })
+
+  def purePrefixes(ss: Iterator[String], k: Int) =
+    ss.flatMap(s => {
+      if (s.length >= k - 1) {
+        Some(DNAHelpers.kmerPrefix(s, k))
+      } else {
+        None
+      }
+    })
+
+  def pureSuffixes(ss: Iterator[String], k: Int) =
+    ss.flatMap(s => {
+      if (s.length >= k - 1) {
+        Some(DNAHelpers.kmerSuffix(s, k))
+      } else {
+        None
+      }
+    })
+
+  def suffixes(ss: Iterable[String], k: Int) =
+    pureSuffixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
+
+  def prefixes(ss: Iterable[String], k: Int) =
+    purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
 
 }

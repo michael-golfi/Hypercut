@@ -5,6 +5,7 @@ import org.scalatest.Matchers
 import org.scalatest.FunSuite
 
 class BoundaryBucketTest extends FunSuite with Matchers {
+  import Util._
 
   test("sharedOverlaps") {
 
@@ -94,7 +95,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val bnd = Array("TTTA", "GCCC")
     val core = BoundaryBucket(1, Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), bnd, 4)
 
-    val mrg = BoundaryBucket.seizeUnitigsAndSplit(core)
+    val mrg = core.seizeUnitigsAndSplit
     val unitigs = mrg._1.map(_.seq)
     unitigs.toSeq should contain theSameElementsAs(List("ACTG", "CTGGGA", "CTGAA"))
 

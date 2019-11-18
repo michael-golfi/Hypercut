@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import dbpart.Contig
-import dbpart.bucket.BoundaryBucket
+import dbpart.bucket.{BoundaryBucket, OverlapFinder}
 import org.apache.spark.sql.SparkSession
 import org.graphframes.GraphFrame
 import org.graphframes.lib.AggregateMessages
@@ -337,8 +337,6 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 }
 
 final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
-  import BoundaryBucket.OverlapFinder
-
   private def finders(k: Int) =
     (boundary zip newIds).toList.map {
     case (bound, id) => {

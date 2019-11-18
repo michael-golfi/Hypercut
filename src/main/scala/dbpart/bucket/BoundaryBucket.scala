@@ -6,63 +6,12 @@ import dbpart.shortread.Read
 import miniasm.genome.util.DNAHelpers
 
 import scala.annotation.tailrec
-import scala.collection.mutable.{Set => MSet}
+import scala.collection.mutable.{Map => MMap, Set => MSet}
 import scala.collection.{Searching, Set => CSet}
 import scala.reflect.ClassTag
 
 object BoundaryBucket {
-  /**
-   * Whether two sorted lists have at least one common element
-   */
-  @tailrec
-  def haveIntersection(d1: List[String], d2: List[String]): Boolean = {
-    d1 match {
-      case Nil => false
-      case x :: xs => d2 match {
-        case Nil => false
-        case y :: ys =>
-          val c = x.compareTo(y)
-          if (c < 0) {
-            haveIntersection(xs, y :: ys)
-          } else if (c == 0) {
-            true
-          } else {
-            haveIntersection(x :: xs, ys)
-          }
-      }
-    }
-  }
-
-  def prefixesAndSuffixes(ss: Iterator[String], k: Int) =
-    ss.flatMap(s => {
-      //Number of (k-1)-mers
-      val num = s.length() - (k - 2)
-      Read.kmers(s, k - 1).slice(1, num - 2 + 1)
-    })
-
-  def purePrefixes(ss: Iterator[String], k: Int) =
-    ss.flatMap(s => {
-      if (s.length >= k - 1) {
-        Some(DNAHelpers.kmerPrefix(s, k))
-      } else {
-        None
-      }
-    })
-
-  def pureSuffixes(ss: Iterator[String], k: Int) =
-    ss.flatMap(s => {
-      if (s.length >= k - 1) {
-        Some(DNAHelpers.kmerSuffix(s, k))
-      } else {
-        None
-      }
-    })
-
-  def suffixes(ss: Iterable[String], k: Int) =
-    pureSuffixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
-
-  def prefixes(ss: Iterable[String], k: Int) =
-    purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
+  import Util._
 
   /**
    * Function for computing shared k-1 length overlaps between sequences of prior
@@ -88,59 +37,6 @@ object BoundaryBucket {
       purePrefixes(data.iterator, k).toArray,
       pureSuffixes(data.iterator, k).toArray,
       k)
-
-  /**
-   * A class that simplifies repeated checking for overlaps against some collection of k-mers.
-   */
-  case class OverlapFinder(val preAndSuf: Array[String], val pre: Array[String], val suf: Array[String],
-                           k: Int) {
-    @transient
-    val prefixAndSuffix = preAndSuf.to[MSet]
-    @transient
-    val prefix = pre.to[MSet]
-    @transient
-    val suffix = suf.to[MSet]
-
-    def find(other: Iterable[String]): Iterator[String] = {
-      val otherPreSuf = prefixesAndSuffixes(other.iterator, k)
-      val otherPre = purePrefixes(other.iterator, k)
-      val otherSuf = pureSuffixes(other.iterator, k)
-
-      find(otherPreSuf, otherPre, otherSuf)
-    }
-
-    def check(other: Iterable[String]): Boolean = {
-      find(other).nonEmpty
-    }
-
-    def check(other: String): Boolean =
-      check(Seq(other))
-
-    def find(other: OverlapFinder): Iterator[String] =
-      find(other.prefixAndSuffix.iterator, other.prefix.iterator, other.suffix.iterator)
-
-    def check(other: OverlapFinder): Boolean =
-      find(other).nonEmpty
-
-    def find(othPreSuf: Iterator[String], othPre: Iterator[String], othSuf: Iterator[String]): Iterator[String] = {
-      othPreSuf.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x) || prefix.contains(x)) ++
-        othPre.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x)) ++
-        othSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x))
-    }
-
-    def check(othPreSuf: Iterator[String], othPre: Iterator[String], othSuf: Iterator[String]): Boolean =
-      find(othPreSuf, othPre, othSuf).nonEmpty
-
-    def suffixes(othPreSuf: Iterator[String], othPre: Iterator[String]): Iterator[String] = {
-      othPreSuf.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x)) ++
-        othPre.filter(x => prefixAndSuffix.contains(x) || suffix.contains(x))
-    }
-
-    def prefixes(othPreSuf: Iterator[String], othSuf: Iterator[String]): Iterator[String] = {
-      othPreSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x)) ++
-        othSuf.filter(x => prefixAndSuffix.contains(x) || prefix.contains(x))
-    }
-  }
 
   /**
    * Split sequences into maximal groups that are not connected
@@ -206,6 +102,7 @@ case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
  */
 case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String], k: Int) {
   import BoundaryBucket._
+  import Util._
 
   //TODO remove k
 
@@ -241,8 +138,6 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   import Searching._
 
   def nodesForGraph: Iterator[KmerNode] = {
-    //Possible optimization: try to do this with boundary as a simple iterator instead
-
     val in = sharedOverlapsThroughPrior(boundary, core, k).toArray.sorted
     val out = sharedOverlapsThroughPost(core, boundary, k).toArray.sorted
 
@@ -327,32 +222,19 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def seizeUnitigsAndSplit: (List[Contig], List[BoundaryBucket]) = {
     val (unitigs, updated) = seizeUnitigs
 
-    //Simple way of avoiding too small buckets.
-    //Note: large buckets could still splinter into many small parts.
-    val minSplitSize = 25
+    //Split the core into parts that have no mutual overlap
+    val split = updated.splitSequences
 
-    if (numSequences >= minSplitSize) {
-      //Split the core into parts that have no mutual overlap
-      val split = updated.splitSequences
-
-      val newBuckets = split.flatMap(s => {
-        val (bound, core) = s.toArray.partition(_._2)
-        if (!bound.isEmpty) {
-          Some(BoundaryBucket(id, core.map(_._1), bound.map(_._1), k))
-        } else {
-          //All output at this stage
-          None
-        }
-      })
-      (unitigs, newBuckets)
-    } else {
-      if (!updated.boundary.isEmpty) {
-        (unitigs, List(updated))
+    val newBuckets = split.flatMap(s => {
+      val (bound, core) = s.toArray.partition(_._2)
+      if (!bound.isEmpty) {
+        Some(BoundaryBucket(id, core.map(_._1), bound.map(_._1), k))
       } else {
         //All output at this stage
-t        (unitigs, List())
+        None
       }
-    }
+    })
+    (unitigs, newBuckets)
   }
 
   override def toString = s"BoundaryBucket($id\t${core.mkString(",")})\t${boundary.mkString(",")})"
