@@ -80,4 +80,5 @@ object Util {
   def prefixes(ss: Iterable[String], k: Int) =
     purePrefixes(ss.iterator, k) ++ prefixesAndSuffixes(ss.iterator, k)
 
+  type IdChunk = (Array[String], Long)
 }

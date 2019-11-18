@@ -9,8 +9,6 @@ class BoundaryBucketTest extends FunSuite with Matchers {
 
   test("sharedOverlaps") {
 
-    import BoundaryBucket._
-
     //Check that in- and out-openings are correct
     val k = 5
     val ss = Array("ACTGGG", "TTGTTA")
@@ -20,13 +18,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     var prior = Array[String]()
 
     val of = BoundaryBucket(0, Array(), ss, k).overlapFinder
-    of.prefixes(Iterator.empty, Iterator.empty) should be(empty)
-    of.suffixes(postPreSuf.iterator, postPre.iterator).toSeq should equal(Seq("GTTA"))
-
     prior = Array("CCGAG", "AACTGAA")
-    val priPreSuf = prefixesAndSuffixes(prior.iterator, k).toSeq
-    val priSuf = pureSuffixes(prior.iterator, k).toSeq
-    of.prefixes(priPreSuf.iterator, priSuf.iterator).toSeq should equal(Seq("ACTG"))
 
     val all = prior ++ post
 

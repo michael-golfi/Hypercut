@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import dbpart.Contig
-import dbpart.bucket.{BoundaryBucket, OverlapFinder}
+import dbpart.bucket.{BoundaryBucket, MapOverlapFinder, Util}
 import org.apache.spark.sql.SparkSession
 import org.graphframes.GraphFrame
 import org.graphframes.lib.AggregateMessages
@@ -337,30 +337,43 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 }
 
 final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
-  private def finders(k: Int) =
-    (boundary zip newIds).toList.map {
-    case (bound, id) => {
-      (BoundaryBucket.overlapFinder(bound, k), id)
+  /*
+  The efficiency of looking up boundary intersections between pairs of split buckets
+  degrades as the split parts get smaller and smaller, if one set per split part is used for
+  overlap finding (linear cost in data size as the size of the split parts approach 1).
+  The MapOverlapFinder combats this problem by looking up overlaps across all split parts
+  simultaneously from a map.
+   */
+
+  private def finder(k: Int) = {
+    val data = (boundary zip newIds).toList.map {
+      case (bound, id) => {
+        ((Util.prefixesAndSuffixes(bound.iterator, k).toArray, id),
+          (Util.purePrefixes(bound.iterator, k).toArray, id),
+          (Util.pureSuffixes(bound.iterator, k).toArray, id))
+      }
     }
+
+    new MapOverlapFinder(data.map(_._1), data.map(_._2), data.map(_._3), k)
   }
 
   @transient
-  private var cachedFinders: Option[List[(OverlapFinder, Long)]] = None
-  def getFinders(k: Int) = cachedFinders match {
+  private var cachedFinder: Option[MapOverlapFinder] = None
+  def getFinder(k: Int) = cachedFinder match {
     case Some(f) => f
     case None =>
-      cachedFinders = Some(finders(k))
-      cachedFinders.get
+      cachedFinder = Some(finder(k))
+      cachedFinder.get
   }
 
-  def edgesTo(other: SplitBoundary, k: Int): Iterator[(Long, Long, Array[String])] =
+  def edgesTo(other: SplitBoundary, k: Int): Iterator[(Long, Long, Array[String])] = {
+    val finder = getFinder(k)
     for {
-      (finder, fromNid) <- getFinders(k).iterator
       (to, toNid) <- other.boundary.iterator zip other.newIds.iterator
-      overlap = finder.find(to)
-      if overlap.hasNext
-      edge = (fromNid, toNid, overlap.toArray)
+      (overlap, thisId) <- finder.find(to)
+      edge = (thisId, toNid, overlap)
     } yield edge
+  }
 }
 
 /**

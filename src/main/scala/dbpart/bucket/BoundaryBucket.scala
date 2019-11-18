@@ -5,8 +5,7 @@ import dbpart.graph.{KmerNode, PathFinder, PathGraphBuilder}
 import dbpart.shortread.Read
 import miniasm.genome.util.DNAHelpers
 
-import scala.annotation.tailrec
-import scala.collection.mutable.{Map => MMap, Set => MSet}
+import scala.collection.mutable.{Set => MSet}
 import scala.collection.{Searching, Set => CSet}
 import scala.reflect.ClassTag
 
@@ -31,12 +30,6 @@ object BoundaryBucket {
     val postKmers = prefixes(post, k).to[MSet]
     preKmers.filter(postKmers.contains)
   }
-
-  def overlapFinder(data: Iterable[String], k: Int) =
-    new OverlapFinder(prefixesAndSuffixes(data.iterator, k).toArray,
-      purePrefixes(data.iterator, k).toArray,
-      pureSuffixes(data.iterator, k).toArray,
-      k)
 
   /**
    * Split sequences into maximal groups that are not connected
@@ -116,21 +109,21 @@ case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]
   def coreStats = BoundaryBucketStats(core.size, core.map(Read.numKmers(_, k)).sum,
     boundary.size, boundary.map(Read.numKmers(_, k)).sum)
 
-  def pureSuffixSet = pureSuffixes(boundary.iterator, k).toArray
-
-  def purePrefixSet = purePrefixes(boundary.iterator, k).toArray
-
-  def prefixAndSuffixSet = prefixesAndSuffixes(boundary.iterator, k).toArray
-
   /**
    * Constructs an overlap finder that can test this bucket's overlaps (through boundary)
    * with other buckets
    */
-  def overlapFinder = new OverlapFinder(prefixAndSuffixSet, purePrefixSet,
-    pureSuffixSet, k)
+  def overlapFinder = {
+    val pureSuffixSet = pureSuffixes(boundary.iterator, k).toArray
+    val purePrefixSet = purePrefixes(boundary.iterator, k).toArray
+    val prefixAndSuffixSet = prefixesAndSuffixes(boundary.iterator, k).toArray
+
+    new SetOverlapFinder(prefixAndSuffixSet, purePrefixSet,
+      pureSuffixSet, k)
+  }
 
   def shiftBoundary(intersecting: Iterable[String]) = {
-    val finder = new OverlapFinder(intersecting.toArray, Array(), Array(), k)
+    val finder = new SetOverlapFinder(intersecting.toArray, Array(), Array(), k)
     val (stayInBound, boundToCore) = boundary.partition(b => finder.check(b))
     BoundaryBucket(id, core ++ boundToCore, stayInBound, k)
   }
