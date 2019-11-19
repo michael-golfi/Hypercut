@@ -1,12 +1,8 @@
 package dbpart.bucketdb
 
+import dbpart.{RunnableCommand, _}
+import dbpart.hash.{FeatureScanner, MarkerSetExtractor}
 import org.rogach.scallop.Subcommand
-
-import dbpart._
-import dbpart.RunnableCommand
-import dbpart.graph.PathExtraction
-import dbpart.hash.MarkerSetExtractor
-import dbpart.hash.FeatureScanner
 
 /**
  * Configuration for the standalone version of Hypercut, which runs without Spark.
@@ -119,27 +115,6 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
     }
   }
   addSubcommand(analyse)
-
-  val assemble = new Subcommand("assemble") with RunnableCommand {
-    banner("Assemble contigs from a bucket database.")
-    val output = opt[String](required = true,
-        descr = "Output file (.fasta) to write generated sequences to",
-        default = Some("hypercut.fasta"))
-    val partitionSize = opt[Int](default = Some(100000), descr = "Desired partition size of macro graph")
-    val minLength = opt[Int](default = Some(65), descr = "Minimum length of contigs to print")
-    val partitionGraphs = toggle("partitionGraphs", default = Some(false),
-      descrYes = "Output partition graphs as .dot files")
-    val reasons = toggle("reasons", default = Some(false),
-      descrYes = "Output reasons for contig endings")
-
-    def run () {
-      val extr = new PathExtraction(defaultBuckets, partitionSize(),
-        minLength(), partitionGraphs(),
-        reasons())
-      extr.printPathsByPartition()
-    }
-  }
-  addSubcommand(assemble)
 
   verify()
 }

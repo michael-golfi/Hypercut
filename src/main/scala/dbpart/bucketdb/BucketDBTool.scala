@@ -5,7 +5,6 @@ import scala.concurrent.blocking
 import scala.concurrent.duration.Duration
 import dbpart.bucket._
 import dbpart.graph.DoubleArrayListGraph
-import dbpart.graph.MacroNode
 import dbpart.hash._
 import dbpart.shortread.ReadFiles
 import friedrich.util.Distribution
@@ -108,58 +107,6 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
   }
 
   def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
-//  def asMacroNode(key: String) = new MacroNode(MarkerSet.unpack(space, key).compact)
-
-  def makeGraph() = {
-    var nodeLookup = new scala.collection.mutable.HashMap[MacroNode, MacroNode]
-
-    db.visitKeysReadonly(key => {
-      try {
-        val ms = asMarkerSet(key)
-        val n = new dbpart.graph.MacroNode(ms.compact.data)
-        nodeLookup += (n -> n)
-      } catch {
-        case e: Exception =>
-          Console.err.println(s"Warning: error while handling key '$key'")
-          e.printStackTrace()
-      }
-    })
-
-    val graph = new DoubleArrayListGraph[MacroNode](nodeLookup.keySet.toArray)
-    println(graph.numNodes + " nodes")
-
-//    val allPossibleEdges = (for (a <- graph.nodes; b <- graph.nodes; if a != b) yield (a,b))
-//    val edges = validateEdges(allPossibleEdges)
-//    val edges = validateEdges(kmerSpace.completeEdges(space, numMarkers))
-
-    /*
-     * Reusing the same node objects for efficiency
-     */
-    var count = 0
-    edgeDb.visitEdges(edges => {
-      val es = edges.map(x => (nodeLookup.get(new MacroNode(x._1)), nodeLookup.get(new MacroNode(x._2))))
-      for {
-        (from, to) <- es
-        filtFrom <- from
-        filtTo <- to
-      } {
-        graph.addEdge(filtFrom, filtTo)
-        count += 1
-        if (count % 1000000 == 0) {
-          println(s"${graph.numNodes} nodes ${graph.numEdges} edges")
-        }
-      }
-    })
-    nodeLookup = null
-
-    println(s"${graph.numEdges} edges (filtered out $filteredOutEdges)")
-
-    Distribution.printStats("Node degree", graph.nodes.map(graph.degree))
-
-    val hist = new Histogram(graph.nodes.map(graph.degree).toSeq)
-    hist.print("Node degree")
-    graph
-  }
 
   var filteredOutEdges = 0
 

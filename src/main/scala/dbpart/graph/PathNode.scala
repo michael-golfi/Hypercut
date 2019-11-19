@@ -2,17 +2,6 @@ package dbpart.graph
 import dbpart._
 import dbpart.shortread.Read
 
-final class PathNode(val seq: NTSeq, val avgAbundance: Double) {
-  def numKmers(k: Int): Int = seq.length() - (k-1)
-  def kmers(k: Int): Iterator[String] =
-    Read.kmers(seq, k)
-
-  var seen: Boolean = false
-  var noise: Boolean = false
-
-  override def toString: String = s"$seq($avgAbundance)"
-}
-
 /**
  * @param boundary Whether this node is part of the partition boundary (outer edge)
  * and potentially has unknown edges into other partitions.

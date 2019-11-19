@@ -4,13 +4,7 @@ import com.github.pathikrit.scalgos.DisjointSet
 import dbpart.shortread.Read
 import miniasm.genome.util.DNAHelpers
 
-import scala.collection.{Set => CSet}
-import scala.collection.mutable.{Set => MSet}
-import scala.annotation.tailrec
-
 object Util {
-
-  type WithKeys[A, K] = (List[A], Iterable[K])
 
   /**
    * Given a collection and a function that produces multiple keys from each item,

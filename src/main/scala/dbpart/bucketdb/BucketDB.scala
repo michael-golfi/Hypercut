@@ -1,16 +1,10 @@
 package dbpart.bucketdb
 import dbpart._
-import scala.collection.JavaConverters._
+import friedrich.util.{Distribution, Histogram}
 import kyotocabinet._
-import friedrich.util.Distribution
-import friedrich.util.Histogram
-import scala.collection.mutable.ArrayBuffer
-import dbpart.shortread.ReadFiles
-import scala.collection.{ Map => CMap }
-import scala.collection.mutable.{ Map => MMap }
-import scala.annotation.tailrec
-import scala.concurrent.blocking
-import dbpart.graph.BucketLoader
+
+import scala.collection.mutable.{Map => MMap}
+import scala.collection.{Map => CMap}
 
 /**
  * A Kyoto cabinet-based database.
@@ -355,8 +349,7 @@ object SeqBucketDB {
  */
 final class SeqBucketDB(location: String, options: String, buckets: Int, val k: Int, minAbundance: Option[Abundance])
   extends StringBucketDB[PackedSeqBucket](location, options,
-    new PackedSeqBucket.Unpacker(location, minAbundance, buckets), k)
-    with BucketLoader {
+    new PackedSeqBucket.Unpacker(location, minAbundance, buckets), k) {
 
   def getBuckets(keys: Iterable[String]) = getBulk(keys)
 
