@@ -117,7 +117,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     val splitBoundary = provisionalParts.select("id", "boundary", "newIds").as[SplitBoundary]
 
-    val builtEdges = edgesFromSplitBoundaries(splitBoundary, graph.edges.as[(Long, Long)])
+    val builtEdges = edgesFromSplitBoundaries(splitBoundary, broadcast(graph.edges.as[(Long, Long)]))
     val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
     val nextBuckets = builtBuckets.selectExpr("col.newIds as id", "col.core as core", "col.boundary as boundary").
       withColumn("k", lit(k)).as[BoundaryBucket]
