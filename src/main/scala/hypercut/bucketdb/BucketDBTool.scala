@@ -13,10 +13,10 @@ import miniasm.genome.util.DNAHelpers
 import hypercut._
 import scala.collection.Seq
 
-final class BucketDBTool(val space: MarkerSpace, val k: Int,
-  settings: Settings, dbOptions: String, minAbund: Option[Abundance]) {
+final class BucketDBTool(val space: MotifSpace, val k: Int,
+                         settings: Settings, dbOptions: String, minAbund: Option[Abundance]) {
 
-  val extractor = new MarkerSetExtractor(space, k)
+  val extractor = new MotifSetExtractor(space, k)
   lazy val db = new SeqBucketDB(settings.dbfile, dbOptions, settings.buckets, k, minAbund)
   lazy val edgeDb = settings.edgeDb(space)
 
@@ -26,7 +26,7 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
     (e._1.compact, e._2.compact)
   }
 
-  def addEdges(edgeSet: EdgeSet, edges: TraversableOnce[List[MarkerSet]]) {
+  def addEdges(edgeSet: EdgeSet, edges: TraversableOnce[List[MotifSet]]) {
     edgeSet.add(edges)
     println("Up to " + edgeSet.seenNodes + " nodes found")
   }
@@ -43,8 +43,8 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
     val handledReads =
       reads.grouped(bufferSize).map(group =>
       { group.par.flatMap(r => {
-        val forward = extractor.markers(r)
-        val rev = extractor.markers(DNAHelpers.reverseComplement(r))
+        val forward = extractor.motifs(r)
+        val rev = extractor.motifs(DNAHelpers.reverseComplement(r))
         Seq(forward, rev)
       })
       })
@@ -106,7 +106,7 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
     hist.print("Macro graph node degree (no abundance threshold)")
   }
 
-  def asMarkerSet(key: String) = MarkerSet.unpack(space, key).fixMarkers.canonical
+  def asMotifSet(key: String) = MotifSet.unpack(space, key).fixMotifs.canonical
 
   var filteredOutEdges = 0
 
@@ -141,7 +141,7 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
 
   def show(bucket: String) {
     println(s"Bucket $bucket")
-    val key = MarkerSet.unpackToCompact(space, bucket)
+    val key = MotifSet.unpackToCompact(space, bucket)
     val seqs = db.getBulk(List(bucket))
     val edges = edgeDb.getBulk(List(key.data))
 
@@ -157,7 +157,7 @@ final class BucketDBTool(val space: MarkerSpace, val k: Int,
     for {
       e <- edges.headOption
     } {
-      println(ind + "Edges forward: " + e._2.items.map(MarkerSet.uncompactToString(_, space)).mkString(" "))
+      println(ind + "Edges forward: " + e._2.items.map(MotifSet.uncompactToString(_, space)).mkString(" "))
     }
   }
 }

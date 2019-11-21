@@ -1,7 +1,7 @@
 package hypercut.bucketdb
 
 import hypercut.{RunnableCommand, _}
-import hypercut.hash.{FeatureScanner, MarkerSetExtractor}
+import hypercut.hash.{FeatureScanner, MotifSetExtractor}
 import org.rogach.scallop.Subcommand
 
 /**
@@ -100,17 +100,17 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val analyse = new Subcommand("analyse") with RunnableCommand {
     banner("Analyse reads and display their fingerprints.")
 
-    lazy val defaultExtractor = new MarkerSetExtractor(defaultSpace, k())
+    lazy val defaultExtractor = new MotifSetExtractor(defaultSpace, k())
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
-    val markers = toggle("markers", default = Some(false), descrYes = "Scan for raw markers in the reads and print a histogram")
+    val motifs = toggle("motifs", default = Some(false), descrYes = "Scan for raw motifs in the reads and print a histogram")
 
     def run() {
-      if (markers()) {
+      if (motifs()) {
        new FeatureScanner(defaultSpace).scan(input(), None)
       } else {
-        defaultExtractor.prettyPrintMarkers(input())
+        defaultExtractor.prettyPrintMotifs(input())
       }
     }
   }

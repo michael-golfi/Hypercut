@@ -7,31 +7,31 @@ import scala.annotation.tailrec
 import scala.collection.Seq
 import scala.language.postfixOps
 
-object Marker {
-  val PackedMarker = "([ACTGUN]+)(\\d+)"r
+object Motif {
+  val PackedMotif = "([ACTGUN]+)(\\d+)"r
 
-  def unpack(space: MarkerSpace, key: String) = {
+  def unpack(space: MotifSpace, key: String) = {
      key match {
-       case PackedMarker(tag, pos) => space.get(tag, pos.toInt)
+       case PackedMotif(tag, pos) => space.get(tag, pos.toInt)
      }
   }
 }
 
 /**
- * The attributes of a marker, except its position.
+ * The attributes of a motif, except its position.
  */
 final case class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
 
-  def tagIndex(space: MarkerSpace) = space.byIndex(tag)
+  def tagIndex(space: MotifSpace) = space.byIndex(tag)
 
   def strongEquivalent(other: Features) = {
     tag == other.tag
   }
 
-  def withSortValue(space: MarkerSpace, value: Int) = space.getFeatures(tag, value)
+  def withSortValue(space: MotifSpace, value: Int) = space.getFeatures(tag, value)
 }
 
-final case class Marker(pos: Int, features: Features) {
+final case class Motif(pos: Int, features: Features) {
   def tag = features.tag
   def sortValue = features.sortValue
 
@@ -52,17 +52,17 @@ final case class Marker(pos: Int, features: Features) {
 
   override def toString = "[%s,%02d]".format(tag, pos)
 
-  def equivalent(other: Marker) = {
+  def equivalent(other: Motif) = {
     tag == other.tag && pos == other.pos
   }
 
-  def strongEquivalent(other: Marker) = {
+  def strongEquivalent(other: Motif) = {
     pos == other.pos && ((features eq other.features) || features.strongEquivalent(other.features))
   }
 
   override def equals(other: Any) = {
     other match {
-      case m: Marker => this.strongEquivalent(m)
+      case m: Motif => this.strongEquivalent(m)
       case _ => false
     }
   }
@@ -70,9 +70,9 @@ final case class Marker(pos: Int, features: Features) {
   override lazy val hashCode: Int = pos.hashCode * 41 + features.hashCode
 
   /**
-   * Obtain the canonical version of this marker, to save memory
+   * Obtain the canonical version of this motif, to save memory
    */
-  def canonical(ms: MarkerSpace): Marker = {
+  def canonical(ms: MotifSpace): Motif = {
     ms.get(tag, pos, sortValue)
   }
 
@@ -82,40 +82,40 @@ final case class Marker(pos: Int, features: Features) {
   /**
    * A metric for sorting by rank.
    * sorts earlier is higher if rank/priority number is lower.
-   * @param posInSet position in a set of markers (not in the underlying sequence)
+   * @param posInSet position in a set of motifs (not in the underlying sequence)
    */
-  def withSortValue(space: MarkerSpace, posInSet: Int) =
+  def withSortValue(space: MotifSpace, posInSet: Int) =
     copy(features = features.withSortValue(space, 1000 * features.tagRank + posInSet))
 
   /**
-   * Whether the two markers overlap when absolute positions are used.
+   * Whether the two motifs overlap when absolute positions are used.
    */
-  def overlaps(other: Marker) = {
+  def overlaps(other: Motif) = {
     //this.pos should be < other.pos
     (this.pos + this.features.tag.length() > other.pos)
   }
 }
 
-object MarkerSet {
-  def unpack(space: MarkerSpace, key: String) = {
+object MotifSet {
+  def unpack(space: MotifSpace, key: String) = {
     if (key == "") {
-      //Temporary solution while we think about how to handle the no-markers case
-      Console.err.println("Warning: constructed MarkerSet with no markers")
-      new MarkerSet(space, List())
+      //Temporary solution while we think about how to handle the no-motifs case
+      Console.err.println("Warning: constructed MotifSet with no motifs")
+      new MotifSet(space, List())
     } else {
-      new MarkerSet(space, key.split("\\.").map(Marker.unpack(space, _)).toList)
+      new MotifSet(space, key.split("\\.").map(Motif.unpack(space, _)).toList)
     }
   }
 
   /**
-   * Size of a compact marker set in bytes
+   * Size of a compact motif set in bytes
    */
-  def compactSize(space: MarkerSpace) = 2 * space.n
+  def compactSize(space: MotifSpace) = 2 * space.n
 
-  def unpackToCompact(space: MarkerSpace, key: String) =
+  def unpackToCompact(space: MotifSpace, key: String) =
     unpack(space, key).compact
 
-  def uncompactToString(data: Array[Byte], space: MarkerSpace): String = {
+  def uncompactToString(data: Array[Byte], space: MotifSpace): String = {
     val b = ByteBuffer.wrap(data)
     val r = new StringBuilder
     val n = b.capacity() / 2
@@ -138,12 +138,12 @@ object MarkerSet {
   /**
    * Mainly for testing
    */
-  def apply(space: MarkerSpace, tags: Seq[String], positions: Seq[Int]) = {
+  def apply(space: MotifSpace, tags: Seq[String], positions: Seq[Int]) = {
     val ms = (tags zip positions).map(x => space.get(x._1, x._2))
-    new MarkerSet(space, ms.toList)
+    new MotifSet(space, ms.toList)
   }
 
-  def addToFirst(s: Seq[Marker], n: Int) = {
+  def addToFirst(s: Seq[Motif], n: Int) = {
     if (s.isEmpty) {
       List()
     } else {
@@ -151,7 +151,7 @@ object MarkerSet {
     }
   }
 
-  def setFirstToZero(s: List[Marker]) = {
+  def setFirstToZero(s: List[Motif]) = {
     if (s.nonEmpty) {
       s.head.copy(pos = 0) :: s.tail
     } else {
@@ -160,8 +160,8 @@ object MarkerSet {
   }
 
   @tailrec
-  def relativePositionsSorted(space: MarkerSpace, ms: List[Marker],
-                        acc: List[Marker]): List[Marker] = {
+  def relativePositionsSorted(space: MotifSpace, ms: List[Motif],
+                              acc: List[Motif]): List[Motif] = {
     ms match {
       case m :: n :: ns => relativePositionsSorted(space, n :: ns,
         n.copy(pos = n.pos - m.pos) :: acc)
@@ -169,7 +169,7 @@ object MarkerSet {
     }
   }
 
-  def relativePositionsSorted(space: MarkerSpace, ms: List[Marker]): List[Marker] = {
+  def relativePositionsSorted(space: MotifSpace, ms: List[Motif]): List[Motif] = {
       ms match {
       case Nil => ms
       case _ => ms.head :: relativePositionsSorted(space, ms, Nil)
@@ -177,10 +177,10 @@ object MarkerSet {
   }
 
   /**
-   * Sort markers by position (should be absolute) and change to relative positions
-   * (marker intervals)
+   * Sort motifs by position (should be absolute) and change to relative positions
+   * (motif intervals)
    */
-  def relativePositions(space: MarkerSpace, ms: List[Marker]): List[Marker] = {
+  def relativePositions(space: MotifSpace, ms: List[Motif]): List[Motif] = {
     ms match {
       case Nil => ms
       case _ =>
@@ -189,13 +189,13 @@ object MarkerSet {
     }
   }
 
-  def shiftLeft(ms: Seq[Marker], n: Int): Seq[Marker] =
+  def shiftLeft(ms: Seq[Motif], n: Int): Seq[Motif] =
     ms.map(m => m.copy(pos = m.pos - n))
 
 }
 
 /**
- * Compact version of a MarkerSet with fast hashCode and equals.
+ * Compact version of a MotifSet with fast hashCode and equals.
  */
 final case class CompactNode(val data: Array[Byte], override val hashCode: Int) {
 
@@ -207,16 +207,16 @@ final case class CompactNode(val data: Array[Byte], override val hashCode: Int) 
 }
 
 /*
- * Markers, with relative positions, sorted by absolute position
+ * Motifss, with relative positions, sorted by absolute position
  */
-final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]) {
-  import MarkerSet._
+final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
+  import MotifSet._
 
   var inPartition: Boolean = false
 
   lazy val packedString = {
     val r = new StringBuilder
-    val it = relativeMarkers.iterator
+    val it = relativeMotifs.iterator
     while (it.hasNext) {
       it.next.packInto(r)
       if (it.hasNext) {
@@ -228,7 +228,7 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
 
   lazy val compact = {
     val r = ByteBuffer.allocate(compactSize(space))
-    val it = relativeMarkers.iterator
+    val it = relativeMotifs.iterator
     var hash = 0
     while (it.hasNext) {
       val m = it.next
@@ -242,29 +242,29 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
     new CompactNode(r.array(), hash)
   }
 
-  override def toString = "ms{" + relativeMarkers.mkString(",") + "}"
+  override def toString = "ms{" + relativeMotifs.mkString(",") + "}"
 
-  def fromZeroAsArray = new MarkerSet(space, setFirstToZero(relativeMarkers))
+  def fromZeroAsArray = new MotifSet(space, setFirstToZero(relativeMotifs))
 
-  def fromZero = new MarkerSet(space, setFirstToZero(relativeMarkers))
+  def fromZero = new MotifSet(space, setFirstToZero(relativeMotifs))
 
   def relativeByRank =
-    relativeMarkers.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
+    relativeMotifs.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
 
   /**
-   * Produces a copy where the sort values have been assigned to all markers.
-   * Also converts the marker set to a list.
+   * Produces a copy where the sort values have been assigned to all motifs.
+   * Also converts the motifs set to a list.
    */
-  def fixMarkers = {
+  def fixMotifs = {
     if (relativeByRank.isEmpty) {
       this
     } else {
-      val withSortValues = relativeMarkers.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
-      new MarkerSet(space, withSortValues)
+      val withSortValues = relativeMotifs.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
+      new MotifSet(space, withSortValues)
     }
   }
 
-  def removeMarker(pos: Int,  ms: List[Marker]): List[Marker] = {
+  def removeMotif(pos: Int, ms: List[Motif]): List[Motif] = {
     if (pos == 0) {
       ms match {
         case a :: b :: xs =>
@@ -276,24 +276,24 @@ final case class MarkerSet(space: MarkerSpace, val relativeMarkers: List[Marker]
     } else {
       ms match {
         case a :: xs =>
-          a :: removeMarker(pos - 1, xs)
+          a :: removeMotif(pos - 1, xs)
         case _ => ???
       }
     }
   }
 
   lazy val collapse = {
-    if (relativeMarkers.nonEmpty) {
-      val lowest = relativeMarkers.sortBy(_.rankSort).last
-      val i = relativeMarkers.indexOf(lowest)
-      new MarkerSet(space, removeMarker(i, relativeMarkers))
+    if (relativeMotifs.nonEmpty) {
+      val lowest = relativeMotifs.sortBy(_.rankSort).last
+      val i = relativeMotifs.indexOf(lowest)
+      new MotifSet(space, removeMotif(i, relativeMotifs))
     } else {
-      new MarkerSet(space, List())
+      new MotifSet(space, List())
     }
   }
 
   /**
-   * Produce a copy with canonical markers, to save memory.
+   * Produce a copy with canonical motifs, to save memory.
    */
-  def canonical = new MarkerSet(space, relativeMarkers.map(_.canonical(space)))
+  def canonical = new MotifSet(space, relativeMotifs.map(_.canonical(space)))
 }

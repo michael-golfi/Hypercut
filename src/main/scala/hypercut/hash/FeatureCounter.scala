@@ -16,8 +16,8 @@ final case class FeatureCounter() {
     increment(feature)
   }
 
-  def += (ms: MarkerSet) {
-    for (m <- ms.relativeMarkers) {
+  def += (ms: MotifSet) {
+    for (m <- ms.relativeMotifs) {
       increment(m.tag)
     }
   }
@@ -48,11 +48,11 @@ final case class FeatureCounter() {
   }
 
   /**
-   * Construct a new marker space where the least common markers in this counter
+   * Construct a new motif space where the least common motifs in this counter
    * have the highest priority.
    */
   def toSpaceByFrequency(n: Int) = {
-    new MarkerSpace(counter.toSeq.sortBy(_._2).map(_._1).toArray, n)
+    new MotifSpace(counter.toSeq.sortBy(_._2).map(_._1).toArray, n)
   }
 
 }

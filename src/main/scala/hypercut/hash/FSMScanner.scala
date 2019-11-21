@@ -5,8 +5,8 @@ import scala.annotation.tailrec
 /**
  * In the 'transitions' array the next state will be looked up through the value of the seen character.
  */
-final case class ScannerState(val seenString: String, foundMarker: Option[String] = None,
-  var transitions: Array[ScannerState]) {
+final case class ScannerState(val seenString: String, foundMotif: Option[String] = None,
+                              var transitions: Array[ScannerState]) {
 
   val startOffset = (seenString.length - 1)
 
@@ -21,18 +21,18 @@ final case class ScannerState(val seenString: String, foundMarker: Option[String
 
 /**
  * Builds a state machine for fast parsing.
- * We expect to match on short markers, so we are not too worried about wasted memory
+ * We expect to match on short motifs, so we are not too worried about wasted memory
  * (most of the positions in the transitions arrays will be unused).
  */
-final class FSMScanner(val markersByPriority: Seq[String]) {
+final class FSMScanner(val motifsByPriority: Seq[String]) {
   val alphabet = (0.toChar to 'T').toArray //includes ACTG
   val initState = ScannerState("", None, alphabet.map(a => null))
   val usedCharSet = Seq('A', 'C', 'T', 'G', 'N')
 
-  val maxPtnLength = markersByPriority.map(_.length).max
+  val maxPtnLength = motifsByPriority.map(_.length).max
   def padToLength(ptn: String): Seq[String] = {
     if (ptn.length < maxPtnLength) {
-      Seq(ptn + "A", ptn + "C", ptn + "T", ptn + "G").filter(! markersByPriority.contains(_)).
+      Seq(ptn + "A", ptn + "C", ptn + "T", ptn + "G").filter(! motifsByPriority.contains(_)).
         flatMap(padToLength(_))
     } else {
       Seq(ptn)
@@ -40,8 +40,8 @@ final class FSMScanner(val markersByPriority: Seq[String]) {
   }
 
   //Construct padded states such as ACT, ACG, ACT from AC when ACA is also a pattern
-  //This map will match an extended marker such as ACT to its "true match" AC
-  val trueMatches = Map() ++ markersByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
+  //This map will match an extended motif such as ACT to its "true match" AC
+  val trueMatches = Map() ++ motifsByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
 
   def buildStatesFrom(seen: String, filtered: Seq[String]): Array[ScannerState] = {
     val candidates = filtered.filter(_.startsWith(seen))
@@ -107,7 +107,7 @@ final class FSMScanner(val markersByPriority: Seq[String]) {
     var r = List[(Int, String)]()
     while (i < data.length) {
       state = state.advance(data.charAt(i))
-      state.foundMarker match {
+      state.foundMotif match {
         case Some(m) =>
 //          println(s"$i $m ${state.seenString} ${state.startOffset}")
           r ::= (((i - state.startOffset), m))

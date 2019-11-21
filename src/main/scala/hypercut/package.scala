@@ -1,4 +1,4 @@
-import hypercut.hash.MarkerSet
+import hypercut.hash.MotifSet
 
 package object hypercut {
 
@@ -18,6 +18,6 @@ package object hypercut {
 
   type CompactEdge = (Array[Byte], Array[Byte])
 
-  type ExpandedEdge = (MarkerSet, MarkerSet)
+  type ExpandedEdge = (MotifSet, MotifSet)
 
 }

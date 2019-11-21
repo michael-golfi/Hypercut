@@ -3,7 +3,7 @@ package hypercut.graph
 import scala.annotation.tailrec
 
 import hypercut._
-import hypercut.hash.MarkerSpace
+import hypercut.hash.MotifSpace
 import friedrich.graph.Graph
 import miniasm.genome.util.DNAHelpers
 

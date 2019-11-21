@@ -54,7 +54,7 @@ class Routines(spark: SparkSession) {
   /**
    * Count motifs such as AC, AT, TTT in a set of reads.
    */
-  def countFeatures(reads: Dataset[String], space: MarkerSpace): FeatureCounter = {
+  def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
     reads.map(r => {
       val c = new FeatureCounter
       val s = new FeatureScanner(space)
@@ -63,7 +63,7 @@ class Routines(spark: SparkSession) {
     }).reduce(_ + _)
   }
 
-  def createSampledSpace(input: String, fraction: Double, space: MarkerSpace): MarkerSpace = {
+  def createSampledSpace(input: String, fraction: Double, space: MotifSpace): MotifSpace = {
     val in = getReadsFromFasta(input, true, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(s"Discovered frequencies in fraction $fraction")
@@ -71,7 +71,7 @@ class Routines(spark: SparkSession) {
   }
 
   /**
-   * The marker sets in a read, paired with the corresponding segments that were discovered.
+   * The motif sets in a read, paired with the corresponding segments that were discovered.
    */
 
   type ProcessedRead = (Array[HashSegment])
@@ -79,10 +79,10 @@ class Routines(spark: SparkSession) {
     /**
    * Hash and split a set of reads into edges
    */
-  def splitReadsToEdges(reads: Dataset[String], ext: MarkerSetExtractor): Dataset[(Array[Byte], Array[Byte])] = {
+  def splitReadsToEdges(reads: Dataset[String], ext: MotifSetExtractor): Dataset[(Array[Byte], Array[Byte])] = {
     reads.flatMap(r => {
-      val buckets = ext.markerSetsInRead(r)._2
-      MarkerSetExtractor.collectTransitions(
+      val buckets = ext.motifSetsInRead(r)._2
+      MotifSetExtractor.collectTransitions(
         buckets.map(x => x._1.compact.data).toList
         )
     })
@@ -92,7 +92,7 @@ class Routines(spark: SparkSession) {
    * Simplified version of bucketGraph that only builds buckets
    * (thus, counting k-mers), not collecting edges.
    */
-  def bucketsOnly(reads: Dataset[String], ext: MarkerSetExtractor) = {
+  def bucketsOnly(reads: Dataset[String], ext: MotifSetExtractor) = {
     val segments = reads.flatMap(r => createHashSegments(r, ext))
     processedToBuckets(segments, ext)
   }
@@ -101,13 +101,13 @@ class Routines(spark: SparkSession) {
    * Convenience function to compute buckets directly from an input specification
    * and write them to the output location.
    */
-  def bucketsOnly(input: String, ext: MarkerSetExtractor, output: String) {
+  def bucketsOnly(input: String, ext: MotifSetExtractor, output: String) {
     val reads = getReadsFromFasta(input, false)
     val bkts = bucketsOnly(reads, ext)
     writeBuckets(bkts, output)
   }
 
-  def processedToBuckets[A](segments: Dataset[HashSegment], ext: MarkerSetExtractor,
+  def processedToBuckets[A](segments: Dataset[HashSegment], ext: MotifSetExtractor,
                             reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val countedSegments =
       segments.groupBy($"hash", $"segment").count.
@@ -159,7 +159,7 @@ class Routines(spark: SparkSession) {
    * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: String, ext: MarkerSetExtractor,
+  def bucketGraph(reads: String, ext: MotifSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
     val edges = splitReadsToEdges(getReadsFromFasta(reads, false), ext).distinct
     val verts = bucketsOnly(getReadsFromFasta(reads, true), ext)
@@ -264,7 +264,7 @@ class Routines(spark: SparkSession) {
    * loading from saved data.
    * The generated data can optionally be saved in the specified location.
    */
-  def graphFromReads(input: String, ext: MarkerSetExtractor,
+  def graphFromReads(input: String, ext: MotifSetExtractor,
                      outputLocation: Option[String] = None) = {
 
     val r = bucketGraph(input, ext, outputLocation)
@@ -296,8 +296,8 @@ object SerialRoutines {
     case _        => Some(c)
   }
 
-  def createHashSegments(r: String, ext: MarkerSetExtractor) = {
-    val buckets = ext.markerSetsInRead(r)._2
+  def createHashSegments(r: String, ext: MotifSetExtractor) = {
+    val buckets = ext.motifSetsInRead(r)._2
     val hashesSegments = ext.splitRead(r, buckets)
     hashesSegments.flatMap(x =>
       removeN(x._2, ext.k).map(s =>

@@ -31,9 +31,9 @@ final class EdgeSet(db: EdgeDB, writeInterval: Option[Int]) {
     r
   }
 
-  def add(edges: TraversableOnce[List[MarkerSet]]) = synchronized {
+  def add(edges: TraversableOnce[List[MotifSet]]) = synchronized {
     for (es <- edges) {
-      MarkerSetExtractor.visitTransitions(es, (e, f) => addEdge(e.compact, f.compact))
+      MotifSetExtractor.visitTransitions(es, (e, f) => addEdge(e.compact, f.compact))
     }
   }
 

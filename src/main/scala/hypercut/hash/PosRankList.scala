@@ -10,8 +10,8 @@ import scala.annotation.tailrec
  * One sorted by rank, one sorted by position.
  */
 sealed trait DLNode {
-  type Backward = Either[PosRankList, MarkerNode]
-  type Forward = Either[End, MarkerNode]
+  type Backward = Either[PosRankList, MotifNode]
+  type Forward = Either[End, MotifNode]
   var prevPos: Backward = _
   var nextPos: Forward = _
   var higherRank: Backward = _
@@ -34,14 +34,14 @@ object PosRankList {
   /**
    * Build a list from nodes with absolute positions.
    */
-  def apply(nodes: Seq[Marker]) = {
-    fromNodes(nodes.map(m => MarkerNode(m.pos, m)))
+  def apply(nodes: Seq[Motif]) = {
+    fromNodes(nodes.map(m => MotifNode(m.pos, m)))
   }
 
   /**
    * Build a list from position-sorted nodes.
    */
-  def fromNodes(nodes: Seq[MarkerNode]) = {
+  def fromNodes(nodes: Seq[MotifNode]) = {
     var i = 0
     var r = new PosRankList()
     var prior: DLNode = r
@@ -70,14 +70,14 @@ object PosRankList {
     r
   }
 
-  def linkPos(before: DLNode, middle: MarkerNode, after: DLNode) {
+  def linkPos(before: DLNode, middle: MotifNode, after: DLNode) {
     before.nextPos = Right(middle)
     middle.prevPos = before.asBackwardLink
     middle.nextPos = after.asForwardLink
     after.prevPos = Right(middle)
   }
 
-  def linkRank(above: DLNode, middle: MarkerNode, below: DLNode) {
+  def linkRank(above: DLNode, middle: MotifNode, below: DLNode) {
     above.lowerRank = Right(middle)
     middle.higherRank = above.asBackwardLink
     middle.lowerRank = below.asForwardLink
@@ -85,7 +85,7 @@ object PosRankList {
   }
 
   @tailrec
-  def dropUntilPositionRec(from: MarkerNode, pos: Int, space: MarkerSpace) {
+  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace) {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
       from.remove()
       from.nextPos match {
@@ -97,7 +97,7 @@ object PosRankList {
   }
 
   @tailrec
-  def rankInsertRec(from: MarkerNode, insert: MarkerNode) {
+  def rankInsertRec(from: MotifNode, insert: MotifNode) {
     if (insert.rankSort < from.rankSort) {
       linkRank(from.higherRank.merge, insert, from)
     } else {
@@ -113,10 +113,10 @@ object PosRankList {
  * The PosRankList maintains two mutable doubly linked lists, corresponding to
  * position and rank ordering of items.
  *
- * This class is the start marker (highest (minimum) rank, lowest pos) for both lists,
+ * This class is the start motif (highest (minimum) rank, lowest pos) for both lists,
  * and also the main public interface.
  */
-final case class PosRankList() extends DLNode with Iterable[Marker] {
+final case class PosRankList() extends DLNode with Iterable[Motif] {
   import PosRankList._
 
   nextPos = Left(End())
@@ -124,10 +124,10 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   nextPos.left.get.prevPos = Left(this)
   lowerRank.left.get.higherRank = Left(this)
 
-  def asForwardLink: Either[End, MarkerNode] = ???
+  def asForwardLink: Either[End, MotifNode] = ???
   def asBackwardLink = Left(this)
 
-  def iterator = new Iterator[Marker] {
+  def iterator = new Iterator[Motif] {
     var current = nextPos
     def hasNext = current.isRight
     def next = {
@@ -137,7 +137,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
     }
   }
 
-  def rankIterator = new Iterator[Marker] {
+  def rankIterator = new Iterator[Motif] {
     var current = lowerRank
     def hasNext = current.isRight
     def next = {
@@ -149,7 +149,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
 
   val end: End = nextPos.left.get
 
-  def rankInsert(insert: MarkerNode) {
+  def rankInsert(insert: MotifNode) {
     lowerRank match {
       case Left(e)   => linkRank(this, insert, e)
       case Right(mn) => rankInsertRec(mn, insert)
@@ -160,7 +160,7 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
    * Append at the final position,
    * inserting at the correct place in rank ordering.
    */
-  def :+= (mn: MarkerNode) {
+  def :+= (mn: MotifNode) {
     end.prevPos match {
       case Right(last) =>
         linkPos(last, mn, end)
@@ -172,33 +172,33 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   }
 
   /**
-   * Append a marker at the final position, and insert at the correct rank order.
+   * Append a motif at the final position, and insert at the correct rank order.
    */
-  def :+= (m: Marker) {
-    this :+= MarkerNode(m.pos, m)
+  def :+= (m: Motif) {
+    this :+= MotifNode(m.pos, m)
   }
 
   /**
    * Take a specified number of highest ranking items.
    * Does not alter the list.
    */
-  def takeByRank(n: Int): List[Marker] = {
+  def takeByRank(n: Int): List[Motif] = {
     lowerRank match {
       case Right(highest) => takeByRank(highest, n)
       case _ => List()
     }
   }
 
-  private def takeByRank(from: MarkerNode, n: Int): List[Marker] = {
+  private def takeByRank(from: MotifNode, n: Int): List[Motif] = {
     new RankListBuilder(from, n).build
   }
 
   /**
    * Removes items that can only be parsed
    * before the given sequence position, given the constraints
-   * of the given MarkerSpace (min permitted start offset, etc)
+   * of the given MotifSpace (min permitted start offset, etc)
    */
-  def dropUntilPosition(pos: Int, space: MarkerSpace) {
+  def dropUntilPosition(pos: Int, space: MotifSpace) {
     nextPos match {
       case Right(mn) => dropUntilPositionRec(mn, pos, space)
       case _ =>
@@ -211,14 +211,14 @@ final case class PosRankList() extends DLNode with Iterable[Marker] {
   }
 }
 
-final class RankListBuilder(from: MarkerNode, n: Int) {
+final class RankListBuilder(from: MotifNode, n: Int) {
   //Number of remaining items to generate for the resulting output list
   private[this] var rem: Int = n
 
   /**
    * Returns the resolved overlap when a and b are ordered.
    */
-  def resolveOverlap(a: Marker, b: Marker, xs: List[Marker] = Nil): List[Marker] = {
+  def resolveOverlap(a: Motif, b: Motif, xs: List[Motif] = Nil): List[Motif] = {
     if (a.overlaps(b)) {
       if (a.rankSort <= b.rankSort) {
         a :: xs
@@ -236,7 +236,7 @@ final class RankListBuilder(from: MarkerNode, n: Int) {
    * before and after do not overlap.
    * x potentially overlaps with one or both
    */
-  def resolveOverlap(before: Marker, x: Marker, after: Marker, xs: List[Marker]): List[Marker] = {
+  def resolveOverlap(before: Motif, x: Motif, after: Motif, xs: List[Motif]): List[Motif] = {
     if (before.overlaps(x) && x.overlaps(after)) {
       if (x.rankSort < before.rankSort && x.rankSort < after.rankSort) {
         //Net removal of one item from the list, not insertion
@@ -255,7 +255,7 @@ final class RankListBuilder(from: MarkerNode, n: Int) {
   /**
    * Insert by position and edit out any overlaps
    */
-  def insertPosNoOverlap(into: List[Marker], ins: Marker): List[Marker] = {
+  def insertPosNoOverlap(into: List[Motif], ins: Motif): List[Motif] = {
     into match {
       case a :: b :: xs =>
         if (ins.pos > a.pos && ins.pos < b.pos) {
@@ -309,7 +309,7 @@ final class RankListBuilder(from: MarkerNode, n: Int) {
  *
  * Position is absolute.
  */
-final case class MarkerNode(pos: Int, m: Marker) extends DLNode {
+final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   import PosRankList._
 
   def asForwardLink = Right(this)
@@ -333,12 +333,12 @@ final case class MarkerNode(pos: Int, m: Marker) extends DLNode {
  * Avoid recomputing takeByRank(n) by using a smart cache.
  */
 final class TopRankCache(list: PosRankList, n: Int) {
-  var cache: Option[List[Marker]] = None
-  var firstByPos: Marker = _
+  var cache: Option[List[Motif]] = None
+  var firstByPos: Motif = _
   var lowestRank: Int = _
   var cacheLength: Int = 0
 
-  def :+= (m: Marker) {
+  def :+= (m: Motif) {
     list :+= m
     if (m.rankSort < lowestRank || cacheLength < n) {
       //Force recompute
@@ -346,7 +346,7 @@ final class TopRankCache(list: PosRankList, n: Int) {
     }
   }
 
-  def dropUntilPosition(pos: Int, space: MarkerSpace) {
+  def dropUntilPosition(pos: Int, space: MotifSpace) {
     list.dropUntilPosition(pos, space)
     if (firstByPos != null &&
         pos + space.minPermittedStartOffset(firstByPos.tag) > firstByPos.pos) {

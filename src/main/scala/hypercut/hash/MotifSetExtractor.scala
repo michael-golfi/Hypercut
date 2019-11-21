@@ -6,7 +6,7 @@ import hypercut._
 import hypercut.shortread.ReadFiles
 import hypercut.shortread.Read
 
-final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
+final case class MotifSetExtractor(space: MotifSpace, k: Int) {
   @volatile
   var readCount = 0
   @volatile
@@ -18,20 +18,20 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   lazy val scanner = new FSMScanner(space.byPriority)
 
   /**
-   * Scans a single read, using mutable state to track the current marker set
+   * Scans a single read, using mutable state to track the current motif set
    * in a window.
    */
-  final class MarkerExtractor(read: String) {
+  final class MotifExtractor(read: String) {
     var matches = scanner.allMatches(read).reverse
     var scannedToPos: Int = space.maxMotifLength - 2
 
-    var windowMarkers = new TopRankCache(PosRankList(), n)
+    var windowMotifs = new TopRankCache(PosRankList(), n)
 
-    def markerAt(pos: Int): Option[Marker] = {
+    def motifAt(pos: Int): Option[Motif] = {
       matches = matches.dropWhile(_._1 < pos)
       if (!matches.isEmpty && matches.head._1 == pos) {
         //Space.create allocates a new object each time, as opposed to space.get which
-        //saves markers and reuses them
+        //saves motifs and reuses them
         Some(space.create(matches.head._2, matches.head._1))
       } else {
         None
@@ -50,7 +50,7 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
      * May only be called for monotonically increasing values of pos
      * pos is the final position of the window we scan to, inclusive.
      */
-    def scanTo(pos: Int): List[Marker] = {
+    def scanTo(pos: Int): List[Motif] = {
       while (pos > scannedToPos + 1) {
         //Catch up
         scanTo(scannedToPos + 1)
@@ -69,50 +69,50 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
         val consider = pos - space.maxMotifLength
 
         if (consider >= 0) {
-          markerAt(consider) match {
+          motifAt(consider) match {
             case Some(m) =>
-              windowMarkers :+= m
+              windowMotifs :+= m
             case None =>
           }
         }
-        windowMarkers.dropUntilPosition(start, space)
+        windowMotifs.dropUntilPosition(start, space)
       }
-      //      println(windowMarkers)
-      windowMarkers.takeByRank
+      //      println(windowMotifs)
+      windowMotifs.takeByRank
     }
   }
 
   /**
-   * Look for marker sets in a read.
+   * Look for motif sets in a read.
    * Returns two lists:
-   * 1. The MarkerSet of every k-mer (in order),
-   * 2. The positions where each contiguous MarkerSet region is first detected
+   * 1. The MotifSet of every k-mer (in order),
+   * 2. The positions where each contiguous MotifSet region is first detected
    */
-  def markerSetsInRead(read: String): (List[MarkerSet], List[(MarkerSet, Int)]) = {
+  def motifSetsInRead(read: String): (List[MotifSet], List[(MotifSet, Int)]) = {
     readCount += 1
     if (readCount % 100000 == 0) {
       println(s"$readCount reads seen")
     }
 
-    var perPosition = List[MarkerSet]()
-    var perBucket = List[(MarkerSet, Int)]()
+    var perPosition = List[MotifSet]()
+    var perBucket = List[(MotifSet, Int)]()
 
-    val ext = new MarkerExtractor(read)
+    val ext = new MotifExtractor(read)
     ext.scanTo(k - 2)
     var p = k - 1
 
-    var lastMarkers: List[Marker] = null
-    var lastMarkerSet: MarkerSet = null
+    var lastMotifs: List[Motif] = null
+    var lastMotifSet: MotifSet = null
 
     while (p <= read.length - 1) {
       kmerCount += 1
       val scan = ext.scanTo(p)
-      if (!(scan eq lastMarkers)) {
-        lastMarkerSet = new MarkerSet(space, MarkerSet.relativePositionsSorted(space, scan)).fromZero
-        lastMarkers = scan
-        perBucket ::= (lastMarkerSet, p)
+      if (!(scan eq lastMotifs)) {
+        lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSorted(space, scan)).fromZero
+        lastMotifs = scan
+        perBucket ::= (lastMotifSet, p)
       }
-      perPosition ::= lastMarkerSet
+      perPosition ::= lastMotifSet
       p += 1
     }
     (perPosition.reverse, perBucket.reverse)
@@ -121,15 +121,15 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
   /**
    * Convert extracted buckets into overlapping substrings of a read,
    * overlapping by (k-1) bases. The ordering is not guaranteed.
-   * Designed to operate on the second list produced by the markerSetsInRead function.
+   * Designed to operate on the second list produced by the motifSetsInRead function.
    */
 
-  def splitRead(read: String, buckets: List[(MarkerSet, Int)]): List[(MarkerSet, String)] =
+  def splitRead(read: String, buckets: List[(MotifSet, Int)]): List[(MotifSet, String)] =
     splitRead(read, buckets, Nil).reverse
 
   @tailrec
-  def splitRead(read: String, buckets: List[(MarkerSet, Int)],
-                acc: List[(MarkerSet, String)]): List[(MarkerSet, String)] = {
+  def splitRead(read: String, buckets: List[(MotifSet, Int)],
+                acc: List[(MotifSet, String)]): List[(MotifSet, String)] = {
     buckets match {
       case b1 :: b2 :: bs =>
         splitRead(read, b2 :: bs, (b1._1, read.substring(b1._2 - (k - 1), b2._2)) :: acc)
@@ -143,9 +143,9 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
    * Returns the sequence of discovered buckets, as well as the k-mers in the read.
    * k-mers and buckets at the same position will correspond to each other.
    */
-  def markers(read: String): (List[MarkerSet], Iterator[String]) = {
+  def motifs(read: String): (List[MotifSet], Iterator[String]) = {
     val kmers = Read.kmers(read, k)
-    val mss = markerSetsInRead(read)
+    val mss = motifSetsInRead(read)
     (mss._1, kmers)
   }
 
@@ -153,50 +153,50 @@ final case class MarkerSetExtractor(space: MarkerSpace, k: Int) {
    * Ingest a read, returning pairs of discovered buckets (in compact form)
    * and corresponding k-mers.
    */
-  def compactMarkers(read: String): List[(CompactNode, String)] = {
+  def compactMotifs(read: String): List[(CompactNode, String)] = {
     val kmers = Read.kmers(read, k).toList
-    val mss = markerSetsInRead(read)._1.map(_.compact)
+    val mss = motifSetsInRead(read)._1.map(_.compact)
     mss zip kmers
   }
 
-  def prettyPrintMarkers(input: String) = {
+  def prettyPrintMotifs(input: String) = {
     val data = ReadFiles.iterator(input)
     for (read <- data) {
       print(s"Read: $read")
-      val analysed = markers(read)
-      var lastMarkers: String = ""
-      for ((markers, kmer) <- (analysed._1 zip analysed._2.toList)) {
-        if (markers.packedString == lastMarkers) {
+      val analysed = motifs(read)
+      var lastMotifs: String = ""
+      for ((motifs, kmer) <- (analysed._1 zip analysed._2.toList)) {
+        if (motifs.packedString == lastMotifs) {
           print(s"$kmer ")
         } else {
           println("")
-          lastMarkers = markers.packedString
-          println(s"  $lastMarkers")
+          lastMotifs = motifs.packedString
+          println(s"  $lastMotifs")
           print(s"    $kmer ")
         }
       }
 
       println("  Edges ")
-      MarkerSetExtractor.visitTransitions(analysed._1, (e, f) => print(
+      MotifSetExtractor.visitTransitions(analysed._1, (e, f) => print(
         e.packedString + " -> " + f.packedString + " "))
       println("")
     }
   }
 }
 
-object MarkerSetExtractor {
+object MotifSetExtractor {
 
-  def fromSpace(spaceName: String, numMarkers: Int, k: Int) = {
-    val space = MarkerSpace.named(spaceName, numMarkers)
-    new MarkerSetExtractor(space, k)
+  def fromSpace(spaceName: String, numMotifs: Int, k: Int) = {
+    val space = MotifSpace.named(spaceName, numMotifs)
+    new MotifSetExtractor(space, k)
   }
 
   /**
    * Efficiently visit bucket transitions (i.e. macro edges) in a list that was previously
-   * computed by markerSetsInRead.
+   * computed by motifSetsInRead.
    */
   @tailrec
-  def visitTransitions(data: List[MarkerSet], f: (MarkerSet, MarkerSet) => Unit) {
+  def visitTransitions(data: List[MotifSet], f: (MotifSet, MotifSet) => Unit) {
     data match {
       case x :: y :: xs =>
         if ((x eq y) || (x.compact == y.compact)) {

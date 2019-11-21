@@ -4,8 +4,8 @@ import scala.collection.mutable.ListBuffer
 import scala.annotation.tailrec
 import scala.collection.Seq
 
-object MarkerSpace {
-  def simple(n: Int) = new MarkerSpace(Array(
+object MotifSpace {
+  def simple(n: Int) = new MotifSpace(Array(
         "TTA",
         "AT", "AC",
         "GT", "GC",
@@ -33,19 +33,19 @@ object MarkerSpace {
     case "all2" => all2mers
     case "all3" => all3mers
     case "mixedTest" => mixedTest
-    case _ => throw new Exception(s"Unknown marker set name: $name")
+    case _ => throw new Exception(s"Unknown motif space name: $name")
   }
 
-  def named(name: String, n: Int): MarkerSpace = using(named(name), n)
+  def named(name: String, n: Int): MotifSpace = using(named(name), n)
 
-  def using(mers: Seq[String], n: Int) = new MarkerSpace(mers.toArray, n)
+  def using(mers: Seq[String], n: Int) = new MotifSpace(mers.toArray, n)
 }
 
 /**
- * A set of markers that can be used, and their relative priorities.
- * @param n Number of markers in a marker set.
+ * A set of motifs that can be used, and their relative priorities.
+ * @param n Number of motifs in a motif set.
  */
-final case class MarkerSpace(val byPriority: Array[String], val n: Int) {
+final case class MotifSpace(val byPriority: Array[String], val n: Int) {
   val maxMotifLength = byPriority.map(_.length()).max
   val minMotifLength = byPriority.map(_.length()).min
 
@@ -69,19 +69,19 @@ final case class MarkerSpace(val byPriority: Array[String], val n: Int) {
     lookup(key)
   }
 
-  def get(pattern: String, pos: Int, sortValue: Int = 0): Marker = {
-    Marker(pos, getFeatures(pattern, sortValue))
+  def get(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
+    Motif(pos, getFeatures(pattern, sortValue))
   }
 
-  def create(pattern: String, pos: Int, sortValue: Int = 0): Marker = {
-    Marker(pos, new Features(pattern, priorityOf(pattern), sortValue))
+  def create(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
+    Motif(pos, new Features(pattern, priorityOf(pattern), sortValue))
   }
 
   val priorityMap = byPriority.zipWithIndex.toMap
   def priorityOf(mk: String) = priorityMap(mk)
 
   @tailrec
-  final def allIndexOf(s: String, ptn: String, from: Int, soFar: ListBuffer[Marker]) {
+  final def allIndexOf(s: String, ptn: String, from: Int, soFar: ListBuffer[Motif]) {
     if (from < s.length()) {
       val i = s.indexOf(ptn, from)
       if (i != -1) {
@@ -94,8 +94,8 @@ final case class MarkerSpace(val byPriority: Array[String], val n: Int) {
   //Sort by position, inserting m2 into m1.
   //m1 has priority if there are position collisions.
   //TODO: make this tailrec
-  private def mergeMarkers(m1: List[Marker], m2: List[Marker],
-                           nextMarkerAt: Int = 0): List[Marker] = {
+  private def mergeMotifs(m1: List[Motif], m2: List[Motif],
+                           nextMotifAt: Int = 0): List[Motif] = {
     m1 match {
       case a :: ms =>
         if (m2.isEmpty) {
@@ -104,35 +104,35 @@ final case class MarkerSpace(val byPriority: Array[String], val n: Int) {
           val m2h = m2.head
           if (a.pos <= m2h.pos) {
             //m1 has priority
-            a :: mergeMarkers(m1.tail, m2, a.pos + 1)
+            a :: mergeMotifs(m1.tail, m2, a.pos + 1)
             // && (m2h.pos + m2h.tag.length) <= a.pos
-          } else if (m2h.pos >= nextMarkerAt) {
-            //Insert one marker from m2
-              m2h :: mergeMarkers(m1, m2.tail, m2h.pos + 1)
+          } else if (m2h.pos >= nextMotifAt) {
+            //Insert one motif from m2
+              m2h :: mergeMotifs(m1, m2.tail, m2h.pos + 1)
             } else {
-              //Drop one marker from m2
-              mergeMarkers(m1, m2.tail, nextMarkerAt)
+              //Drop one motif from m2
+              mergeMotifs(m1, m2.tail, nextMotifAt)
             }
         }
-      case _ => m2.dropWhile(_.pos < nextMarkerAt)
+      case _ => m2.dropWhile(_.pos < nextMotifAt)
     }
   }
 
   /**
-   * All markers, by absolute position
+   * All motifs, by absolute position
    */
-  def allMarkers(s: String): List[Marker] = {
-    var r = List[Marker]()
-    val buf = ListBuffer[Marker]()
+  def allMotifs(s: String): List[Motif] = {
+    var r = List[Motif]()
+    val buf = ListBuffer[Motif]()
     buf.sizeHint(10)
 
-    //TODO efficiency here when many markers present
-    //When a certain number of markers have been found in every k-length window, there's no
+    //TODO efficiency here when many motifs present
+    //When a certain number of motifs have been found in every k-length window, there's no
     //point looking for any more. Iterative/incremental lookup?
-    //Another source of potential efficiency increases is markers that overlap, e.g. ATG and AT
+    //Another source of potential efficiency increases is motifs that overlap, e.g. ATG and AT
     for (mark <- byPriority) {
       allIndexOf(s, mark, 0, buf)
-      r = mergeMarkers(r, buf.toList)
+      r = mergeMotifs(r, buf.toList)
       buf.clear()
     }
     r

@@ -5,11 +5,11 @@ import miniasm.genome.util.DNAHelpers
 import hypercut.Stats
 
 /**
- * Looks for raw markers in reads, counting them in a histogram.
+ * Looks for raw motifs in reads, counting them in a histogram.
  */
-final class FeatureScanner(val space: MarkerSpace) {
+final class FeatureScanner(val space: MotifSpace) {
 
-  def markerTagAt(read: String, pos: Int): Iterator[String] = {
+  def motifTagAt(read: String, pos: Int): Iterator[String] = {
     //rely on these also being rank sorted
     val candidates = space.byFirstChar.get(read.charAt(pos))
     candidates match {
@@ -25,7 +25,7 @@ final class FeatureScanner(val space: MarkerSpace) {
     var i = 0
     val max = read.length - space.minMotifLength
     while (i < max) {
-      for (m <- markerTagAt(read, i)) {
+      for (m <- motifTagAt(read, i)) {
         counter += m
       }
       i += 1

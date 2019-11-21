@@ -1,17 +1,17 @@
 package hypercut.bucket
 
-import hypercut.hash.MarkerSet
-import hypercut.hash.MarkerSpace
+import hypercut.hash.MotifSet
+import hypercut.hash.MotifSpace
 
-class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) {
+class Checker(space: MotifSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) {
   import scala.collection.mutable.HashMap
   var errors = 0
   var count = 0
 
   /*
-     * Check that each k-mer appears in only one bucket.
-     * Expensive, memory intensive operation. Intended for debug purposes.
-     */
+   * Check that each k-mer appears in only one bucket.
+   * Expensive, memory intensive operation. Intended for debug purposes.
+   */
   var map = new HashMap[String, String]()
 
   def checkBucket(key: String, bucket: CountingSeqBucket[_]) {
@@ -72,18 +72,18 @@ class Checker(space: MarkerSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean)
 
   def checkKey(key: String): Boolean = {
     try {
-      val ms = MarkerSet.unpack(space, key)
-      if (ms.relativeMarkers(0).pos != 0) {
+      val ms = MotifSet.unpack(space, key)
+      if (ms.relativeMotifs(0).pos != 0) {
         return false
       }
       for (
-        sub <- ms.relativeMarkers.sliding(2);
+        sub <- ms.relativeMotifs.sliding(2);
         if (sub.length >= 2)
       ) {
         val pos1 = sub(1).pos
         val l1 = sub(0).tag.length()
         if (pos1 < l1) {
-          //Markers cannot overlap
+          //Motifs cannot overlap
           return false
         }
       }

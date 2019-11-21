@@ -1,21 +1,21 @@
 package hypercut
 
 import scala.collection.Seq
-import hypercut.hash.MarkerSet
-import hypercut.hash.Marker
-import hypercut.hash.MarkerSpace
+import hypercut.hash.MotifSet
+import hypercut.hash.Motif
+import hypercut.hash.MotifSpace
 
 object Testing {
 
-  val space = MarkerSpace.simple(4)
+  val space = MotifSpace.simple(4)
   def m(code: String, pos: Int) = space.get(code, pos)
-  def ms(markers: Seq[(String, Int)]) = markers.map(x => m(x._1, x._2))
+  def ms(motifs: Seq[(String, Int)]) = motifs.map(x => m(x._1, x._2))
 
-  def fixedMarkerSet1(markers: Seq[(String, Int)]) =
-    new MarkerSet(space, ms(markers).toList).fixMarkers
+  def fixedMotifSet1(motifs: Seq[(String, Int)]) =
+    new MotifSet(space, ms(motifs).toList).fixMotifs
 
-  def fixedMarkerSet2(markers: Seq[Marker]) =
-    new MarkerSet(space, markers.toList).fixMarkers
+  def fixedMotifSet2(motifs: Seq[Motif]) =
+    new MotifSet(space, motifs.toList).fixMotifs
 
   def GT(p: Int) = m("GT", p)
   def AT(p: Int) = m("AT", p)

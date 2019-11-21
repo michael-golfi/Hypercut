@@ -1,7 +1,7 @@
 package hypercut.bucketdb
 
-import hypercut.hash.MarkerSet
-import hypercut.hash.MarkerSpace
+import hypercut.hash.MotifSet
+import hypercut.hash.MotifSpace
 
 object Settings {
   //NB the ideal edge flush interval should be set considering the number of expected edges per node
@@ -22,8 +22,8 @@ class Settings(val dbfile: String,
   val edgeWriteInterval: Option[Int],
   val readBufferSize: Int) {
 
-  def edgeDb(space: MarkerSpace): EdgeDB = {
-    val compact = MarkerSet.compactSize(space)
+  def edgeDb(space: MotifSpace): EdgeDB = {
+    val compact = MotifSet.compactSize(space)
     new EdgeDB(dbfile.replace(".kch", "_edge.kch"), buckets,
       new DistinctByteBucket.Unpacker(compact))
   }

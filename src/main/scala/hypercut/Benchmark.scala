@@ -5,7 +5,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 
-import hypercut.hash.MarkerSetExtractor
+import hypercut.hash.MotifSetExtractor
 import hypercut.shortread.Read
 import hypercut.shortread.ReadFiles
 
@@ -25,8 +25,8 @@ object Benchmark {
     for (k <- Read.kmers(x, k)) {}
   }
 
-  def extract(x: String, ext: MarkerSetExtractor) = {
-    ext.markerSetsInRead(x)
+  def extract(x: String, ext: MotifSetExtractor) = {
+    ext.motifSetsInRead(x)
   }
 
   import scala.language.postfixOps
@@ -89,7 +89,7 @@ object Benchmark {
         case "indexof"  => measure(conf, indexOf(_))
         case "extract" =>
           val space = conf.defaultSpace
-          val ext = MarkerSetExtractor.apply(space, conf.k())
+          val ext = MotifSetExtractor.apply(space, conf.k())
           measure(conf, extract(_, ext))
       }
     }
