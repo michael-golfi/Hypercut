@@ -82,7 +82,7 @@ object BoundaryBucket {
   def removeKmers(toRemove: Iterable[NTSeq], removeFrom: Iterable[NTSeq], k: Int): Seq[String] =
     removeKmers(toRemove.iterator, removeFrom.flatMap(Read.kmers(_, k)).toList, k)
 
-  class Operations(bucket: BoundaryBucket, k: Int) {
+  final class Operations(bucket: BoundaryBucket, k: Int) {
     import Searching._
 
     def core = bucket.core
@@ -218,7 +218,7 @@ object BoundaryBucket {
   }
 }
 
-case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
+final case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
   boundarySequences: Int, boundaryKmers: Int)
 
 
@@ -228,7 +228,7 @@ case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
  * @param core Sequences whose neighborhood is fully known and inside this bucket.
  * @param boundary Sequences that may connect with other buckets.
  */
-case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]) {
+final case class BoundaryBucket(id: Long, core: Array[String], boundary: Array[String]) {
 
   def ops(k: Int) = new BoundaryBucket.Operations(this, k)
   def coreAndBoundary = core.iterator ++ boundary.iterator
