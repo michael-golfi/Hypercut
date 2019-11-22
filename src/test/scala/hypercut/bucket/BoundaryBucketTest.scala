@@ -17,7 +17,7 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     val postPreSuf = prefixesAndSuffixes(post.iterator, k).toList
     var prior = Array[String]()
 
-    val of = BoundaryBucket(0, Array(), ss, k).overlapFinder
+    val of = BoundaryBucket(0, Array(), ss).ops(k).overlapFinder
     prior = Array("CCGAG", "AACTGAA")
 
     val all = prior ++ post
@@ -37,16 +37,18 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     //can be obtained, and that they do not remain in the bucket
     //afterward
 
+    val k = 4
     val bnd = Array("TTTA")
-    val bkt = BoundaryBucket(1, Array("ACTGGG", "GGGTG", "GTGCA", "GTTT"), bnd, 4)
-    val (contigs, updated) = bkt.seizeUnitigs
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GGGTG", "GTGCA", "GTTT"), bnd)
+    val (contigs, updated) = bkt.ops(k).seizeUnitigs
     contigs.map(_.seq) should contain theSameElementsAs(Seq("ACTGGGTGCA"))
     updated.core.toSeq should equal(Seq("GTTT"))
   }
 
   test("removeSequences") {
-    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array(), 4)
-    bkt.removeSequences(Seq("ACTG")).kmers.toList should
+    val k = 4
+    val bkt = BoundaryBucket(1, Array("ACTGGG", "GTGCA"), Array())
+    bkt.ops(k).removeSequences(Seq("ACTG")).ops(k).kmers.toList should
       contain theSameElementsAs(Seq("CTGG", "TGGG", "GTGC", "TGCA"))
   }
 
@@ -75,8 +77,9 @@ class BoundaryBucketTest extends FunSuite with Matchers {
 
   test("splitSequences") {
     //TODO test boundary flag as well
-    val bkt = BoundaryBucket(1, Array(), Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), 4)
-    bkt.splitSequences.map(_.map(_._1)) should contain theSameElementsAs(List(
+    val k = 4
+    val bkt = BoundaryBucket(1, Array(), Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"))
+    bkt.ops(k).splitSequences.map(_.map(_._1)) should contain theSameElementsAs(List(
       List("ACTGGG", "CTGAA", "GGGA"),
       List("CCCC"),
       List("TTTT")
@@ -85,9 +88,10 @@ class BoundaryBucketTest extends FunSuite with Matchers {
 
   test("seizeUnitigsAndMerge") {
     val bnd = Array("TTTA", "GCCC")
-    val core = BoundaryBucket(1, Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), bnd, 4)
+    val k = 4
+    val core = BoundaryBucket(1, Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"), bnd)
 
-    val mrg = core.seizeUnitigsAndSplit
+    val mrg = core.ops(k).seizeUnitigsAndSplit
     val unitigs = mrg._1.map(_.seq)
     unitigs.toSeq should contain theSameElementsAs(List("ACTG", "CTGGGA", "CTGAA"))
 
@@ -101,11 +105,12 @@ class BoundaryBucketTest extends FunSuite with Matchers {
   test("removeKmers") {
     val existing = Array("ACTGG", "CCGGT", "GGTTAA")
     val incoming = Array("GCGTGGTTCGTGATTAA") //duplicates GGTT and TTAA
+    val k = 4
     val r = BoundaryBucket.removeKmers(existing.iterator,
-      incoming.flatMap(Read.kmers(_, 4)).toList, 4)
+      incoming.flatMap(Read.kmers(_, 4)).toList, k)
     r should contain theSameElementsAs(List("GCGTGGT", "GTTCGTGATTA"))
 
-    val r2 = BoundaryBucket.removeKmers(existing, incoming, 4)
+    val r2 = BoundaryBucket.removeKmers(existing, incoming, k)
     r2 should contain theSameElementsAs(List("GCGTGGT", "GTTCGTGATTA"))
   }
 

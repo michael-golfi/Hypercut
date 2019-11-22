@@ -61,7 +61,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     if (show) {
       println(label)
       val buckets = data.vertices.as[BoundaryBucket]
-      buckets.map(_.coreStats).describe().show
+      buckets.map(_.ops(k).coreStats).describe().show
       data.degrees.describe().show
     }
   }
@@ -74,7 +74,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   def initialize(graph: GraphFrame): GraphFrame = {
     val buckets =
       graph.vertices.selectExpr("id as bucketId",
-        "struct(monotonically_increasing_id() as id, array() as core, bucket.sequences as boundary, bucket.k as k)").
+        "struct(monotonically_increasing_id() as id, array() as core, bucket.sequences as boundary)").
         as[(Array[Byte], BoundaryBucket)].
         toDF("bucketId", "bucket")
 
@@ -99,7 +99,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     //Identify boundary and output/remove unitigs
     //Returns cores split into subparts based on remaining data
     val splitData = graph.vertices.as[BoundaryBucket].map(b => {
-      val (unitigs, parts) = b.seizeUnitigsAndSplit
+      val (unitigs, parts) = b.ops(k).seizeUnitigsAndSplit
       (b.id, unitigs, parts)
     })
     //TODO should splitData be cached?
@@ -120,7 +120,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val builtEdges = edgesFromSplitBoundaries(splitBoundary, broadcast(graph.edges.as[(Long, Long)]))
     val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
     val nextBuckets = builtBuckets.selectExpr("col.newIds as id", "col.core as core", "col.boundary as boundary").
-      withColumn("k", lit(k)).as[BoundaryBucket]
+      as[BoundaryBucket]
 
     val nb = materialize(removeLineage(nextBuckets.toDF))
     val ne = materialize(removeLineage(builtEdges.toDF("src", "dst", "intersection")))
@@ -186,10 +186,11 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def finishBuckets(graph: GraphFrame) {
     val isolated = graph.vertices.as[BoundaryBucket]
+    val k = this.k
     val ml = minLength
     val unitigs = isolated.flatMap(i => {
-      val joint = BoundaryBucket(i.id, i.core ++ i.boundary, Array(), i.k)
-      val unitigs = joint.seizeUnitigsAndSplit
+      val joint = BoundaryBucket(i.id, i.core ++ i.boundary, Array())
+      val unitigs = joint.ops(k).seizeUnitigsAndSplit
       unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
     }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
     firstWrite = false
@@ -233,7 +234,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     val collected = aggVerts.
       join(mergeBoundary, Seq("id"), "left_outer").
-      selectExpr("struct(id, core, boundary, k) as centre",
+      selectExpr("struct(id, core, boundary) as centre",
         "(if (isnotnull(degree), degree, 0)) as degree",
         "(if (isnotnull(minId), (minId == id), true)) as receiver",
         "surrounding").as[CollectedBuckets].cache
@@ -242,7 +243,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 //      collected.show
 //    }
 
-    val r = materialize(collected.flatMap(_.unified).cache)
+    val r = materialize(collected.flatMap(_.unified(k)).cache)
     val edgeTranslation = collected.flatMap(_.edgeTranslation)
     val nextEdges = materialize(translateAndNormalizeEdges(graph.edges, edgeTranslation.toDF).cache)
     aggVerts.unpersist
@@ -270,6 +271,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 
   def shiftBoundary(graph: GraphFrame): GraphFrame = {
+    val k = this.k
     val allIntersecting = graph.aggregateMessages.
       sendToDst(AM.edge("intersection")).
       sendToSrc(AM.edge("intersection")).
@@ -281,7 +283,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         allIntersecting.as[(Long, Array[Array[String]])], graph.vertices("id") === allIntersecting("id"), "left_outer").
         map(row => {
           Option(row._2) match {
-            case Some(int) => row._1.shiftBoundary(int._2.toSeq.flatten)
+            case Some(int) => row._1.ops(k).shiftBoundary(int._2.toSeq.flatten)
             case None => row._1.copy(core = row._1.core ++ row._1.boundary, boundary = Array())
           }
         })
@@ -396,7 +398,7 @@ final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver:
   @transient
   lazy val centreData = centre.core ++ centre.boundary
 
-  def deduplicate(data: Iterable[String]) = BoundaryBucket.removeKmers(centreData, data, centre.k)
+  def deduplicate(data: Iterable[String], k: Int) = BoundaryBucket.removeKmers(centreData, data, k)
 
   /**
    * Lone neighbor boundary is always promoted to core since "centre" was their only neighbor.
@@ -415,13 +417,13 @@ final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver:
     else
       shared.flatMap(_._1.boundary) ++ centre.boundary
 
-  def unified: Iterable[BoundaryBucket] = {
+  def unified(k: Int): Iterable[BoundaryBucket] = {
     if (safeSurrounding.isEmpty && !receiver) {
       Seq()
     } else if (!receiver) {
       surrounding.map(_._1)
     } else {
-      Seq(BoundaryBucket(unifiedBucketId, unifiedCore, unifiedBoundary.toArray, centre.k))
+      Seq(BoundaryBucket(unifiedBucketId, unifiedCore, unifiedBoundary.toArray))
     }
   }
 
