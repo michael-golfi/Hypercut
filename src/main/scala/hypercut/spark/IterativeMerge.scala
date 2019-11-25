@@ -14,7 +14,7 @@ import org.graphframes.lib.AggregateMessages
  * outputting sequence as we go along.
  */
 class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
-                     minLength: Option[Int], k: Int, output: String) {
+                     minLength: Option[Int], k: Int, outputLocation: String) {
 
   implicit val sc: org.apache.spark.SparkContext = spark.sparkContext
 
@@ -58,12 +58,19 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 
   def stats(show: Boolean, label: String, data: GraphFrame) {
+    val k = this.k
     if (show) {
       println(label)
       val buckets = data.vertices.as[BoundaryBucket]
       buckets.map(_.ops(k).coreStats).describe().show
       data.degrees.describe().show
     }
+  }
+
+  def numKmers(data: GraphFrame): Long = {
+    val k = this.k
+    data.vertices.as[BoundaryBucket].
+      map(_.ops(k).coreStats.numKmers).reduce(IterativeSerial.sum(_, _))
   }
 
   /**
@@ -107,7 +114,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     val ml = minLength
     splitData.selectExpr("explode(_2)").select("col.*").as[Contig].
       flatMap(c => lengthFilter(ml)(c).map(u => formatUnitig(u))).
-      write.mode(nextWriteMode).csv(s"${output}_unitigs")
+      write.mode(nextWriteMode).csv(s"${outputLocation}_unitigs")
     firstWrite = false
 
     val provisionalParts = materialize(splitData.selectExpr("_1 as id",
@@ -181,18 +188,20 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 
   /**
-   * After all iterations have finished, output any remaining data. Buckets are
-   * treated as if they have no neighbors.
+   * After iterations have finished, merge all remaining data into a single bucket and output.
    */
   def finishBuckets(graph: GraphFrame) {
-    val isolated = graph.vertices.as[BoundaryBucket]
+    val buckets = graph.vertices.as[BoundaryBucket]
     val k = this.k
     val ml = minLength
-    val unitigs = isolated.flatMap(i => {
-      val joint = BoundaryBucket(i.id, i.core ++ i.boundary, Array())
-      val unitigs = joint.ops(k).seizeUnitigsAndSplit
-      unitigs._1.flatMap(lengthFilter(ml)).map(formatUnitig)
-    }).write.mode(nextWriteMode).csv(s"${output}_unitigs")
+    val all = buckets.collect()
+    val joint = BoundaryBucket(0,
+      all.flatMap(_.core) ++ all.flatMap(_.boundary),
+      Array())
+    val unitigs = joint.ops(k).seizeUnitigsAndSplit._1.
+      flatMap(lengthFilter(ml)).map(formatUnitig)
+    unitigs.toDS.
+      write.mode(nextWriteMode).csv(s"${outputLocation}_unitigs")
     firstWrite = false
   }
 
@@ -318,21 +327,21 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   /**
    * Run iterative merge until completion.
    */
-  def iterate(graph: GraphFrame) {
+  def iterate(graph: GraphFrame, stopAtKmers: Long) {
     val dtf = new SimpleDateFormat("HH:mm:ss")
     println(s"[${dtf.format(new Date)}] Initialize iterative merge")
 
     var data = shiftBoundary(refineEdges(initialize(graph)))
-    var n = data.edges.count
+    var n = numKmers(data)
 
-    while (n > 0) {
-      println(s"[${dtf.format(new Date)}] Begin iteration $iteration ($n edges)")
+    while (n > stopAtKmers) {
+      println(s"[${dtf.format(new Date)}] Begin iteration $iteration ($n k-mers)")
 
       data = runIteration(data)
-      n = data.edges.count
+      n = numKmers(data)
       iteration += 1
     }
-    println(s"[${dtf.format(new Date)}] No edges left, finishing")
+    println(s"[${dtf.format(new Date)}] Finishing ($n k-mers)")
     finishBuckets(data)
     println(s"[${dtf.format(new Date)}] Iterative merge finished")
   }
@@ -447,4 +456,6 @@ object IterativeSerial {
   def formatUnitig(u: Contig) = {
     (u.seq, u.stopReasonStart, u.stopReasonEnd, u.length + "bp", (u.length - u.k + 1) + "k")
   }
+
+  def sum(x: Long, y: Long) = x + y
 }

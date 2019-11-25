@@ -219,7 +219,11 @@ object BoundaryBucket {
 }
 
 final case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
-  boundarySequences: Int, boundaryKmers: Int)
+  boundarySequences: Int, boundaryKmers: Int) {
+
+  def numKmers: Long = coreKmers.toLong + boundaryKmers
+
+}
 
 
 /**
