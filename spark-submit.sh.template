@@ -1,4 +1,5 @@
 #!/bin/bash
+#Copy this file to spark-submit.sh and edit the config variables.
 
 MASTER=spark://localhost:7077
 SPARK=/set/spark/dir

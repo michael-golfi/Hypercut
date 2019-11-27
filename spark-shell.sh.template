@@ -1,4 +1,5 @@
 #!/bin/bash
+#Copy this file to spark-shell.sh and edit the config variables.
 
 SPARK=/set/spark/dir
 MASTER=spark://localhost:7077
