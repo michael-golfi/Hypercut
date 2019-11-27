@@ -12,13 +12,10 @@ Johan Nyström-Persson and Gabriel Keeble-Gagnere. It also includes parts of Sca
 
 Hypercut is being developed with Scala 2.11 and Spark 2.4, to match the current Google Cloud dataproc images.
 However, if you run your own Spark cluster, using Scala 2.12 should not be a problem.
+In addition to a working Spark installation, the sbt build tool is also needed.
 
 ## Compiling
-The command
-```
-sbt package
-```
-will produce the necessary jar file.
+The command `sbt package` will produce the necessary jar file.
 
 Copy spark-submit.sh.template to spark-submit.sh and edit the necessary variables in the file.
 Alternatively, if you submit to a GCloud cluster, you can use submit-gcloud.sh.template.
@@ -38,9 +35,9 @@ to find the best configuration.
 
 Example bucket build command:
 
-```
+`
 ./spark-submit.sh  -k 41 -n 3 --space all3 --sample 0.01 buckets -l /data/dir/mydata_out build -i "/data/dir/*.fasta"     
-```
+`
 
 This will set k=41 and sample 3 "motifs" per k-mer. 0.01 fraction (1%) of the reads will be used to determine motif frequencies.
 The input data will be all the files listed after -i; outputs will be stored in the directory specified by -l.
