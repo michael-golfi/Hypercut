@@ -1,6 +1,6 @@
 ## Overview
 
-Hypercut is a tool for working with short read NGS data.
+Hypercut is a tool for k-mer counting, hashing, De Bruijn graph (DBG) construction and DBG compaction.
 
 Copyright (c) Johan Nyström-Persson 2018-2019.
 This is currently under development, and may not work properly. There are no guarantees. 
