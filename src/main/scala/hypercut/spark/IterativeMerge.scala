@@ -269,13 +269,14 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
     val boundaryOnly = graph.vertices.selectExpr("id", "array(boundary) as boundary",
-      "array(id) as newIds").as[SplitBoundary]
+      "array(id) as newIds").as[SplitBoundary].cache
 
     val k = this.k
     val foundEdges = edgesFromSplitBoundaries(boundaryOnly, normalizeEdges(graph.edges).as[(Long, Long)])
 
     val newEdges = materialize(foundEdges.cache).toDF("src", "dst", "intersection")
     graph.edges.unpersist
+    boundaryOnly.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
 
