@@ -77,8 +77,13 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   def atMinAbundance(minAbundance: Option[Abundance]): Self = {
     minAbundance match {
       case None => this
-      case Some(abund) => abundanceFilter(abund)
+      case Some(abund) =>
+        abundanceFilter(abund)
     }
+  }
+
+  def nonEmptyOption: Option[Self] = {
+    if (numKmers == 0) None else Some(this)
   }
 
   def abundanceFilter(abund: Int): Self = {

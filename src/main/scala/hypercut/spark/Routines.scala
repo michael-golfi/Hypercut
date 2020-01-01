@@ -203,7 +203,9 @@ class Routines(spark: SparkSession) {
                       limit: Option[Int] = None): GraphFrame = {
     val (buckets, edges) = loadBucketsEdges(readLocation)
     val filterBuckets = minAbundance match {
-      case Some(min) => buckets.map(x => (x._1, x._2.atMinAbundance(minAbundance)))
+      case Some(min) => buckets.flatMap(x => (
+        x._2.atMinAbundance(minAbundance).nonEmptyOption.map(b => (x._1, b)))
+      )
       case None => buckets
     }
     limit match {
