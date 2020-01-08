@@ -5,6 +5,8 @@ import java.util.Date
 
 import hypercut.Contig
 import hypercut.bucket.{BoundaryBucket, MapOverlapFinder, Util}
+import miniasm.genome.bpbuffer.BPBuffer
+import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
 import org.graphframes.GraphFrame
 import org.graphframes.lib.AggregateMessages
@@ -32,6 +34,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   val bndSrc = AM.src("boundary")
   val bndDst = AM.dst("boundary")
 
+  val PARTS = 1000
   var iteration = 1
   var firstWrite = true
 
@@ -79,18 +82,32 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * Sets all sequences to boundary.
    */
   def initialize(graph: GraphFrame): GraphFrame = {
+    import org.apache.spark.sql.internal.SQLConf.SHUFFLE_PARTITIONS
+    //to control partitions for KeyValueGroupedDataset (and others)
+    spark.sessionState.conf.setConf(SHUFFLE_PARTITIONS, PARTS)
+
+    //Materialize buckets eagerly to persist monotonically increasing IDs
     val buckets =
+      materialize(
       graph.vertices.selectExpr("id as bucketId",
         "struct(monotonically_increasing_id() as id, array() as core, bucket.sequences as boundary)").
         as[(Array[Byte], BoundaryBucket)].
-        toDF("bucketId", "bucket")
+        toDF("bucketId", "bucket").
+        cache
+      )
 
-    val edgeTranslation = buckets.selectExpr("bucketId", "bucket.id").cache
-    val edges = translateAndNormalizeEdges(graph.edges, edgeTranslation).cache
+    val edgeTranslation = buckets.selectExpr("bucketId", "bucket.id")
+    val edges =
+      translateAndNormalizeEdges(graph.edges, edgeTranslation).cache
 
-    val idGraph = GraphFrame(buckets.selectExpr("bucket.*").cache,
+    val idGraph = GraphFrame(materialize(buckets.selectExpr("bucket.*").cache),
       materialize(edges))
-    edgeTranslation.unpersist
+    buckets.unpersist
+
+    if (showStats) {
+      println(idGraph.vertices.count + " vertices")
+      idGraph.degrees.describe().show()
+    }
 
     idGraph
   }
@@ -122,7 +139,10 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       "transform(_3, x -> x.core) as core",
       "transform(_3, x -> monotonically_increasing_id()) as newIds").cache)
 
-    val splitBoundary = provisionalParts.select("id", "boundary", "newIds").as[SplitBoundary]
+    val splitBoundary = provisionalParts.select("id", "boundary", "newIds").
+      as[(Long, Array[Array[String]], Array[Long])].map(x => {
+      (x._1, x._2.map(_.map(BPBuffer.wrap)), x._3)
+    }).toDF("id", "boundary", "newIds").as[SplitBoundary].cache
 
     val builtEdges = edgesFromSplitBoundaries(splitBoundary, broadcast(graph.edges.as[(Long, Long)]))
     val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
@@ -134,6 +154,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 
     provisionalParts.unpersist
     graph.edges.unpersist
+    splitBoundary.unpersist
     graph.vertices.unpersist
     shiftBoundary(GraphFrame(nb, ne))
   }
@@ -144,9 +165,12 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def edgesFromSplitBoundaries(boundaries: Dataset[SplitBoundary], edges: Dataset[(Long, Long)]):
     Dataset[(Long, Long, Array[String])] = {
-    val joint = edges.joinWith(boundaries, boundaries("id") === edges("dst"))
+
+    val es = edges
+    val bs = boundaries
+    val joint = es.joinWith(bs, bs("id") === es("dst"))
     val jointSrc = joint.groupByKey(_._1._1)
-    val bySrc = boundaries.groupByKey(_.id)
+    val bySrc = bs.groupByKey(_.id)
     val k = this.k
     bySrc.cogroup(jointSrc)((key, it1, it2) => {
       for {
@@ -154,6 +178,15 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
         to <- it2.map(_._2)
         edge <- from.edgesTo(to, k)
       } yield edge
+    })
+  }
+
+  //Experimental, alternative to cogroup
+  def edgesFromSplitBoundaries3(boundaries: DataFrame, edges: DataFrame): Dataset[(Long, Long, Array[String])] = {
+    val graph = GraphFrame(boundaries, edges)
+    val k = this.k
+    graph.triplets.toDF("_1", "_2", "_3").as[(SplitBoundary, (Long, Long), SplitBoundary)].flatMap(b => {
+      b._1.edgesTo(b._3, k)
     })
   }
 
@@ -269,14 +302,15 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
     val boundaryOnly = graph.vertices.selectExpr("id", "array(boundary) as boundary",
-      "array(id) as newIds").as[SplitBoundary].cache
+      "array(id) as newIds").as[(Long, Array[Array[String]], Array[Long])].map(b => {
+      SplitBoundary(b._1, b._2.map(x => x.map(BPBuffer.wrap)), b._3)
+    }).cache
+      //toDF("id", "boundary", "newIds").cache
 
-    val k = this.k
-    val foundEdges = edgesFromSplitBoundaries(boundaryOnly, normalizeEdges(graph.edges).as[(Long, Long)])
-
+    val foundEdges = edgesFromSplitBoundaries(boundaryOnly, graph.edges.as[(Long, Long)])
     val newEdges = materialize(foundEdges.cache).toDF("src", "dst", "intersection")
     graph.edges.unpersist
-    boundaryOnly.unpersist
+//    boundaryOnly.unpersist
     GraphFrame(graph.vertices, newEdges)
   }
 
@@ -348,7 +382,12 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
   }
 }
 
-final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds: Array[Long]) {
+final case class SplitBoundary(id: Long, boundary: Array[Array[ZeroBPBuffer]], newIds: Array[Long]) {
+
+  @transient
+  lazy val unpacked = boundary.map(b => b.map(_.toString()))
+
+
   /*
   The efficiency of looking up boundary intersections between pairs of split buckets
   degrades as the split parts get smaller and smaller, if one set per split part is used for
@@ -358,7 +397,7 @@ final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds:
    */
 
   private def finder(k: Int) = {
-    val data = (boundary zip newIds).toList.map {
+    val data = (unpacked zip newIds).toList.map {
       case (bound, id) => {
         ((Util.prefixesAndSuffixes(bound.iterator, k).toArray, id),
           (Util.purePrefixes(bound.iterator, k).toArray, id),
@@ -381,7 +420,7 @@ final case class SplitBoundary(id: Long, boundary: Array[Array[String]], newIds:
   def edgesTo(other: SplitBoundary, k: Int): Iterator[(Long, Long, Array[String])] = {
     val finder = getFinder(k)
     for {
-      (to, toNid) <- other.boundary.iterator zip other.newIds.iterator
+      (to, toNid) <- other.unpacked.iterator zip other.newIds.iterator
       (overlap, thisId) <- finder.find(to)
       edge = (thisId, toNid, overlap)
     } yield edge
