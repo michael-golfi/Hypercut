@@ -141,7 +141,7 @@ class Routines(spark: SparkSession) {
 
   def plotBuckets(location: String, numBins: Int) {
     //Get the buckets
-    val buckets = loadBuckets(location)
+    val buckets = loadBuckets(location, None)
     val hist = new Histogram(buckets.map(_._2.numKmers).collect, numBins)
     val bins = (hist.bins.map(b => "%.1f".format(b)))
     val counts = hist.counts.map(x => log10(x))
@@ -190,12 +190,19 @@ class Routines(spark: SparkSession) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
-  def loadBuckets(readLocation: String) =
-    spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
+  def loadBuckets(readLocation: String, minAbundance: Option[Abundance]) = {
+    val buckets = spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
+    minAbundance match {
+      case Some(min) => buckets.flatMap(x => (
+        x._2.atMinAbundance(minAbundance).nonEmptyOption.map(b => (x._1, b)))
+      )
+      case None => buckets
+    }
+  }
 
-  def loadBucketsEdges(readLocation: String) = {
+  def loadBucketsEdges(readLocation: String, minAbundance: Option[Abundance]) = {
     val edges = spark.read.parquet(s"${readLocation}_edges").as[CompactEdge]
-    val bkts = loadBuckets(readLocation)
+    val bkts = loadBuckets(readLocation, minAbundance)
     (bkts, edges)
   }
 
@@ -204,16 +211,11 @@ class Routines(spark: SparkSession) {
    */
   def loadBucketGraph(readLocation: String, minAbundance: Option[Abundance] = None,
                       limit: Option[Int] = None): GraphFrame = {
-    val (buckets, edges) = loadBucketsEdges(readLocation)
-    val filterBuckets = minAbundance match {
-      case Some(min) => buckets.flatMap(x => (
-        x._2.atMinAbundance(minAbundance).nonEmptyOption.map(b => (x._1, b)))
-      )
-      case None => buckets
-    }
+    val (buckets, edges) = loadBucketsEdges(readLocation, minAbundance)
+
     limit match {
-      case Some(l) => toGraphFrame(filterBuckets.limit(l), edges)
-      case _ => toGraphFrame(filterBuckets, edges)
+      case Some(l) => toGraphFrame(buckets.limit(l), edges)
+      case _ => toGraphFrame(buckets, edges)
     }
   }
 
@@ -248,8 +250,8 @@ class Routines(spark: SparkSession) {
     }
   }
 
-  def bucketStats(input: String, stdout: Boolean) {
-    val (verts, edges) = loadBucketsEdges(input) match {
+  def bucketStats(input: String, minAbundance: Option[Abundance], stdout: Boolean) {
+    val (verts, edges) = loadBucketsEdges(input, minAbundance) match {
       case (b, e) => (b, Some(e))
     }
 

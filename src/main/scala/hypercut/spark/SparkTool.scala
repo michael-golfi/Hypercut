@@ -67,9 +67,10 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
           descr = "Number of buckets to print")
       val amount = opt[Int](required = false, default = Some(10),
           descr = "Amount of sequence to print")
+      //Note: could add a minAbundance flag here in the future if needed
 
       def run() {
-       val buckets = routines.loadBuckets(location())
+       val buckets = routines.loadBuckets(location(), None)
        routines.showBuckets(buckets.map(_._2),
            n(), amount())
       }
@@ -92,9 +93,10 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     addSubcommand(merge)
 
     val stats = new Subcommand("stats") with RunnableCommand {
+      val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val stdout = opt[Boolean](required = false, default = Some(false), descr = "Print stats to stdout")
       def run() {
-        routines.bucketStats(location(), stdout())
+        routines.bucketStats(location(), minAbundance.toOption.map(clipAbundance), stdout())
       }
     }
 

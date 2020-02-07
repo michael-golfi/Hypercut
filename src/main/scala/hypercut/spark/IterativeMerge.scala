@@ -301,6 +301,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
    * remain.
    */
   def refineEdges(graph: GraphFrame): GraphFrame = {
+    //Even though we use the "split boundary" concept here, this method treats all of the boundary
+    //as a single unified part. Only one SplitBoundary instance per bucket.
+
     val boundaryOnly = graph.vertices.selectExpr("id", "array(boundary) as boundary",
       "array(id) as newIds").as[(Long, Array[Array[String]], Array[Long])].map(b => {
       SplitBoundary(b._1, b._2.map(x => x.map(BPBuffer.wrap)), b._3)
