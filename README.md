@@ -46,7 +46,7 @@ The --help flag can be used to see additional commands and parameters.
 Example graph compaction command, after buckets have been built:
 
 `
- ./spark-submit.sh  -k 41 -n 3  buckets -l /data/dir/mydata_out compact -m 100 --show-stats
+ ./spark-submit.sh  -k 41 -n 3  buckets -l /data/dir/mydata_out merge -m 100 --show-stats
 `
 
 This would output unitigs whose abundance (solidity) is at least 100. --show-stats is optional and removing it may speed up processing somewhat.
