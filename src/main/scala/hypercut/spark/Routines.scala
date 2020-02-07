@@ -14,15 +14,18 @@ import org.graphframes.GraphFrame
 import vegas._
 
 final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
+
 final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
 
 /**
  * Helper routines for executing Hypercut from Apache Spark.
  */
 class Routines(spark: SparkSession) {
+
   import SerialRoutines._
 
   val sc: org.apache.spark.SparkContext = spark.sparkContext
+
   import hypercut.bucket.CountingSeqBucket._
   import org.apache.spark.sql._
   import org.apache.spark.sql.functions._
@@ -40,7 +43,7 @@ class Routines(spark: SparkSession) {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
     }
-    
+
     if (withRC) {
       lines.flatMap(r => {
         if (r.startsWith(">")) Seq() else
@@ -76,7 +79,7 @@ class Routines(spark: SparkSession) {
 
   type ProcessedRead = (Array[HashSegment])
 
-    /**
+  /**
    * Hash and split a set of reads into edges
    */
   def splitReadsToEdges(reads: Dataset[String], ext: MotifSetExtractor): Dataset[(Array[Byte], Array[Byte])] = {
@@ -84,7 +87,7 @@ class Routines(spark: SparkSession) {
       val buckets = ext.motifSetsInRead(r)._2
       MotifSetExtractor.collectTransitions(
         buckets.map(x => x._1.compact.data).toList
-        )
+      )
     })
   }
 
@@ -112,25 +115,25 @@ class Routines(spark: SparkSession) {
     val countedSegments =
       segments.groupBy($"hash", $"segment").count.
         as[CountedHashSegment].cache
-      
+
     val reverseSegments = countedSegments.flatMap(x => {
       val s = x.segment.toString
       val rc = DNAHelpers.reverseComplement(s)
       val revSegments = createHashSegments(rc, ext)
       revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
-    } )
-    
+    })
+
     val grouped = countedSegments.union(reverseSegments).groupBy($"hash")
-    
+
     val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
-    
+
     collected.map { case (hash, segmentsCounts) => {
-        val empty = SimpleCountingBucket.empty(ext.k)
-        val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-          (x._1.toString, clipAbundance(x._2))).toList)
-        (hash, bkt)
-      }
+      val empty = SimpleCountingBucket.empty(ext.k)
+      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+        (x._1.toString, clipAbundance(x._2))).toList)
+      (hash, bkt)
+    }
     }
   }
 
@@ -146,12 +149,12 @@ class Routines(spark: SparkSession) {
     //
     //      println(bins)
     hist.print("number of kmers")
-    val plot = Vegas("Bucket Histogram", width=800, height=600).
+    val plot = Vegas("Bucket Histogram", width = 800, height = 600).
       withData(
         points.map(p => Map("bins" -> p._1, "Kmers" -> p._2))).
-        encodeX("bins", Quant).
-        encodeY("Kmers", Quant).
-        mark(Bar).show
+      encodeX("bins", Quant).
+      encodeY("Kmers", Quant).
+      mark(Bar).show
   }
 
   /**
@@ -175,8 +178,8 @@ class Routines(spark: SparkSession) {
   }
 
   def toGraphFrame(
-    bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
-    edges: Dataset[(CompactEdge)]): GraphFrame = {
+                    bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
+                    edges: Dataset[(CompactEdge)]): GraphFrame = {
     val vertDF = bkts.toDF("id", "bucket")
     val edgeDF = edges.toDF("src", "dst")
 
@@ -210,55 +213,56 @@ class Routines(spark: SparkSession) {
     }
     limit match {
       case Some(l) => toGraphFrame(filterBuckets.limit(l), edges)
-      case _       => toGraphFrame(filterBuckets, edges)
+      case _ => toGraphFrame(filterBuckets, edges)
     }
   }
 
   def bucketStats(
-    bkts:  Dataset[(Array[Byte], SimpleCountingBucket)],
-    edges: Option[Dataset[CompactEdge]],
-    output: String) {
+                   bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
+                   edges: Option[Dataset[CompactEdge]],
+                   output: PrintStream) {
 
-    def sml(ds: Dataset[Long]) = ds.reduce(_ + _)
-    val fileStream = new PrintStream(s"${output}_bucketStats.txt")
+    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
 
     val stats = bkts.map(_._2.stats).cache
 
-    try {
-      Console.withOut(fileStream) {
-        println("Sequence count in buckets: sum " + sml(stats.map(_.sequences.toLong)))
-        println("Kmer count in buckets: sum " + sml(stats.map(_.kmers.toLong)))
-        println("k-mer abundance: sum " + sml(stats.map(_.totalAbundance.toLong)))
-        println("Bucket stats:")
-        stats.describe().show()
-        stats.unpersist
+    Console.withOut(output) {
+      println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences.toLong)))
+      println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers.toLong)))
+      println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance.toLong)))
+      println("Bucket stats:")
+      stats.describe().show()
+      stats.unpersist
 
-        for (e <- edges) {
-          println(s"Total number of edges: ${e.count}")
-          val outDeg = e.groupByKey(_._1).count().cache
-          println("Outdegree: ")
-          outDeg.describe().show()
-          outDeg.unpersist
-          println("Indegree: ")
-          val inDeg = e.groupByKey(_._2).count().cache
-          inDeg.describe().show()
-          inDeg.unpersist
-        }
+      for (e <- edges) {
+        println(s"Total number of edges: ${e.count}")
+        val outDeg = e.groupByKey(_._1).count().cache
+        println("Outdegree: ")
+        outDeg.describe().show()
+        outDeg.unpersist
+        println("Indegree: ")
+        val inDeg = e.groupByKey(_._2).count().cache
+        inDeg.describe().show()
+        inDeg.unpersist
       }
-    } finally {
-      fileStream.close()
     }
   }
 
-  def bucketStats(input: String) {
-    val (verts, edges) = if ((new File(s"${input}_edges")).exists) {
-      loadBucketsEdges(input) match {
-        case (b, e) => (b, Some(e))
-      }
-    } else {
-      (loadBuckets(input), None)
+  def bucketStats(input: String, stdout: Boolean) {
+    val (verts, edges) = loadBucketsEdges(input) match {
+      case (b, e) => (b, Some(e))
     }
-    bucketStats(verts, edges, input)
+
+    if (stdout) {
+      bucketStats(verts, edges, Console.out)
+    } else {
+      val os = new PrintStream(s"${input}_bucketStats.txt")
+      try {
+        bucketStats(verts, edges, os)
+      } finally {
+        os.close
+      }
+    }
   }
 
   /**
@@ -276,9 +280,9 @@ class Routines(spark: SparkSession) {
   def showBuckets(buckets: Dataset[SimpleCountingBucket], n: Int, amount: Int) {
     val withSize = buckets.map(b => (b.sequences.size, b))
     val sorted = withSize.sort(desc("_1")).take(n)
-    for { (size, bucket) <- sorted } {
+    for {(size, bucket) <- sorted} {
       println(s"bucket size $size k-mers ${bucket.numKmers}")
-      for { s <- bucket.sequences.take(amount) } {
+      for {s <- bucket.sequences.take(amount)} {
         println(s"  $s")
       }
     }
@@ -295,7 +299,7 @@ object SerialRoutines {
 
   def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
     case Some(ml) => if (c.length >= ml) Some(c) else None
-    case _        => Some(c)
+    case _ => Some(c)
   }
 
   def createHashSegments(r: String, ext: MotifSetExtractor) = {

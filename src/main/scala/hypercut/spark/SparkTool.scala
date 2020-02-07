@@ -27,13 +27,13 @@ abstract class SparkTool(appName: String) {
 class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(args) {
   import spark.sqlContext.implicits._
 
-  version("Hypercut 0.1 beta (c) 2019 Johan Nyström-Persson (Spark version)")
+  version("Hypercut 0.1 beta (c) 2019-2020 Johan Nyström-Persson (Spark version)")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
 
   def routines = new Routines(spark)
 
-  val checkpoint = opt[String](required = false, default = Some("/ext/scratch/spark/checkpoint"),
+  val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
 
   def getSpace(input: String): MotifSpace = {
@@ -91,9 +91,13 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(merge)
 
-    val stats = new HCCommand("stats") (
-      routines.bucketStats(location())
-    )
+    val stats = new Subcommand("stats") with RunnableCommand {
+      val stdout = opt[Boolean](required = false, default = Some(false), descr = "Print stats to stdout")
+      def run() {
+        routines.bucketStats(location(), stdout())
+      }
+    }
+
     addSubcommand(stats)
   }
   addSubcommand(buckets)
