@@ -144,6 +144,9 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
       (x._1, x._2.map(_.map(BPBuffer.wrap)), x._3)
     }).toDF("id", "boundary", "newIds").as[SplitBoundary].cache
 
+    //Task: find a way to show statistics for the number of split parts
+    //per bucket
+
     val builtEdges = edgesFromSplitBoundaries(splitBoundary, broadcast(graph.edges.as[(Long, Long)]))
     val builtBuckets = provisionalParts.selectExpr("explode(arrays_zip(newIds, core, boundary))")
     val nextBuckets = builtBuckets.selectExpr("col.newIds as id", "col.core as core", "col.boundary as boundary").

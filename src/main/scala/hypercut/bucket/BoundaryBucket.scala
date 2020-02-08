@@ -92,8 +92,13 @@ object BoundaryBucket {
     def kmers = coreKmers ++ boundaryKmers
     def coreKmers = core.flatMap(Read.kmers(_, k))
     def boundaryKmers = boundary.flatMap(Read.kmers(_, k))
+    def allSequences = core ++ boundary
 
-    def coreStats = BoundaryBucketStats(core.size, core.map(Read.numKmers(_, k)).sum,
+    def meanSeqLength: Double = if (allSequences.isEmpty) 0 else
+      allSequences.map(s => s.length - (k - 1)).sum.toDouble / allSequences.length
+
+    def coreStats = BoundaryBucketStats(core.size, meanSeqLength,
+      core.map(Read.numKmers(_, k)).sum,
       boundary.size, boundary.map(Read.numKmers(_, k)).sum)
 
     /**
@@ -218,7 +223,7 @@ object BoundaryBucket {
   }
 }
 
-final case class BoundaryBucketStats(coreSequences: Int, coreKmers: Int,
+final case class BoundaryBucketStats(coreSequences: Int, seqLength: Double, coreKmers: Int,
   boundarySequences: Int, boundaryKmers: Int) {
 
   def numKmers: Long = coreKmers.toLong + boundaryKmers
