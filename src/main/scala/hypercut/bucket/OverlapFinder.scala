@@ -1,6 +1,8 @@
 package hypercut.bucket
 
-import scala.collection.mutable.{Set => MSet, Map => MMap}
+import com.google.common.hash.{BloomFilter, Funnels}
+
+import scala.collection.mutable.{Map => MMap, Set => MSet}
 import hypercut.bucket.Util._
 
 /**
@@ -94,4 +96,34 @@ final class MapOverlapFinder(val preAndSuf: Seq[IdChunk], val pre: Seq[IdChunk],
     List[IdChunk] =
     find(othPreSuf, othPre, othSuf).toList.groupBy(_._1).
       values.toList.map(g => (g.map(_._2).toArray, g.head._1))
+
+  // Find against a bloom filter.
+  // Two sources of false positives:
+  // 1. The nature of the bloom filter itself
+  // 2. The bloom filter doesn't distinguish prefix/suffix/both like this class does.
+  // Thus a suffix here might match against a suffix there, which is not a true overlap.
+  def find(other: BloomBucket): List[IdChunk] = {
+    val allChunks = prefixAndSuffix.iterator ++ prefix.iterator ++ suffix.iterator
+    val all = for {
+      (data, ids) <- allChunks
+      if other.mightContain(data)
+      id <- ids
+      result = (id, data)
+    } yield result
+    val grouped = all.toList.groupBy(_._1).values
+    grouped.toList.map(g => (g.map(_._2).toArray, g.head._1))
+  }
+}
+
+object BloomFilterOverlap {
+
+  def filterFromSequences(data: Array[String], k: Int): BloomBucket = {
+    val nElements = data.map(_.length - (k - 2)).sum
+    val falsePositiveRate = 0.001
+    val bf = BloomFilter.create(Funnels.stringFunnel(), nElements, falsePositiveRate)
+    for (preOrSuf <- prefixesAndSuffixes(data.iterator, k)) {
+      bf.put(preOrSuf)
+    }
+    bf
+  }
 }
