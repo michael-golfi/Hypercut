@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import hypercut.Contig
-import hypercut.bucket.{BoundaryBucket, MapOverlapFinder, Util}
+import hypercut.bucket.{BloomBucket, BloomFilterOverlap, BoundaryBucket, MapOverlapFinder, Util}
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
@@ -184,6 +184,24 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     })
   }
 
+  def edgesFromSplitBoundariesBloom(boundaries: Dataset[SplitBoundary], bloomFilters: Dataset[(Long, BloomBucket)],
+                                    edges: Dataset[(Long, Long)]): Dataset[(Long, Long, Array[String])] = {
+
+    val joint = edges.joinWith(boundaries, boundaries("id") === edges("dst"))
+    val jointSrc = joint.groupByKey(_._1._1)
+    val bySrc = bloomFilters.groupByKey(_._1)
+    val k = this.k
+    jointSrc.cogroup(bySrc)((key, it1, it2) => {
+      for {
+        from <- it1.map(_._2)
+        finder = from.getFinder(k)
+        to <- it2
+        result <- finder.find(to._2)
+        edge = (result._2, to._1, result._1)
+      } yield edge
+    })
+  }
+
   //Experimental, alternative to cogroup
   def edgesFromSplitBoundaries3(boundaries: DataFrame, edges: DataFrame): Dataset[(Long, Long, Array[String])] = {
     val graph = GraphFrame(boundaries, edges)
@@ -313,7 +331,13 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
     }).cache
       //toDF("id", "boundary", "newIds").cache
 
-    val foundEdges = edgesFromSplitBoundaries(boundaryOnly, graph.edges.as[(Long, Long)])
+    val k = this.k
+    val bloomFilters = graph.vertices.selectExpr("id", "boundary").
+      as[(Long, Array[String])].map(b => {
+      (b._1, BloomFilterOverlap.filterFromSequences(b._2, k))
+    })
+
+    val foundEdges = edgesFromSplitBoundariesBloom(boundaryOnly, bloomFilters, graph.edges.as[(Long, Long)])
     val newEdges = materialize(foundEdges.cache).toDF("src", "dst", "intersection")
     graph.edges.unpersist
 //    boundaryOnly.unpersist

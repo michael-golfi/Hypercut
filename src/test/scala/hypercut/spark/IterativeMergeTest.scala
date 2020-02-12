@@ -1,16 +1,7 @@
 package hypercut.spark
 
-import com.google.common.collect.Iterators.MergingIterator
-import hypercut.bucket.BoundaryBucket
-import hypercut.bucket.CountingSeqBucket.clipAbundance
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.{Row, SparkSession}
 import org.scalatest.{FunSuite, Matchers}
-
-import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
-import org.graphframes._
-import org.apache.spark.SparkContext
-import org.apache.spark.sql.SQLContext
 
 trait SparkSessionTestWrapper {
 
@@ -25,7 +16,6 @@ trait SparkSessionTestWrapper {
 }
 
 class IterativeMergeTest extends FunSuite with Matchers with SparkSessionTestWrapper {
-  import IterativeSerial._
   import spark.implicits._
 
   test("simpleMerge") {
