@@ -1,5 +1,7 @@
 package hypercut.hash
 
+import hypercut.hash.PosRankList.treeLeftEdge
+
 import scala.Left
 import scala.Right
 import scala.util.Either.MergeableEither
@@ -63,8 +65,7 @@ object PosRankList {
       from.remove(top)
       from.nextPos match {
         case Left(_) =>
-        case Right(m) =>
-          dropUntilPositionRec(m, pos, space, top)
+        case Right(m) =>  dropUntilPositionRec(m, pos, space, top)
       }
     }
   }
@@ -175,12 +176,37 @@ object PosRankList {
     }
   }
 
+  @tailrec
+  def treeLeftEdge(root: MotifNode, acc: List[MotifNode]): List[MotifNode] = {
+    root.rankLeft match {
+      case Some(l) => treeLeftEdge(l, root :: acc)
+      case None => root :: acc
+    }
+  }
+
   def treeInOrder(root: MotifNode, acc: List[MotifNode] = Nil): List[MotifNode] = {
     val right = root.rankRight.map(r => treeInOrder(r, acc)).getOrElse(acc)
     root.rankLeft match {
       case Some(l) => treeInOrder(l, root :: right)
       case None => root :: right
     }
+  }
+}
+
+final class TreeIterator(root: MotifNode) extends Iterator[Motif] {
+  var at = treeLeftEdge(root, Nil)
+
+  def hasNext = at != Nil
+
+  def next: Motif = {
+    val h = at.head
+    h.rankRight match {
+      case Some(r) =>
+        at = treeLeftEdge(r, at.tail)
+      case None =>
+        at = at.tail
+    }
+    h.m
   }
 }
 
@@ -213,15 +239,21 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
   }
 
   def rankIterator: Iterator[Motif] = {
-    if (treeRoot.isEmpty) {
+    if (treeRoot == None) {
       Iterator.empty
     } else {
-//      printTree(treeRoot.get)
-//      println("In order: ")
-//      println(treeInOrder(treeRoot.get))
-      treeInOrder(treeRoot.get).iterator.map(_.m)
+      new TreeIterator(treeRoot.get)
     }
   }
+
+
+//    if (treeRoot.isEmpty) {
+//      Iterator.empty
+//    } else {
+////      printTree(treeRoot.get)
+////      println("In order: ")
+////      println(treeInOrder(treeRoot.get))
+//    }
 
   val end: End = nextPos.left.get
 
