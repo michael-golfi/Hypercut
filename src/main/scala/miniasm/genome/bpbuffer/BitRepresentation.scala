@@ -24,7 +24,7 @@ object BitRepresentation {
   val byteToQuad = new Array[String](256)
 
   //  var quadToByte: Map[String, Byte] = new HashMap[String, Byte]()
-  def quadToByte(quad: String) = quadToByteCompute(quad)
+  def quadToByte(quad: String): Byte = quadToByte(quad, 0)
 
   //precompute conversion table once
   for (i <- 0 to 255) {
@@ -72,10 +72,11 @@ object BitRepresentation {
   }
 
   //If the string is too short, it will be padded on the right with 'A' (0).
-  def quadToByteCompute(quad: String): Byte = {
+  def quadToByte(quad: String, offset: Int): Byte = {
     var res = 0
-    var i = 0
-    while (i < 4) {
+    var i = offset
+    val end = offset + 4
+    while (i < end) {
       val c = if (i >= quad.length) 'A' else quad.charAt(i)
       val twobit = charToTwobit(c)
       if (i == 0) {
@@ -108,14 +109,6 @@ object BitRepresentation {
   def complement(byte: Byte) = {
     //	  println("Complement " + byte)
     (byte ^ 0xff).toByte
-  }
-
-  /**
-   * Convert a 4-character string to a byte, starting from a given offset.
-   */
-  def quadToByte(str: String, offset: Int): Byte = {
-    assert(str.size > 0)
-    quadToByte(str.substring(offset))
   }
 
   /*
