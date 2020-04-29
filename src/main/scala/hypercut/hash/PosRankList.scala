@@ -443,11 +443,24 @@ final class TopRankCache(list: PosRankList, n: Int) {
         val r = list.takeByRank(n)
         if (!r.isEmpty) {
           cache = Some(r)
-          cacheLength = r.length
           firstByPos = r.head
-          lowestRank = r.map(_.rankSort).max
+          cacheLength = 0
+          lowestRank = 0
+          inspectCache(r)
         }
         r
+    }
+  }
+
+  @tailrec
+  def inspectCache(data: List[Motif]): Unit = {
+    if (!data.isEmpty) {
+      val h = data.head
+      cacheLength += 1
+      if (h.rankSort > lowestRank) {
+        lowestRank = h.rankSort
+      }
+      inspectCache(data.tail)
     }
   }
 }
