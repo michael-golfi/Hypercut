@@ -1,9 +1,5 @@
 package hypercut.hash
 
-import hypercut.hash.PosRankList.treeLeftEdge
-
-import scala.Left
-import scala.Right
 import scala.util.Either.MergeableEither
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -72,7 +68,7 @@ object PosRankList {
 
   @tailrec
   def treeInsert(root: MotifNode, value: MotifNode) {
-    if (value < root) {
+    if (value.rankSort < root.rankSort) {
       if (root.rankLeft != null) {
         treeInsert(root.rankLeft, value)
       } else {
@@ -125,7 +121,7 @@ object PosRankList {
   @tailrec
   def treeDelete(root: MotifNode, value: MotifNode) {
 //    println(s"Delete $value root: $root")
-    if (value < root) {
+    if (value.rankSort < root.rankSort) {
       if (root.rankLeft.rankSort == value.rankSort) {
         root.rankLeft = treeDeleteAt(root.rankLeft)
       } else {
@@ -175,35 +171,25 @@ object PosRankList {
     }
   }
 
-  @tailrec
-  def treeLeftEdge(root: MotifNode, acc: List[MotifNode]): List[MotifNode] = {
-    if (root.rankLeft != null) {
-      treeLeftEdge(root.rankLeft, root :: acc)
-    } else root :: acc
-  }
-
   def treeInOrder(root: MotifNode, acc: List[MotifNode] = Nil): List[MotifNode] = {
     val right = Option(root.rankRight).map(r => treeInOrder(r, acc)).getOrElse(acc)
     if (root.rankLeft != null) {
       treeInOrder(root.rankLeft, root :: right)
     } else root :: right
   }
-}
 
-final class TreeIterator(root: MotifNode) extends Iterator[Motif] {
-  var at = treeLeftEdge(root, Nil)
-
-  def hasNext = at != Nil
-
-  def next: Motif = {
-    val h = at.head
-    val r = h.rankRight
-    if (r != null) {
-      at = treeLeftEdge(r, at.tail)
-    } else {
-      at = at.tail
+  /*
+  In-order traversal. Returns true while the traversal should continue.
+  The supplied visitor receives values as they are seen and can interrupt the traversal.
+   */
+  def traverse(root: MotifNode, visitor: RankListBuilder): Boolean = {
+    if (root.rankLeft != null) {
+      if (!traverse(root.rankLeft, visitor)) return false
     }
-    h.m
+    if (!visitor.treeVisitInOrder(root.m)) return false
+    if (root.rankRight != null) {
+      traverse(root.rankRight, visitor)
+    } else true
   }
 }
 
@@ -235,22 +221,13 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
     }
   }
 
+  //Inefficient implementation - traverse is preferred
   def rankIterator: Iterator[Motif] = {
-    if (treeRoot == None) {
-      Iterator.empty
-    } else {
-      new TreeIterator(treeRoot.get)
+    treeRoot match {
+      case None => Iterator.empty
+      case Some(r) => treeInOrder(r).iterator.map(_.m)
     }
   }
-
-
-//    if (treeRoot.isEmpty) {
-//      Iterator.empty
-//    } else {
-////      printTree(treeRoot.get)
-////      println("In order: ")
-////      println(treeInOrder(treeRoot.get))
-//    }
 
   val end: End = nextPos.left.get
 
@@ -378,26 +355,16 @@ final class RankListBuilder(from: PosRankList, n: Int) {
     }
   }
 
+  var building: List[Motif] = Nil
+  def treeVisitInOrder(node: Motif): Boolean = {
+    building = insertPosNoOverlap(building, node)
+    rem > 0
+  }
+
   def build: List[Motif] = {
-    val it = from.rankIterator
-    if (!it.hasNext) {
-      return Nil
-    }
-    rem = n - 1
-    var r = it.next :: Nil
-    while (it.hasNext && rem > 0) {
-      val cur = it.next
-      val nr = insertPosNoOverlap(r, cur)
-      //      println(this)
-      //      println(nr)
-      //      for (pair <- nr.sliding(2); if pair.size > 1) {
-      //        if(pair(0).overlaps(pair(1))) {
-      //          assert(false)
-      //        }
-      //      }
-      r = nr
-    }
-    r
+    if (from.treeRoot.isEmpty) return Nil
+    PosRankList.traverse(from.treeRoot.get, this)
+    building
   }
 }
 
@@ -418,10 +385,7 @@ final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   var rankRight: MotifNode = null
 
   //NB this imposes a maximum length on analysed sequences for now
-  lazy val rankSort = m.rankSort
-
-  def < (other: MotifNode) =
-    rankSort < other.rankSort
+  val rankSort = m.rankSort
 
   /**
    * Remove this node from both of the two lists.
