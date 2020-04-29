@@ -4,6 +4,7 @@
  * Dual GPL/MIT license. Please see the files README and LICENSE for details.
  */
 package miniasm.genome.bpbuffer
+
 import scala.collection.immutable._
 import annotation.switch
 import miniasm.genome._
@@ -21,14 +22,16 @@ object BitRepresentation {
   val twobits = List(A, C, T, G)
 
   val byteToQuad = new Array[String](256)
-  var quadToByte: Map[String, Byte] = new HashMap[String, Byte]()
+
+  //  var quadToByte: Map[String, Byte] = new HashMap[String, Byte]()
+  def quadToByte(quad: String) = quadToByteCompute(quad)
 
   //precompute conversion table once
   for (i <- 0 to 255) {
     val b = i.toByte
     val str = byteToQuadCompute(b)
     byteToQuad(b - Byte.MinValue) = str
-    quadToByte += ((str, b))
+    //    quadToByte += ((str, b))
   }
 
   /**
@@ -68,12 +71,30 @@ object BitRepresentation {
     res
   }
 
+  //If the string is too short, it will be padded on the right with 'A' (0).
+  def quadToByteCompute(quad: String): Byte = {
+    var res = 0
+    var i = 0
+    while (i < 4) {
+      val c = if (i >= quad.length) 'A' else quad.charAt(i)
+      val twobit = charToTwobit(c)
+      if (i == 0) {
+        res = twobit
+      } else {
+        res = (res << 2) | twobit
+      }
+      i += 1
+    }
+    res.toByte
+  }
+
   /**
    * Convert a byte to a 4-character string.
    */
   def byteToQuad(byte: Byte): String = byteToQuad(byte - Byte.MinValue)
 
   import scala.language.implicitConversions
+
   implicit def toByte(int: Int) = int.toByte
 
   /**
@@ -94,14 +115,7 @@ object BitRepresentation {
    */
   def quadToByte(str: String, offset: Int): Byte = {
     assert(str.size > 0)
-    //println(str + " " + offset.toString)
-    if (str.size - offset < 4) {
-      val rem = (4 - ((str.size - offset) % 4)) % 4
-      val s = str + ("A" * rem)
-      quadToByte(s.substring(offset, offset + 4))
-    } else {
-      quadToByte(str.substring(offset, offset + 4))
-    }
+    quadToByte(str.substring(offset))
   }
 
   /*
@@ -112,6 +126,8 @@ object BitRepresentation {
     val rsize = (bps.size - 1) / 4
     val r = new Array[Byte](rsize + 1)
     while (i <= rsize) {
+      //TODO keep passing a single string and pass the offset all the way down, instead of
+      //generating intermediate substrings
       r(i) = quadToByte(bps, i * 4)
       i += 1
     }
@@ -140,8 +156,13 @@ object BitRepresentation {
     res.substring(0, size)
   }
 
-  def continuations(km: BPBuffer) = twobits.map { km.drop(1).appendTwobit(_) }
-  def continuesFrom(km: BPBuffer) = twobits.map { km.take(km.size - 1).prependTwobit(_) }
+  def continuations(km: BPBuffer) = twobits.map {
+    km.drop(1).appendTwobit(_)
+  }
+
+  def continuesFrom(km: BPBuffer) = twobits.map {
+    km.take(km.size - 1).prependTwobit(_)
+  }
 
   def reverseComplement(bytes: Array[Byte], size: Int): Array[Byte] = {
     val r = Array.fill[Byte](size)(0)
