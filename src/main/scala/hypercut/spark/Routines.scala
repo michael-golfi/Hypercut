@@ -305,7 +305,7 @@ object SerialRoutines {
   }
 
   def createHashSegments(r: String, ext: MotifSetExtractor) = {
-    val buckets = ext.motifSetsInRead(r)._2
+    val buckets = ext.motifSetsInRead(r)._2.toList
     val hashesSegments = ext.splitRead(r, buckets)
     hashesSegments.flatMap(x =>
       removeN(x._2, ext.k).map(s =>

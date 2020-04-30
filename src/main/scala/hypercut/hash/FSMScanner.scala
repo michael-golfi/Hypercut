@@ -1,6 +1,7 @@
 package hypercut.hash
 
 import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * In the 'transitions' array the next state will be looked up through the value of the seen character.
@@ -101,16 +102,20 @@ final class FSMScanner(val motifsByPriority: Seq[String]) {
     }
   }
 
-  def allMatches(data: String) = {
+  /*
+    Find all matches in the string.
+    Returns an array with the matches in order.
+   */
+  def allMatches(data: String): ArrayBuffer[(Int, String)] = {
     var state = initState
     var i = 0
-    var r = List[(Int, String)]()
+    val r = new ArrayBuffer[(Int, String)](data.length)
     while (i < data.length) {
       state = state.advance(data.charAt(i))
       state.foundMotif match {
         case Some(m) =>
 //          println(s"$i $m ${state.seenString} ${state.startOffset}")
-          r ::= (((i - state.startOffset), m))
+          r += (((i - state.startOffset), m))
         case _ =>
 //          println(s"$i ${state.seenString}")
       }

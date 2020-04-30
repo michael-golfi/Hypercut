@@ -1,10 +1,11 @@
 package hypercut.hash
 
 import scala.annotation.tailrec
-
 import hypercut._
 import hypercut.shortread.ReadFiles
 import hypercut.shortread.Read
+
+import scala.collection.mutable.ArrayBuffer
 
 final case class MotifSetExtractor(space: MotifSpace, k: Int) {
   @volatile
@@ -22,17 +23,26 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
    * in a window.
    */
   final class MotifExtractor(read: String) {
-    var matches = scanner.allMatches(read).reverse
+    val matches = scanner.allMatches(read)
+    var matchIndex = 0
     var scannedToPos: Int = space.maxMotifLength - 2
 
     var windowMotifs = new TopRankCache(PosRankList(), n)
 
     def motifAt(pos: Int): Option[Motif] = {
-      matches = matches.dropWhile(_._1 < pos)
-      if (!matches.isEmpty && matches.head._1 == pos) {
-        //Space.create allocates a new object each time, as opposed to space.get which
-        //saves motifs and reuses them
-        Some(space.create(matches.head._2, matches.head._1))
+      while (matchIndex < matches.length && matches(matchIndex)._1 < pos) {
+        matchIndex += 1
+      }
+
+      if (matchIndex < matches.length) {
+        val m = matches(matchIndex)
+        if (m._1 == pos) {
+          //Space.create allocates a new object each time, as opposed to space.get which
+          //saves motifs and reuses them
+          Some(space.create(m._2, m._1))
+        } else {
+          None
+        }
       } else {
         None
       }
@@ -84,18 +94,18 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
 
   /**
    * Look for motif sets in a read.
-   * Returns two lists:
+   * Returns two arrays:
    * 1. The MotifSet of every k-mer (in order),
    * 2. The positions where each contiguous MotifSet region is first detected
    */
-  def motifSetsInRead(read: String): (List[MotifSet], List[(MotifSet, Int)]) = {
+  def motifSetsInRead(read: String): (ArrayBuffer[MotifSet], ArrayBuffer[(MotifSet, Int)]) = {
     readCount += 1
     if (readCount % 100000 == 0) {
       println(s"$readCount reads seen")
     }
 
-    var perPosition = List[MotifSet]()
-    var perBucket = List[(MotifSet, Int)]()
+    val perPosition = new ArrayBuffer[MotifSet](read.length)
+    val perBucket = new ArrayBuffer[(MotifSet, Int)](read.length)
 
     val ext = new MotifExtractor(read)
     ext.scanTo(k - 2)
@@ -110,12 +120,12 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
       if (!(scan eq lastMotifs)) {
         lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSorted(space, scan)).fromZero
         lastMotifs = scan
-        perBucket ::= (lastMotifSet, p)
+        perBucket += ((lastMotifSet, p))
       }
-      perPosition ::= lastMotifSet
+      perPosition += lastMotifSet
       p += 1
     }
-    (perPosition.reverse, perBucket.reverse)
+    (perPosition, perBucket)
   }
 
   /**
@@ -146,7 +156,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
   def motifs(read: String): (List[MotifSet], Iterator[String]) = {
     val kmers = Read.kmers(read, k)
     val mss = motifSetsInRead(read)
-    (mss._1, kmers)
+    (mss._1.toList, kmers)
   }
 
   /**
@@ -155,7 +165,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
    */
   def compactMotifs(read: String): List[(CompactNode, String)] = {
     val kmers = Read.kmers(read, k).toList
-    val mss = motifSetsInRead(read)._1.map(_.compact)
+    val mss = motifSetsInRead(read)._1.map(_.compact).toList
     mss zip kmers
   }
 

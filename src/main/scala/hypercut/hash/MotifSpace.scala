@@ -1,5 +1,7 @@
 package hypercut.hash
 
+import miniasm.genome.bpbuffer.BitRepresentation
+
 import scala.collection.mutable.ListBuffer
 import scala.annotation.tailrec
 import scala.collection.Seq
@@ -77,8 +79,15 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int) {
     Motif(pos, new Features(pattern, priorityOf(pattern), sortValue))
   }
 
-  val priorityMap = byPriority.zipWithIndex.toMap
-  def priorityOf(mk: String) = priorityMap(mk)
+  val priorityLookup = new Array[Int](256)
+  for ((motif, pri) <- byPriority.zipWithIndex) {
+    //Note: this approach can currently only handle motifs up to length 4,
+    //but saves an expensive hash map lookup
+    priorityLookup(BitRepresentation.quadToByte(motif) - Byte.MinValue) = pri
+  }
+
+  def priorityOf(mk: String) =
+    priorityLookup(BitRepresentation.quadToByte(mk) - Byte.MinValue)
 
   @tailrec
   final def allIndexOf(s: String, ptn: String, from: Int, soFar: ListBuffer[Motif]) {
