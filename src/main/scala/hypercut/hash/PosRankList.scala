@@ -9,21 +9,18 @@ import scala.collection.mutable
  * One sorted by rank, one sorted by position.
  */
 sealed trait DLNode {
-  type Backward = Either[PosRankList, MotifNode]
-  type Forward = Either[End, MotifNode]
+  type Backward = DLNode //PosRankList or MotifNode
+  type Forward = DLNode // End or MotifNode
   var prevPos: Backward = _
   var nextPos: Forward = _
 
-  def asForwardLink: Forward
-  def asBackwardLink: Backward
 }
 
 /**
  * End marker for both lists
  */
 final case class End() extends DLNode {
-  def asForwardLink = Left(this)
-  def asBackwardLink = ???
+
 }
 
 object PosRankList {
@@ -49,10 +46,10 @@ object PosRankList {
   }
 
   def linkPos(before: DLNode, middle: MotifNode, after: DLNode) {
-    before.nextPos = Right(middle)
-    middle.prevPos = before.asBackwardLink
-    middle.nextPos = after.asForwardLink
-    after.prevPos = Right(middle)
+    before.nextPos = middle
+    middle.prevPos = before
+    middle.nextPos = after
+    after.prevPos = middle
   }
 
   @tailrec
@@ -60,8 +57,8 @@ object PosRankList {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
       from.remove(top)
       from.nextPos match {
-        case Left(_) =>
-        case Right(m) =>  dropUntilPositionRec(m, pos, space, top)
+        case m: MotifNode => dropUntilPositionRec(m, pos, space, top)
+        case _ =>
       }
     }
   }
@@ -203,21 +200,18 @@ object PosRankList {
 final case class PosRankList() extends DLNode with Iterable[Motif] {
   import PosRankList._
 
-  nextPos = Left(End())
-  nextPos.left.get.prevPos = Left(this)
+  nextPos = End()
+  nextPos.prevPos = this
 
   var treeRoot: Option[MotifNode] = None
 
-  def asForwardLink: Either[End, MotifNode] = ???
-  def asBackwardLink = Left(this)
-
   def iterator: Iterator[Motif] = new Iterator[Motif] {
     var current = nextPos
-    def hasNext = current.isRight
+    def hasNext = current.isInstanceOf[MotifNode]
     def next = {
-      val r = current.right.get
-      current = current.right.flatMap(_.nextPos)
-      r.m
+      val r = current
+      current = current.nextPos
+      r.asInstanceOf[MotifNode].m
     }
   }
 
@@ -229,7 +223,7 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
     }
   }
 
-  val end: End = nextPos.left.get
+  val end: End = nextPos.asInstanceOf[End]
 
   /**
    * Append at the final position,
@@ -237,9 +231,9 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
    */
   def :+= (mn: MotifNode) {
     end.prevPos match {
-      case Right(last) =>
+      case last: MotifNode =>
         linkPos(last, mn, end)
-      case Left(_) =>
+      case _ =>
         linkPos(this, mn, end)
     }
 
@@ -272,7 +266,7 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
    */
   def dropUntilPosition(pos: Int, space: MotifSpace) {
     nextPos match {
-      case Right(mn) => dropUntilPositionRec(mn, pos, space, this)
+      case mn: MotifNode => dropUntilPositionRec(mn, pos, space, this)
       case _ =>
     }
   }
@@ -377,9 +371,6 @@ final class RankListBuilder(from: PosRankList, n: Int) {
 final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   import PosRankList._
 
-  def asForwardLink = Right(this)
-  def asBackwardLink = Right(this)
-
   //Using null instead of Option for performance
   var rankLeft: MotifNode = null
   var rankRight: MotifNode = null
@@ -391,8 +382,8 @@ final case class MotifNode(pos: Int, m: Motif) extends DLNode {
    * Remove this node from both of the two lists.
    */
   def remove(top: PosRankList) {
-    prevPos.merge.nextPos = nextPos
-    nextPos.merge.prevPos = prevPos
+    prevPos.nextPos = nextPos
+    nextPos.prevPos = prevPos
 
 //    PosRankList.synchronized {
 //      println("before:")
