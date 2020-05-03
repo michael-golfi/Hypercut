@@ -69,14 +69,28 @@ object PosRankList {
       if (root.rankLeft != null) {
         treeInsert(root.rankLeft, value)
       } else {
-        root.rankLeft = value
+        treeSetLeft(root, value)
       }
     } else {
       if (root.rankRight != null) {
         treeInsert(root.rankRight, value)
       } else {
-        root.rankRight = value
+        treeSetRight(root, value)
       }
+    }
+  }
+
+  def treeSetLeft(parent: MotifNode, value: MotifNode): Unit = {
+    parent.rankLeft = value
+    if (value != null) {
+      value.rankParent = parent
+    }
+  }
+
+  def treeSetRight(parent: MotifNode, value: MotifNode): Unit = {
+    parent.rankRight = value
+    if (value != null) {
+      value.rankParent = parent
     }
   }
 
@@ -90,7 +104,7 @@ object PosRankList {
       if (r.rankRight != null) {
         seizeRightmost(r)
       } else {
-        root.rankRight = r.rankLeft
+        treeSetRight(root, r.rankLeft)
         r
       }
     }
@@ -106,30 +120,22 @@ object PosRankList {
       if (l.rankLeft != null) {
         seizeLeftmost(l)
       } else {
-        root.rankLeft = l.rankRight
+        treeSetLeft(root, l.rankRight)
         l
       }
     }
   }
 
   /*
-   * Delete a value that is known to exist in the tree, but is not equal to the root.
+   * Delete either the right or left child of a node
    */
-  @tailrec
-  def treeDelete(root: MotifNode, value: MotifNode) {
+  def treeDelete(immParent: MotifNode, value: MotifNode) {
 //    println(s"Delete $value root: $root")
-    if (value.rankSort < root.rankSort) {
-      if (root.rankLeft.rankSort == value.rankSort) {
-        root.rankLeft = treeDeleteAt(root.rankLeft)
-      } else {
-        treeDelete(root.rankLeft, value)
-      }
-    } else { // value > root
-      if (root.rankRight.rankSort == value.rankSort) {
-        root.rankRight = treeDeleteAt(root.rankRight)
-      } else {
-        treeDelete(root.rankRight, value)
-      }
+    if (value eq immParent.rankLeft) {
+      treeSetLeft(immParent, treeDeleteAt(immParent.rankLeft))
+    } else {
+      //right child should be what we are deleting
+      treeSetRight(immParent, treeDeleteAt(immParent.rankRight))
     }
   }
 
@@ -141,16 +147,16 @@ object PosRankList {
 //    println(s"Delete at root: $root")
     if (root.rankRight != null) {
       val r = seizeLeftmost(root.rankRight)
-      r.rankLeft = root.rankLeft
+      treeSetLeft(r, root.rankLeft)
       if (r != root.rankRight) {
-        r.rankRight = root.rankRight
+        treeSetRight(r, root.rankRight)
       }
       r
     } else if (root.rankLeft != null) {
       val r = seizeRightmost(root.rankLeft)
-      r.rankRight = root.rankRight
+      treeSetRight(r, root.rankRight)
       if (r != root.rankLeft) {
-        r.rankLeft = root.rankLeft
+        treeSetLeft(r, root.rankLeft)
       }
       r
     } else {
@@ -371,9 +377,11 @@ final class RankListBuilder(from: PosRankList, n: Int) {
 final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   import PosRankList._
 
+  //Binary tree
   //Using null instead of Option for performance
   var rankLeft: MotifNode = null
   var rankRight: MotifNode = null
+  var rankParent: MotifNode = null
 
   //NB this imposes a maximum length on analysed sequences for now
   val rankSort = m.rankSort
@@ -388,10 +396,10 @@ final case class MotifNode(pos: Int, m: Motif) extends DLNode {
 //    PosRankList.synchronized {
 //      println("before:")
 //      printTree(top.treeRoot.get)
-      if (top.treeRoot.contains(this)) {
+      if (top.treeRoot.get eq this) {
         top.treeRoot = Option(treeDeleteAt(top.treeRoot.get))
       } else {
-        treeDelete(top.treeRoot.get, this)
+        treeDelete(this.rankParent, this)
       }
 //      println("after:")
 //      printTree(top.treeRoot.get)
