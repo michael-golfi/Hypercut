@@ -22,8 +22,6 @@ object Motif {
  */
 final case class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
 
-  def tagIndex(space: MotifSpace) = space.byIndex(tag)
-
   def strongEquivalent(other: Features) = {
     tag == other.tag
   }
@@ -232,7 +230,7 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
     var hash = 0
     while (it.hasNext) {
       val m = it.next
-      val tag = m.features.tagIndex(space).toByte
+      val tag = m.features.tagRank.toByte
       r.put(tag)
       //TODO check/warn about max size of positions, if we're not using short for the position
       val pos = m.pos.toByte

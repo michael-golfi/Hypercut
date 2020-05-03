@@ -52,7 +52,6 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int) {
   val minMotifLength = byPriority.map(_.length()).min
 
   val byFirstChar = byPriority.groupBy(_.charAt(0)).toMap
-  val byIndex = byPriority.zipWithIndex.toMap
 
   def minPermittedStartOffset(motif: String) =
     maxMotifLength - motif.length()
