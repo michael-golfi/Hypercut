@@ -16,7 +16,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
   val n = space.n
 
   @volatile
-  lazy val scanner = new FSMScanner(space.byPriority)
+  lazy val scanner = new FSMScanner(space)
 
   /**
    * Scans a single read, using mutable state to track the current motif set
@@ -30,30 +30,20 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
     var windowMotifs = new TopRankCache(PosRankList(), n)
 
     def motifAt(pos: Int): Option[Motif] = {
-      while (matchIndex < matches.length && matches(matchIndex)._1 < pos) {
+      while (matchIndex < matches.length && matches(matchIndex).pos < pos) {
         matchIndex += 1
       }
 
       if (matchIndex < matches.length) {
         val m = matches(matchIndex)
-        if (m._1 == pos) {
-          //Space.create allocates a new object each time, as opposed to space.get which
-          //saves motifs and reuses them
-          Some(space.create(m._2, m._1))
+        if (m.pos == pos) {
+          Some(m)
         } else {
           None
         }
       } else {
         None
       }
-
-      //rely on these also being rank sorted
-//      val candidates = space.byFirstChar.get(read.charAt(pos))
-//      candidates match {
-//        case Some(map) =>
-//          map.find(m => read.regionMatches(pos + 1, m, 1, m.length() - 1)).map(m => space.get(m, pos))
-//        case None => None
-//      }
     }
 
     /**
