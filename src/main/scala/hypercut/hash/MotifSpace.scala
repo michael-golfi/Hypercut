@@ -57,25 +57,24 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int) {
     maxMotifLength - motif.length()
 
   @volatile
-  private var lookup = Map[(String, Int), Features]()
+  private var lookup = Map[String, Features]()
 
-  def getFeatures(pattern: String, sortValue: Int): Features = {
-    val key = (pattern, sortValue)
-    if (!lookup.contains(key)) {
+  def getFeatures(pattern: String): Features = {
+    if (!lookup.contains(pattern)) {
       synchronized {
-        val f = new Features(pattern, priorityOf(pattern), sortValue)
-        lookup += key -> f
+        val f = new Features(pattern, priorityOf(pattern))
+        lookup += pattern -> f
       }
     }
-    lookup(key)
+    lookup(pattern)
   }
 
-  def get(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
-    Motif(pos, getFeatures(pattern, sortValue))
+  def get(pattern: String, pos: Int): Motif = {
+    Motif(pos, getFeatures(pattern))
   }
 
-  def create(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
-    Motif(pos, new Features(pattern, priorityOf(pattern), sortValue))
+  def create(pattern: String, pos: Int): Motif = {
+    Motif(pos, new Features(pattern, priorityOf(pattern)))
   }
 
   val priorityLookup = new Array[Int](256)

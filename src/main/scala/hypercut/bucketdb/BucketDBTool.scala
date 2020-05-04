@@ -106,8 +106,6 @@ final class BucketDBTool(val space: MotifSpace, val k: Int,
     hist.print("Macro graph node degree (no abundance threshold)")
   }
 
-  def asMotifSet(key: String) = MotifSet.unpack(space, key).fixMotifs.canonical
-
   var filteredOutEdges = 0
 
   /**

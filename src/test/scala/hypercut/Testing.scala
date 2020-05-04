@@ -10,12 +10,12 @@ object Testing {
   val space = MotifSpace.simple(4)
   def m(code: String, pos: Int) = space.get(code, pos)
   def ms(motifs: Seq[(String, Int)]) = motifs.map(x => m(x._1, x._2))
-
-  def fixedMotifSet1(motifs: Seq[(String, Int)]) =
-    new MotifSet(space, ms(motifs).toList).fixMotifs
-
-  def fixedMotifSet2(motifs: Seq[Motif]) =
-    new MotifSet(space, motifs.toList).fixMotifs
+//
+//  def fixedMotifSet1(motifs: Seq[(String, Int)]) =
+//    new MotifSet(space, ms(motifs).toList).fixMotifs
+//
+//  def fixedMotifSet2(motifs: Seq[Motif]) =
+//    new MotifSet(space, motifs.toList).fixMotifs
 
   def GT(p: Int) = m("GT", p)
   def AT(p: Int) = m("AT", p)
