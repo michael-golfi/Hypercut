@@ -119,8 +119,6 @@ object BitRepresentation {
     val rsize = (bps.size - 1) / 4
     val r = new Array[Byte](rsize + 1)
     while (i <= rsize) {
-      //TODO keep passing a single string and pass the offset all the way down, instead of
-      //generating intermediate substrings
       r(i) = quadToByte(bps, i * 4)
       i += 1
     }
