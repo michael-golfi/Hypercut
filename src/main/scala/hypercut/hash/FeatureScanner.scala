@@ -2,7 +2,6 @@ package hypercut.hash
 
 import hypercut.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
-import hypercut.Stats
 
 /**
  * Looks for raw motifs in reads, counting them in a histogram.
@@ -56,12 +55,10 @@ final class FeatureScanner(val space: MotifSpace) {
   }
 
   def scan(inputFile: String, matesFile: Option[String]) {
-    Stats.begin()
     val counter = handle(ReadFiles.iterator(inputFile))
     counter.print("Total feature count")
     println("In order from rare to common: ")
     println(counter.counter.toList.sortBy(_._2).map(_._1))
-    Stats.end("Scan features")
     println("")
   }
 }
