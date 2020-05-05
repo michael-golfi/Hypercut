@@ -18,8 +18,6 @@ scapegoatVersion in ThisBuild := "1.3.9"
 
 resolvers += "Spark Packages Repo" at "http://dl.bintray.com/spark-packages/maven"
 
-libraryDependencies += "com.fallabs" % "kyotocabinet-java" % "latest.integration"
-
 libraryDependencies += "org.rogach" %% "scallop" % "latest.integration"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8"

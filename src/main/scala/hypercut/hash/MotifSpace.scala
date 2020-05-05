@@ -1,5 +1,7 @@
 package hypercut.hash
 
+import miniasm.genome.bpbuffer.BitRepresentation
+
 import scala.collection.mutable.ListBuffer
 import scala.annotation.tailrec
 import scala.collection.Seq
@@ -50,35 +52,40 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int) {
   val minMotifLength = byPriority.map(_.length()).min
 
   val byFirstChar = byPriority.groupBy(_.charAt(0)).toMap
-  val byIndex = byPriority.zipWithIndex.toMap
 
   def minPermittedStartOffset(motif: String) =
     maxMotifLength - motif.length()
 
   @volatile
-  private var lookup = Map[(String, Int), Features]()
+  private var lookup = Map[String, Features]()
 
-  def getFeatures(pattern: String, sortValue: Int): Features = {
-    val key = (pattern, sortValue)
-    if (!lookup.contains(key)) {
+  def getFeatures(pattern: String): Features = {
+    if (!lookup.contains(pattern)) {
       synchronized {
-        val f = new Features(pattern, priorityOf(pattern), sortValue)
-        lookup += key -> f
+        val f = new Features(pattern, priorityOf(pattern))
+        lookup += pattern -> f
       }
     }
-    lookup(key)
+    lookup(pattern)
   }
 
-  def get(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
-    Motif(pos, getFeatures(pattern, sortValue))
+  def get(pattern: String, pos: Int): Motif = {
+    Motif(pos, getFeatures(pattern))
   }
 
-  def create(pattern: String, pos: Int, sortValue: Int = 0): Motif = {
-    Motif(pos, new Features(pattern, priorityOf(pattern), sortValue))
+  def create(pattern: String, pos: Int): Motif = {
+    Motif(pos, new Features(pattern, priorityOf(pattern)))
   }
 
-  val priorityMap = byPriority.zipWithIndex.toMap
-  def priorityOf(mk: String) = priorityMap(mk)
+  val priorityLookup = new Array[Int](256)
+  for ((motif, pri) <- byPriority.zipWithIndex) {
+    //Note: this approach can currently only handle motifs up to length 4,
+    //but saves an expensive hash map lookup
+    priorityLookup(BitRepresentation.quadToByte(motif) - Byte.MinValue) = pri
+  }
+
+  def priorityOf(mk: String) =
+    priorityLookup(BitRepresentation.quadToByte(mk) - Byte.MinValue)
 
   @tailrec
   final def allIndexOf(s: String, ptn: String, from: Int, soFar: ListBuffer[Motif]) {

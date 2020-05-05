@@ -1,32 +1,26 @@
 package hypercut.hash
 
-import scala.Left
-import scala.Right
 import scala.util.Either.MergeableEither
 import scala.annotation.tailrec
+import scala.collection.mutable
 
 /**
  * A node that participates in two mutable doubly linked lists:
  * One sorted by rank, one sorted by position.
  */
 sealed trait DLNode {
-  type Backward = Either[PosRankList, MotifNode]
-  type Forward = Either[End, MotifNode]
+  type Backward = DLNode //PosRankList or MotifNode
+  type Forward = DLNode // End or MotifNode
   var prevPos: Backward = _
   var nextPos: Forward = _
-  var higherRank: Backward = _
-  var lowerRank: Forward = _
 
-  def asForwardLink: Forward
-  def asBackwardLink: Backward
 }
 
 /**
  * End marker for both lists
  */
 final case class End() extends DLNode {
-  def asForwardLink = Left(this)
-  def asBackwardLink = ???
+
 }
 
 object PosRankList {
@@ -44,68 +38,161 @@ object PosRankList {
   def fromNodes(nodes: Seq[MotifNode]) = {
     var i = 0
     var r = new PosRankList()
-    var prior: DLNode = r
-    if (nodes.nonEmpty) {
-      //position order
-      r.nextPos = Right(nodes.head)
-      nodes.head.prevPos = Left(r)
 
-      val byPos = nodes.toArray
-      val byRank = nodes.sortBy(_.rankSort).toArray
-      r.lowerRank = Right(byRank.head)
-      byRank.head.higherRank = Left(r)
-
-      while (i < nodes.size - 1) {
-        byPos(i).nextPos = Right(byPos(i + 1))
-        byPos(i + 1).prevPos = Right(byPos(i))
-        byRank(i).lowerRank = Right(byRank(i + 1))
-        byRank(i + 1).higherRank = Right(byRank(i))
-        i += 1
-      }
-      byPos(i).nextPos = Left(r.end)
-      r.end.prevPos = Right(byPos(i))
-      byRank(i).lowerRank = Left(r.end)
-      r.end.higherRank = Right(byRank(i))
+    for { n <- nodes } {
+      r :+= n
     }
     r
   }
 
   def linkPos(before: DLNode, middle: MotifNode, after: DLNode) {
-    before.nextPos = Right(middle)
-    middle.prevPos = before.asBackwardLink
-    middle.nextPos = after.asForwardLink
-    after.prevPos = Right(middle)
-  }
-
-  def linkRank(above: DLNode, middle: MotifNode, below: DLNode) {
-    above.lowerRank = Right(middle)
-    middle.higherRank = above.asBackwardLink
-    middle.lowerRank = below.asForwardLink
-    below.higherRank = Right(middle)
+    before.nextPos = middle
+    middle.prevPos = before
+    middle.nextPos = after
+    after.prevPos = middle
   }
 
   @tailrec
-  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace) {
+  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace, top: PosRankList) {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
-      from.remove()
+      from.remove(top)
       from.nextPos match {
-        case Left(_) =>
-        case Right(m) =>
-          dropUntilPositionRec(m, pos, space)
+        case m: MotifNode => dropUntilPositionRec(m, pos, space, top)
+        case _ =>
       }
     }
   }
 
   @tailrec
-  def rankInsertRec(from: MotifNode, insert: MotifNode) {
-    if (insert.rankSort < from.rankSort) {
-      linkRank(from.higherRank.merge, insert, from)
+  def treeInsert(root: MotifNode, value: MotifNode) {
+    if (value.rankSort < root.rankSort) {
+      if (root.rankLeft != null) {
+        treeInsert(root.rankLeft, value)
+      } else {
+        treeSetLeft(root, value)
+      }
     } else {
-      from.lowerRank match {
-        case Left(e) => linkRank(from, insert, e)
-        case Right(m) => rankInsertRec(m, insert)
+      if (root.rankRight != null) {
+        treeInsert(root.rankRight, value)
+      } else {
+        treeSetRight(root, value)
       }
     }
+  }
+
+  def treeSetLeft(parent: MotifNode, value: MotifNode): Unit = {
+    parent.rankLeft = value
+    if (value != null) {
+      value.rankParent = parent
+    }
+  }
+
+  def treeSetRight(parent: MotifNode, value: MotifNode): Unit = {
+    parent.rankRight = value
+    if (value != null) {
+      value.rankParent = parent
+    }
+  }
+
+  /*
+  Seize the rightmost child, editing this node or one of its sub-nodes to preserve the ordering.
+   */
+  @tailrec
+  def seizeRightmost(root: MotifNode): MotifNode = {
+    val r = root.rankRight
+    if (r == null) root else {
+      if (r.rankRight != null) {
+        seizeRightmost(r)
+      } else {
+        treeSetRight(root, r.rankLeft)
+        r
+      }
+    }
+  }
+
+  /*
+  Seize the leftmost child, editing this node or one of its sub-nodes to preserve the ordering.
+   */
+  @tailrec
+  def seizeLeftmost(root: MotifNode): MotifNode = {
+    val l = root.rankLeft
+    if (l == null) root else {
+      if (l.rankLeft != null) {
+        seizeLeftmost(l)
+      } else {
+        treeSetLeft(root, l.rankRight)
+        l
+      }
+    }
+  }
+
+  /*
+   * Delete either the right or left child of a node
+   */
+  def treeDelete(immParent: MotifNode, value: MotifNode) {
+//    println(s"Delete $value root: $root")
+    if (value eq immParent.rankLeft) {
+      treeSetLeft(immParent, treeDeleteAt(immParent.rankLeft))
+    } else {
+      //right child should be what we are deleting
+      treeSetRight(immParent, treeDeleteAt(immParent.rankRight))
+    }
+  }
+
+  /*
+   * Delete a value that has been found in the tree.
+   * Return the replacement for the node being deleted (possibly null).
+   */
+  def treeDeleteAt(root: MotifNode): MotifNode = {
+//    println(s"Delete at root: $root")
+    if (root.rankRight != null) {
+      val r = seizeLeftmost(root.rankRight)
+      treeSetLeft(r, root.rankLeft)
+      if (r != root.rankRight) {
+        treeSetRight(r, root.rankRight)
+      }
+      r
+    } else if (root.rankLeft != null) {
+      val r = seizeRightmost(root.rankLeft)
+      treeSetRight(r, root.rankRight)
+      if (r != root.rankLeft) {
+        treeSetLeft(r, root.rankLeft)
+      }
+      r
+    } else {
+      null
+    }
+  }
+
+  def printTree(root: MotifNode, indent: String = ""): Unit = {
+    println(s"$indent$root")
+    for (l <- Option(root.rankLeft)) {
+      printTree(l, indent + "L ")
+    }
+    for (r <- Option(root.rankRight)) {
+      printTree(r, indent + "R ")
+    }
+  }
+
+  def treeInOrder(root: MotifNode, acc: List[MotifNode] = Nil): List[MotifNode] = {
+    val right = Option(root.rankRight).map(r => treeInOrder(r, acc)).getOrElse(acc)
+    if (root.rankLeft != null) {
+      treeInOrder(root.rankLeft, root :: right)
+    } else root :: right
+  }
+
+  /*
+  In-order traversal. Returns true while the traversal should continue.
+  The supplied visitor receives values as they are seen and can interrupt the traversal.
+   */
+  def traverse(root: MotifNode, visitor: RankListBuilder): Boolean = {
+    if (root.rankLeft != null) {
+      if (!traverse(root.rankLeft, visitor)) return false
+    }
+    if (!visitor.treeVisitInOrder(root.m)) return false
+    if (root.rankRight != null) {
+      traverse(root.rankRight, visitor)
+    } else true
   }
 }
 
@@ -119,42 +206,30 @@ object PosRankList {
 final case class PosRankList() extends DLNode with Iterable[Motif] {
   import PosRankList._
 
-  nextPos = Left(End())
-  lowerRank = Left(End())
-  nextPos.left.get.prevPos = Left(this)
-  lowerRank.left.get.higherRank = Left(this)
+  nextPos = End()
+  nextPos.prevPos = this
 
-  def asForwardLink: Either[End, MotifNode] = ???
-  def asBackwardLink = Left(this)
+  var treeRoot: Option[MotifNode] = None
 
-  def iterator = new Iterator[Motif] {
+  def iterator: Iterator[Motif] = new Iterator[Motif] {
     var current = nextPos
-    def hasNext = current.isRight
+    def hasNext = current.isInstanceOf[MotifNode]
     def next = {
-      val r = current.right.get
-      current = current.right.flatMap(_.nextPos)
-      r.m
+      val r = current
+      current = current.nextPos
+      r.asInstanceOf[MotifNode].m
     }
   }
 
-  def rankIterator = new Iterator[Motif] {
-    var current = lowerRank
-    def hasNext = current.isRight
-    def next = {
-      val r = current.right.get
-      current = current.right.flatMap(_.lowerRank)
-      r.m
+  //Inefficient implementation - traverse is preferred
+  def rankIterator: Iterator[Motif] = {
+    treeRoot match {
+      case None => Iterator.empty
+      case Some(r) => treeInOrder(r).iterator.map(_.m)
     }
   }
 
-  val end: End = nextPos.left.get
-
-  def rankInsert(insert: MotifNode) {
-    lowerRank match {
-      case Left(e)   => linkRank(this, insert, e)
-      case Right(mn) => rankInsertRec(mn, insert)
-    }
-  }
+  val end: End = nextPos.asInstanceOf[End]
 
   /**
    * Append at the final position,
@@ -162,12 +237,16 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
    */
   def :+= (mn: MotifNode) {
     end.prevPos match {
-      case Right(last) =>
+      case last: MotifNode =>
         linkPos(last, mn, end)
-        rankInsert(mn)
-      case Left(_) =>
+      case _ =>
         linkPos(this, mn, end)
-        linkRank(this, mn, end)
+    }
+
+    if (treeRoot.isEmpty) {
+      treeRoot = Some(mn)
+    } else {
+      treeInsert(treeRoot.get, mn)
     }
   }
 
@@ -183,14 +262,7 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
    * Does not alter the list.
    */
   def takeByRank(n: Int): List[Motif] = {
-    lowerRank match {
-      case Right(highest) => takeByRank(highest, n)
-      case _ => List()
-    }
-  }
-
-  private def takeByRank(from: MotifNode, n: Int): List[Motif] = {
-    new RankListBuilder(from, n).build
+    new RankListBuilder(this, n).build
   }
 
   /**
@@ -200,7 +272,7 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
    */
   def dropUntilPosition(pos: Int, space: MotifSpace) {
     nextPos match {
-      case Right(mn) => dropUntilPositionRec(mn, pos, space)
+      case mn: MotifNode => dropUntilPositionRec(mn, pos, space, this)
       case _ =>
     }
   }
@@ -211,7 +283,7 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
   }
 }
 
-final class RankListBuilder(from: MotifNode, n: Int) {
+final class RankListBuilder(from: PosRankList, n: Int) {
   //Number of remaining items to generate for the resulting output list
   private[this] var rem: Int = n
 
@@ -283,23 +355,16 @@ final class RankListBuilder(from: MotifNode, n: Int) {
     }
   }
 
-  def build = {
-    var cur = from
-    var r = cur.m :: Nil
-    rem = n - 1
-    while (cur.lowerRank.isRight && rem > 0) {
-      cur = cur.lowerRank.right.get
-      val nr = insertPosNoOverlap(r, cur.m)
-      //      println(this)
-      //      println(nr)
-      //      for (pair <- nr.sliding(2); if pair.size > 1) {
-      //        if(pair(0).overlaps(pair(1))) {
-      //          assert(false)
-      //        }
-      //      }
-      r = nr
-    }
-    r
+  var building: List[Motif] = Nil
+  def treeVisitInOrder(node: Motif): Boolean = {
+    building = insertPosNoOverlap(building, node)
+    rem > 0
+  }
+
+  def build: List[Motif] = {
+    if (from.treeRoot.isEmpty) return Nil
+    PosRankList.traverse(from.treeRoot.get, this)
+    building
   }
 }
 
@@ -312,21 +377,36 @@ final class RankListBuilder(from: MotifNode, n: Int) {
 final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   import PosRankList._
 
-  def asForwardLink = Right(this)
-  def asBackwardLink = Right(this)
+  //Binary tree
+  //Using null instead of Option for performance
+  var rankLeft: MotifNode = null
+  var rankRight: MotifNode = null
+  var rankParent: MotifNode = null
 
   //NB this imposes a maximum length on analysed sequences for now
-  lazy val rankSort = m.rankSort
+  val rankSort = m.rankSort
 
   /**
    * Remove this node from both of the two lists.
    */
-  def remove() {
-    prevPos.merge.nextPos = nextPos
-    nextPos.merge.prevPos = prevPos
-    higherRank.merge.lowerRank = lowerRank
-    lowerRank.merge.higherRank = higherRank
+  def remove(top: PosRankList) {
+    prevPos.nextPos = nextPos
+    nextPos.prevPos = prevPos
+
+//    PosRankList.synchronized {
+//      println("before:")
+//      printTree(top.treeRoot.get)
+      if (top.treeRoot.get eq this) {
+        top.treeRoot = Option(treeDeleteAt(top.treeRoot.get))
+      } else {
+        treeDelete(this.rankParent, this)
+      }
+//      println("after:")
+//      printTree(top.treeRoot.get)
+//    }
   }
+
+  override def toString = s"$m [ $rankSort ]"
 }
 
 /**
@@ -362,11 +442,24 @@ final class TopRankCache(list: PosRankList, n: Int) {
         val r = list.takeByRank(n)
         if (!r.isEmpty) {
           cache = Some(r)
-          cacheLength = r.length
           firstByPos = r.head
-          lowestRank = r.map(_.rankSort).max
+          cacheLength = 0
+          lowestRank = 0
+          inspectCache(r)
         }
         r
+    }
+  }
+
+  @tailrec
+  def inspectCache(data: List[Motif]): Unit = {
+    if (!data.isEmpty) {
+      val h = data.head
+      cacheLength += 1
+      if (h.rankSort > lowestRank) {
+        lowestRank = h.rankSort
+      }
+      inspectCache(data.tail)
     }
   }
 }

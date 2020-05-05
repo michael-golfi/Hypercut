@@ -20,20 +20,15 @@ object Motif {
 /**
  * The attributes of a motif, except its position.
  */
-final case class Features(val tag: String, val tagRank: Int, val sortValue: Int = 0) {
-
-  def tagIndex(space: MotifSpace) = space.byIndex(tag)
+final case class Features(val tag: String, val tagRank: Int) {
 
   def strongEquivalent(other: Features) = {
     tag == other.tag
   }
-
-  def withSortValue(space: MotifSpace, value: Int) = space.getFeatures(tag, value)
 }
 
 final case class Motif(pos: Int, features: Features) {
   def tag = features.tag
-  def sortValue = features.sortValue
 
   //Note: implicit assumption that pos < 100 when we use this
   lazy val packedString = {
@@ -73,19 +68,10 @@ final case class Motif(pos: Int, features: Features) {
    * Obtain the canonical version of this motif, to save memory
    */
   def canonical(ms: MotifSpace): Motif = {
-    ms.get(tag, pos, sortValue)
+    ms.get(tag, pos)
   }
 
   lazy val rankSort = features.tagRank * 1000 + pos
-
-  //NB this limits the maximum k-mer size (1000)
-  /**
-   * A metric for sorting by rank.
-   * sorts earlier is higher if rank/priority number is lower.
-   * @param posInSet position in a set of motifs (not in the underlying sequence)
-   */
-  def withSortValue(space: MotifSpace, posInSet: Int) =
-    copy(features = features.withSortValue(space, 1000 * features.tagRank + posInSet))
 
   /**
    * Whether the two motifs overlap when absolute positions are used.
@@ -232,7 +218,7 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
     var hash = 0
     while (it.hasNext) {
       val m = it.next
-      val tag = m.features.tagIndex(space).toByte
+      val tag = m.features.tagRank.toByte
       r.put(tag)
       //TODO check/warn about max size of positions, if we're not using short for the position
       val pos = m.pos.toByte
@@ -250,19 +236,6 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
 
   def relativeByRank =
     relativeMotifs.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
-
-  /**
-   * Produces a copy where the sort values have been assigned to all motifs.
-   * Also converts the motifs set to a list.
-   */
-  def fixMotifs = {
-    if (relativeByRank.isEmpty) {
-      this
-    } else {
-      val withSortValues = relativeMotifs.zipWithIndex.map(x => x._1.withSortValue(space, x._2)).toList
-      new MotifSet(space, withSortValues)
-    }
-  }
 
   def removeMotif(pos: Int, ms: List[Motif]): List[Motif] = {
     if (pos == 0) {

@@ -164,8 +164,9 @@ class Routines(spark: SparkSession) {
    */
   def bucketGraph(reads: String, ext: MotifSetExtractor,
                   writeLocation: Option[String] = None): GraphFrame = {
+    //NB this assumes we can get all significant edges without looking at reverse complements
     val edges = splitReadsToEdges(getReadsFromFasta(reads, false), ext).distinct
-    val verts = bucketsOnly(getReadsFromFasta(reads, true), ext)
+    val verts = bucketsOnly(getReadsFromFasta(reads, false), ext)
 
     edges.cache
     verts.cache
@@ -295,8 +296,8 @@ class Routines(spark: SparkSession) {
  * Serialization-safe routines.
  */
 object SerialRoutines {
-  def removeN(segment: String, k: Int): Array[String] = {
-    segment.split("N", -1).filter(s => s.length() >= k)
+  def removeN(segment: String, k: Int): Iterator[String] = {
+    segment.split("N", -1).iterator.filter(s => s.length() >= k)
   }
 
   def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
@@ -305,10 +306,12 @@ object SerialRoutines {
   }
 
   def createHashSegments(r: String, ext: MotifSetExtractor) = {
-    val buckets = ext.motifSetsInRead(r)._2
+    val buckets = ext.motifSetsInRead(r)._2.toList
     val hashesSegments = ext.splitRead(r, buckets)
-    hashesSegments.flatMap(x =>
-      removeN(x._2, ext.k).map(s =>
-        HashSegment(x._1.compact.data, BPBuffer.wrap(s))))
+    for {
+      (h, s) <- hashesSegments.iterator
+      ss <- removeN(s, ext.k)
+      r = HashSegment(h.compact.data, BPBuffer.wrap(ss))
+    } yield r
   }
 }
