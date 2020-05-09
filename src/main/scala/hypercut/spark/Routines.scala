@@ -95,19 +95,22 @@ class Routines(spark: SparkSession) {
    * Simplified version of bucketGraph that only builds buckets
    * (thus, counting k-mers), not collecting edges.
    */
-  def bucketsOnly(reads: Dataset[String], ext: MotifSetExtractor) = {
+  def bucketsOnly(reads: Dataset[String], ext: MotifSetExtractor): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val segments = reads.flatMap(r => createHashSegments(r, ext))
     processedToBuckets(segments, ext)
   }
 
   /**
    * Convenience function to compute buckets directly from an input specification
-   * and write them to the output location.
+   * and optionally write them to the output location.
    */
-  def bucketsOnly(input: String, ext: MotifSetExtractor, output: String) {
+  def bucketsOnly(input: String, ext: MotifSetExtractor, output: Option[String]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val reads = getReadsFromFasta(input, false)
     val bkts = bucketsOnly(reads, ext)
-    writeBuckets(bkts, output)
+    for (o <- output) {
+      writeBuckets(bkts, o)
+    }
+    bkts
   }
 
   def processedToBuckets[A](segments: Dataset[HashSegment], ext: MotifSetExtractor,

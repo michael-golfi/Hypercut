@@ -12,7 +12,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   footer("Also see the documentation (to be written).")
 
 
-  val analyse = new Subcommand("analyse") with RunnableCommand {
+  val analyse = new RunnableCommand("analyse") {
     banner("Analyse reads and display their fingerprints.")
 
     lazy val defaultExtractor = new MotifSetExtractor(defaultSpace, k())

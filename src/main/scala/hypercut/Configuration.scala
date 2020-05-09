@@ -16,13 +16,11 @@ object Commands {
   }
 }
 
-trait RunnableCommand {
-  this: Subcommand =>
-
+abstract class RunnableCommand(title: String) extends Subcommand(title) {
   def run(): Unit
 }
 
-class HCCommand(name: String)(act: => Unit) extends Subcommand(name) with RunnableCommand {
+class HCCommand(name: String)(act: => Unit) extends RunnableCommand(name) {
   def run() {
     act
   }

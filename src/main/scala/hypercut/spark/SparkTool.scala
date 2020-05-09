@@ -43,10 +43,25 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
   }
 
+  val kmers = new Subcommand("kmers") {
+    val count = new RunnableCommand("count") {
+      val input = opt[String](required = true, descr = "Path to input data files")
+
+      def run() {
+        val ext = new MotifSetExtractor(getSpace(input()), k())
+        val minAbundance = None
+        val bkts = routines.bucketsOnly(input(), ext, None)
+        routines.bucketStats(bkts, None, Console.out)
+      }
+    }
+    addSubcommand(count)
+  }
+  addSubcommand(kmers)
+
   val buckets = new Subcommand("buckets") {
     val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
 
-    val build = new Subcommand("build") with RunnableCommand {
+    val build = new RunnableCommand("build") {
       val input = opt[String](required = true, descr = "Path to input data files")
       val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
@@ -56,13 +71,13 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
          if (edges()) {
            routines.graphFromReads(input(), ext, location.toOption)
          } else {
-           routines.bucketsOnly(input(), ext, location())
+           routines.bucketsOnly(input(), ext, location.toOption)
          }
       }
     }
     addSubcommand(build)
 
-    val top = new Subcommand("top") with RunnableCommand {
+    val top = new RunnableCommand("top") {
       val n = opt[Int](required = false, default = Some(10),
           descr = "Number of buckets to print")
       val amount = opt[Int](required = false, default = Some(10),
@@ -77,7 +92,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(top)
 
-    val merge = new Subcommand("merge") with RunnableCommand {
+    val merge = new RunnableCommand("merge") {
       val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
       val showStats = opt[Boolean](required = false, descr = "Show statistics for each merge iteration")
@@ -92,7 +107,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(merge)
 
-    val stats = new Subcommand("stats") with RunnableCommand {
+    val stats = new RunnableCommand("stats") {
       val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val stdout = opt[Boolean](required = false, default = Some(false), descr = "Print stats to stdout")
       def run() {
