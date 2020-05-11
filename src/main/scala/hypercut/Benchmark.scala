@@ -4,10 +4,10 @@ import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
-
 import hypercut.hash.MotifSetExtractor
 import hypercut.shortread.Read
 import hypercut.shortread.ReadFiles
+import hypercut.spark.SerialRoutines
 
 class BenchConf(args: Array[String]) extends CoreConf(args) {
   val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz)")
@@ -91,6 +91,11 @@ object Benchmark {
           val space = conf.defaultSpace
           val ext = MotifSetExtractor.apply(space, conf.k())
           measure(conf, extract(_, ext))
+        case "segments" =>
+          val space = conf.defaultSpace
+          val ext = MotifSetExtractor.apply(space, conf.k())
+          //size forces evaluation of the iterator
+          measure(conf, SerialRoutines.createHashSegments(_, ext).size)
       }
     }
   }
