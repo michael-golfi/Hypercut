@@ -7,7 +7,7 @@ import hypercut.shortread.Read
 
 import scala.collection.mutable.ArrayBuffer
 
-final case class MotifSetExtractor(space: MotifSpace, k: Int) {
+final case class MotifSetExtractor(space: MotifSpace, k: Int) extends ReadSplitter[MotifSet] {
   @volatile
   var readCount = 0
   @volatile
@@ -108,7 +108,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
       kmerCount += 1
       val scan = ext.scanTo(p)
       if (!(scan eq lastMotifs)) {
-        lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSorted(space, scan)).fromZero
+        lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSortedFirstZero(space, scan))
         lastMotifs = scan
         perBucket += ((lastMotifSet, p))
       }
@@ -116,6 +116,11 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
       p += 1
     }
     (perPosition, perBucket)
+  }
+
+  def split(read: String): Iterator[(MotifSet, String)] = {
+    val bkts = motifSetsInRead(read)._2.toList
+    splitRead(read, bkts).iterator
   }
 
   /**
@@ -182,6 +187,8 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) {
       println("")
     }
   }
+
+  def compact(hash: MotifSet) = hash.compact.data
 }
 
 object MotifSetExtractor {

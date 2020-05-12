@@ -95,25 +95,25 @@ class Routines(spark: SparkSession) {
    * Simplified version of bucketGraph that only builds buckets
    * (thus, counting k-mers), not collecting edges.
    */
-  def bucketsOnly(reads: Dataset[String], ext: MotifSetExtractor): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val segments = reads.flatMap(r => createHashSegments(r, ext))
-    processedToBuckets(segments, ext)
+  def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    processedToBuckets(segments, spl)
   }
 
   /**
    * Convenience function to compute buckets directly from an input specification
    * and optionally write them to the output location.
    */
-  def bucketsOnly(input: String, ext: MotifSetExtractor, output: Option[String]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+  def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val reads = getReadsFromFasta(input, false)
-    val bkts = bucketsOnly(reads, ext)
+    val bkts = bucketsOnly(reads, spl)
     for (o <- output) {
       writeBuckets(bkts, o)
     }
     bkts
   }
 
-  def processedToBuckets[A](segments: Dataset[HashSegment], ext: MotifSetExtractor,
+  def processedToBuckets[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
                             reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val countedSegments =
       segments.groupBy($"hash", $"segment").count.
@@ -122,7 +122,7 @@ class Routines(spark: SparkSession) {
     val reverseSegments = countedSegments.flatMap(x => {
       val s = x.segment.toString
       val rc = DNAHelpers.reverseComplement(s)
-      val revSegments = createHashSegments(rc, ext)
+      val revSegments = createHashSegments(rc, spl)
       revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
     })
 
@@ -132,7 +132,7 @@ class Routines(spark: SparkSession) {
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
 
     collected.map { case (hash, segmentsCounts) => {
-      val empty = SimpleCountingBucket.empty(ext.k)
+      val empty = SimpleCountingBucket.empty(spl.k)
       val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
         (x._1.toString, clipAbundance(x._2))).toList)
       (hash, bkt)
@@ -308,13 +308,11 @@ object SerialRoutines {
     case _ => Some(c)
   }
 
-  def createHashSegments(r: String, ext: MotifSetExtractor) = {
-    val buckets = ext.motifSetsInRead(r)._2.toList
-    val hashesSegments = ext.splitRead(r, buckets)
+  def createHashSegments[H](r: String, spl: ReadSplitter[H]) = {
     for {
-      (h, s) <- hashesSegments.iterator
-      ss <- removeN(s, ext.k)
-      r = HashSegment(h.compact.data, BPBuffer.wrap(ss))
+      (h, s) <- spl.split(r)
+      ss <- removeN(s, spl.k)
+      r = HashSegment(spl.compact(h), BPBuffer.wrap(ss))
     } yield r
   }
 }

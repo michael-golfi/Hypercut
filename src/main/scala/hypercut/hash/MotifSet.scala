@@ -155,10 +155,10 @@ object MotifSet {
     }
   }
 
-  def relativePositionsSorted(space: MotifSpace, ms: List[Motif]): List[Motif] = {
+  def relativePositionsSortedFirstZero(space: MotifSpace, ms: List[Motif]): List[Motif] = {
       ms match {
       case Nil => ms
-      case _ => ms.head :: relativePositionsSorted(space, ms, Nil)
+      case _ => ms.head.copy(pos = 0) :: relativePositionsSorted(space, ms, Nil)
     }
   }
 
@@ -229,10 +229,6 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
   }
 
   override def toString = "ms{" + relativeMotifs.mkString(",") + "}"
-
-  def fromZeroAsArray = new MotifSet(space, setFirstToZero(relativeMotifs))
-
-  def fromZero = new MotifSet(space, setFirstToZero(relativeMotifs))
 
   def relativeByRank =
     relativeMotifs.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
