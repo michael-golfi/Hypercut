@@ -88,11 +88,11 @@ object Benchmark {
         case "regex"    => measure(conf, regex(_))
         case "indexof"  => measure(conf, indexOf(_))
         case "extract" =>
-          val space = conf.defaultSpace
+          val space = conf.preferredSpace
           val ext = MotifSetExtractor.apply(space, conf.k())
           measure(conf, extract(_, ext))
         case "segments" =>
-          val space = conf.defaultSpace
+          val space = conf.preferredSpace
           val ext = MotifSetExtractor.apply(space, conf.k())
           //size forces evaluation of the iterator
           measure(conf, SerialRoutines.createHashSegments(_, ext).size)

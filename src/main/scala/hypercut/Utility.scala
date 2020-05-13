@@ -15,7 +15,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
   val analyse = new RunnableCommand("analyse") {
     banner("Analyse reads and display their fingerprints.")
 
-    lazy val defaultExtractor = new MotifSetExtractor(defaultSpace, k())
+    lazy val defaultExtractor = new MotifSetExtractor(preferredSpace, k())
 
     val input = opt[String](required = true, descr = "Input data file (fastq, optionally .gz). Defaults to stdin.",
       default = Some("-"))
@@ -23,7 +23,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
 
     def run() {
       if (motifs()) {
-       new FeatureScanner(defaultSpace).scan(input(), None)
+       new FeatureScanner(preferredSpace).scan(input(), None)
       } else {
         defaultExtractor.prettyPrintMotifs(input())
       }

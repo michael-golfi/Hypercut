@@ -2,7 +2,7 @@ package hypercut
 
 import org.rogach.scallop.Subcommand
 import org.rogach.scallop.ScallopConf
-import hypercut.hash.MotifSpace
+import hypercut.hash.{MotifSetExtractor, MotifSpace}
 
 object Commands {
   def run(conf: ScallopConf) {
@@ -31,13 +31,21 @@ class HCCommand(name: String)(act: => Unit) extends RunnableCommand(name) {
  */
 class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val k = opt[Int](required = true, descr = "Length of each k-mer")
+
+  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/prefix)",
+    default = Some("motifSet"))
+
   val numMotifs = opt[Int](
     required = true,
-    descr = "Number of motifs to extract from each k-mer", default = Some(4))
-  val space = opt[String](required = false, descr = "Motif space to use", default = Some("mixedTest"))
+    descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(4))
+  val space = opt[String](required = false, descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
 
-  val sample = opt[Double](required = false, descr = "Fraction of reads to sample for motif frequency",
+  val sample = opt[Double](required = false, descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
       default = None)
 
-  def defaultSpace = MotifSpace.named(space(), numMotifs())
+  def preferredSpace = MotifSpace.named(space(), numMotifs())
+
+  val prefixLength = opt[Int](required = false, descr = "Prefix hash: Prefix length",
+    default = Some(10))
+
 }

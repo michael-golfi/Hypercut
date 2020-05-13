@@ -3,13 +3,11 @@ package hypercut.spark
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.rogach.scallop.Subcommand
-
 import hypercut._
-import hypercut.hash.MotifSetExtractor
+import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
 import org.rogach.scallop.ScallopOption
-
 import hypercut.bucket.CountingSeqBucket._
-import hypercut.hash.MotifSpace
+import hypercut.hash.prefix.PrefixSplitter
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -38,8 +36,17 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
   def getSpace(input: String): MotifSpace = {
     sample.toOption match {
-      case Some(amount) => routines.createSampledSpace(input, amount, defaultSpace)
-      case None => defaultSpace
+      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace)
+      case None => preferredSpace
+    }
+  }
+
+  def getSplitter(input: String): ReadSplitter[_] = {
+    hash() match {
+      case "motifSet" =>
+        new MotifSetExtractor(getSpace(input), k())
+      case "prefix" =>
+        new PrefixSplitter(prefixLength(), k())
     }
   }
 
@@ -48,9 +55,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val input = opt[String](required = true, descr = "Path to input data files")
 
       def run() {
-        val ext = new MotifSetExtractor(getSpace(input()), k())
+        val spl = getSplitter(input())
         val minAbundance = None
-        val bkts = routines.bucketsOnly(input(), ext, None)
+        val bkts = routines.bucketsOnly(input(), spl, None)
         routines.bucketStats(bkts, None, Console.out)
       }
     }
