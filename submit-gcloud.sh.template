@@ -15,6 +15,6 @@ shift
 #spark.executor.memory=8g is suitable for highmem nodes on GCloud.
 PROPERTIES="^##^spark.jars.packages=org.rogach:scallop_2.11:latest.integration,graphframes:graphframes:0.7.0-spark2.4-s_2.11,org.vegas-viz:vegas_2.11:0.3.11##spark.executor.memory=8g"
 
-exec gcloud --verbosity=info  dataproc jobs submit spark --region asia-northeast1 --cluster $CLUSTER --class dbpart.spark.Hypercut --jars ~/ws/l5/DBPart/target/scala-2.11/dbpart_2.11-0.1.0-SNAPSHOT.jar   --properties $PROPERTIES -- --checkpoint $CHECKPOINT "$@"
+exec gcloud --verbosity=info  dataproc jobs submit spark --region asia-northeast1 --cluster $CLUSTER --class hypercut.spark.Hypercut --jars ~/ws/l5/DBPart/target/scala-2.11/hypercut_2.11-0.1.0-SNAPSHOT.jar   --properties $PROPERTIES -- --checkpoint $CHECKPOINT "$@"
 
 

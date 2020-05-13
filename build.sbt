@@ -1,9 +1,4 @@
-//Comment out the following line to speed up fetching dependencies,
-//if source attachments are not needed.
-
-EclipseKeys.withSource := true
-
-name := "DBPart"
+name := "Hypercut"
 
 //Currently using 2.11 series for compatibility with Apache Spark images on Google Dataproc
 //scalaVersion := "2.12.3"

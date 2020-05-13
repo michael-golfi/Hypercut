@@ -38,7 +38,6 @@ class Routines(spark: SparkSession) {
    * Load reads and their reverse complements from DNA files.
    */
   def getReadsFromFasta(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
-    //TODO: add boolean flag to include/not include RCs
     val lines = frac match {
       case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
       case None => sc.textFile(fileSpec).toDS
