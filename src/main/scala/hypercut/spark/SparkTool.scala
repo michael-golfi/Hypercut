@@ -8,6 +8,7 @@ import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
 import org.rogach.scallop.ScallopOption
 import hypercut.bucket.CountingSeqBucket._
 import hypercut.hash.prefix.PrefixSplitter
+import hypercut.hash.skc.MinimizerSplitter
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -47,6 +48,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         new MotifSetExtractor(getSpace(input), k())
       case "prefix" =>
         new PrefixSplitter(prefixLength(), k())
+      case "minimizer" =>
+        new MinimizerSplitter(k(), numMotifs(), 1000000)
     }
   }
 
@@ -56,7 +59,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val spl = getSplitter(input())
-        val minAbundance = None
         val bkts = routines.bucketsOnly(input(), spl, None)
         routines.bucketStats(bkts, None, Console.out)
       }

@@ -18,7 +18,7 @@ object CountingSeqBucket {
   val helperMapThreshold = 16
 
   //If the number of sequences goes above this limit, we emit a warning.
-  val warnBucketSize = 1000
+  val warnBucketSize = 10000
 
   def clipAbundance(abund: Long): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund.toShort
 
