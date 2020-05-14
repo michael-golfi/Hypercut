@@ -344,7 +344,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 
   /**
    * Insert k-mer segments with corresponding abundances.
-   * Each value is a segment with some number of overlapping k-mers. Each abundance item
+   * Each input value is a segment with some number of overlapping k-mers. Each input abundance item
    * applies to the whole of each such segments (all k-mers in a segment have the same abundance).
    *
    * This method is optimised for insertion of a larger number of distinct segments.
@@ -404,6 +404,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 
   private def initHelperMaps(sequences: Iterable[StringBuilder]) {
     val r = MMap[NTSeq, (Int, Int)]()
+    r.sizeHint(sequences.size * 8)
     for {
       (seq, seqIdx) <- sequences.map(s => Read.kmers(s.toString, k)).zipWithIndex
       (kmer, kmerIdx) <- seq.zipWithIndex
