@@ -140,9 +140,11 @@ class Routines(spark: SparkSession) {
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
 
     collected.map { case (hash, segmentsCounts) => {
-      val empty = SimpleCountingBucket.empty(spl.k)
-      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))).toList)
+//      val empty = SimpleCountingBucket.empty(spl.k)
+//      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+//        (x._1.toString, clipAbundance(x._2))).toList)
+      val bkt = SimpleCountingBucket.expandedFromBulkSequences(segmentsCounts.map(x =>
+          (x._1.toString, clipAbundance(x._2))).toList, spl.k)
       (hash, bkt)
     }
     }

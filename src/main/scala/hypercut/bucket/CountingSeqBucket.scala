@@ -1,6 +1,7 @@
 package hypercut.bucket
 import hypercut._
 import hypercut.shortread.Read
+
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.IndexedSeq
@@ -9,6 +10,8 @@ import miniasm.genome.util.DNAHelpers
 import hypercut.graph.PathGraphBuilder
 import hypercut.graph.PathFinder
 import hypercut.graph.KmerNode
+
+import scala.annotation.tailrec
 
 object CountingSeqBucket {
   //The maximum abundance value that we track. Currently this is an ad hoc limit.
@@ -460,7 +463,32 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 }
 
 object SimpleCountingBucket {
+  import CountingSeqBucket._
+
   def empty(k: Int) = new SimpleCountingBucket(Array(), Array(), k)
+
+  @tailrec
+  def collapseDuplicates(data: List[(String, Abundance)], acc: List[(String, Abundance)]): List[(String, Abundance)] = {
+    data match {
+      case k :: j :: ks =>
+        if (k._1 == j._1) {
+          collapseDuplicates(((k._1, clipAbundance(k._2 + j._2))) :: ks, acc)
+        } else {
+          collapseDuplicates(j :: ks, k :: acc)
+        }
+      case k :: ks => k :: acc
+      case _ => acc
+    }
+  }
+
+  def expandedFromBulkSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int) : SimpleCountingBucket = {
+    //kmers may appear in multiple segments
+    val byKmer = segmentsAbundances.toList.flatMap(s =>
+      Read.kmers(s._1, k).map(km => (km, s._2))
+    ).sorted
+    val distinct = collapseDuplicates(byKmer, Nil).toArray
+    new SimpleCountingBucket(distinct.map(_._1), distinct.map(x => Array(x._2)), k)
+  }
 }
 
 case class SimpleCountingBucket(override val sequences: Array[String],
