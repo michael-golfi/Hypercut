@@ -14,7 +14,8 @@ object CountingSeqBucket {
   //The maximum abundance value that we track. Currently this is an ad hoc limit.
   val abundanceCutoff = 5000.toShort
 
-  //At more than this many sequences, we build a map to speed up the insertion process.
+  //At more than this many sequences, we build index maps to speed up the insertion process.
+  //Without the maps we just perform a linear search.
   val helperMapThreshold = 16
 
   //If the number of sequences goes above this limit, we emit a warning.
@@ -406,7 +407,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     val r = MMap[NTSeq, (Int, Int)]()
     r.sizeHint(sequences.size * 8)
     for {
-      (seq, seqIdx) <- sequences.map(s => Read.kmers(s.toString, k)).zipWithIndex
+      (seq, seqIdx) <- sequences.iterator.map(s => Read.kmers(s.toString, k)).zipWithIndex
       (kmer, kmerIdx) <- seq.zipWithIndex
     } {
       r += (kmer -> (seqIdx, kmerIdx))
@@ -414,8 +415,10 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
     helperMap = Some(r)
 
     prefixHelper = MMap[String, Int]()
+    prefixHelper.sizeHint(sequences.size)
     suffixHelper = MMap[String, Int]()
-    for ((seq, i) <- sequences.zipWithIndex) {
+    suffixHelper.sizeHint(sequences.size)
+    for ((seq, i) <- sequences.iterator.zipWithIndex) {
       prefixHelper += (DNAHelpers.kmerPrefix(seq, k) -> i)
       suffixHelper += (DNAHelpers.kmerSuffix(seq, k) -> i)
     }
