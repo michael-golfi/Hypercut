@@ -59,7 +59,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val spl = getSplitter(input())
-        val bkts = routines.bucketsOnly(input(), spl, None)
+        val bkts = routines.bucketsOnly(input(), spl, None, addRC())
         routines.bucketStats(bkts, None, Console.out)
       }
     }
@@ -80,7 +80,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
          if (edges()) {
            routines.graphFromReads(input(), ext, location.toOption)
          } else {
-           routines.bucketsOnly(input(), ext, location.toOption)
+           routines.bucketsOnly(input(), ext, location.toOption, addRC())
          }
       }
     }

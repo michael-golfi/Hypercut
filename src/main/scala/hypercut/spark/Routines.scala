@@ -94,18 +94,20 @@ class Routines(spark: SparkSession) {
    * Simplified version of bucketGraph that only builds buckets
    * (thus, counting k-mers), not collecting edges.
    */
-  def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+  def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H],
+                     addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val segments = reads.flatMap(r => createHashSegments(r, spl))
-    processedToBuckets(segments, spl)
+    processedToBuckets(segments, spl, addReverseComplements)
   }
 
   /**
    * Convenience function to compute buckets directly from an input specification
    * and optionally write them to the output location.
    */
-  def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String]): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+  def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String],
+                     addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val reads = getReadsFromFasta(input, false)
-    val bkts = bucketsOnly(reads, spl)
+    val bkts = bucketsOnly(reads, spl, addReverseComplements)
     for (o <- output) {
       writeBuckets(bkts, o)
     }
@@ -113,19 +115,26 @@ class Routines(spark: SparkSession) {
   }
 
   def processedToBuckets[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
-                            reduce: Boolean = false): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val countedSegments =
+                            addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+    val countedSegments = if (addReverseComplements) {
+      val step1 =
+        segments.groupBy($"hash", $"segment").count.
+          as[CountedHashSegment].cache
+
+      val reverseSegments = step1.flatMap(x => {
+        val s = x.segment.toString
+        val rc = DNAHelpers.reverseComplement(s)
+        val revSegments = createHashSegments(rc, spl)
+        revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
+      })
+      step1 union reverseSegments
+    } else {
+      //NB not caching in this case
       segments.groupBy($"hash", $"segment").count.
-        as[CountedHashSegment].cache
+        as[CountedHashSegment]
+    }
 
-    val reverseSegments = countedSegments.flatMap(x => {
-      val s = x.segment.toString
-      val rc = DNAHelpers.reverseComplement(s)
-      val revSegments = createHashSegments(rc, spl)
-      revSegments.map(s => CountedHashSegment(s.hash, s.segment, x.count))
-    })
-
-    val grouped = countedSegments.union(reverseSegments).groupBy($"hash")
+    val grouped = countedSegments.groupBy($"hash")
 
     val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
@@ -165,10 +174,11 @@ class Routines(spark: SparkSession) {
    * Optionally save it in parquet format to a specified location.
    */
   def bucketGraph(reads: String, ext: MotifSetExtractor,
-                  writeLocation: Option[String] = None): GraphFrame = {
+                  writeLocation: Option[String] = None,
+                  addReverseComplements: Boolean = true): GraphFrame = {
     //NB this assumes we can get all significant edges without looking at reverse complements
     val edges = splitReadsToEdges(getReadsFromFasta(reads, false), ext).distinct
-    val verts = bucketsOnly(getReadsFromFasta(reads, false), ext)
+    val verts = bucketsOnly(getReadsFromFasta(reads, false), ext, addReverseComplements)
 
     edges.cache
     verts.cache

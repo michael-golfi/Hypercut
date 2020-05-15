@@ -32,6 +32,8 @@ class HCCommand(name: String)(act: => Unit) extends RunnableCommand(name) {
 class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val k = opt[Int](required = true, descr = "Length of each k-mer")
 
+  val addRC = opt[Boolean](required = false, descr = "Add reverse complements")
+
   val hash = opt[String](required = false, descr = "Hash function to use (motifSet/prefix)",
     default = Some("motifSet"))
 
