@@ -2,6 +2,7 @@ package hypercut.bucket
 import hypercut._
 import hypercut.shortread.Read
 
+import AbundanceBucket._
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.IndexedSeq
@@ -13,9 +14,7 @@ import hypercut.graph.KmerNode
 
 import scala.annotation.tailrec
 
-object CountingSeqBucket {
-  //The maximum abundance value that we track. Currently this is an ad hoc limit.
-  val abundanceCutoff = 5000.toShort
+object JoinedSeqBucket {
 
   //At more than this many sequences, we build index maps to speed up the insertion process.
   //Without the maps we just perform a linear search.
@@ -23,16 +22,6 @@ object CountingSeqBucket {
 
   //If the number of sequences goes above this limit, we emit a warning.
   val warnBucketSize = 10000
-
-  def clipAbundance(abund: Long): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund.toShort
-
-  def clipAbundance(abund: Int): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund.toShort
-
-  def clipAbundance(abund: Short): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund
-
-  def incrementAbundance(abundSeq: IndexedSeq[Abundance], pos: Int, amt: Abundance) = {
-    abundSeq(pos) = clipAbundance(abundSeq(pos) + amt)
-  }
 
   @volatile
   var mergeCount = 0
@@ -43,11 +32,11 @@ case class BucketStats(sequences: Int, totalAbundance: Int, kmers: Int)
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.
  */
-abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences: Array[String],
-  val abundances: Array[Array[Abundance]], val k: Int) extends AbundanceBucket with Serializable {
+abstract class JoinedSeqBucket[+Self <: JoinedSeqBucket[Self]](val sequences: Array[String],
+    val abundances: Array[Array[Abundance]], val k: Int) extends AbundanceBucket with Serializable {
   this: Self =>
 
-  import CountingSeqBucket._
+  import JoinedSeqBucket._
 
   def kmers = kmersBySequence.flatten
   def kmersBySequence = sequences.toSeq.map(Read.kmers(_, k))
@@ -388,7 +377,7 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
   /**
    * Merge k-mers and abundances from another bucket into a new bucket.
    */
-  def mergeBucket(other: CountingSeqBucket[_]): Self = {
+  def mergeBucket(other: JoinedSeqBucket[_]): Self = {
     insertBulk(other.kmers, other.kmerAbundances)
   }
 
@@ -463,9 +452,21 @@ abstract class CountingSeqBucket[+Self <: CountingSeqBucket[Self]](val sequences
 }
 
 object SimpleCountingBucket {
-  import CountingSeqBucket._
+  import JoinedSeqBucket._
 
   def empty(k: Int) = new SimpleCountingBucket(Array(), Array(), k)
+}
+
+//TODO remove the k parameter
+case class SimpleCountingBucket(override val sequences: Array[String],
+  override val abundances: Array[Array[Abundance]],
+  override val k: Int) extends JoinedSeqBucket[SimpleCountingBucket](sequences, abundances, k)  {
+  def copy(sequences: Array[String], abundances: Array[Array[Abundance]],
+           sequencesUpdated: Boolean) =
+        new SimpleCountingBucket(sequences, abundances, k)
+}
+
+object KmerBucket {
 
   @tailrec
   def collapseDuplicates(data: List[(String, Abundance)], acc: List[(String, Abundance)]): List[(String, Abundance)] = {
@@ -481,20 +482,23 @@ object SimpleCountingBucket {
     }
   }
 
-  def expandedFromBulkSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int) : SimpleCountingBucket = {
+  def fromCountedSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int) : KmerBucket = {
     //kmers may appear in multiple segments
-    val byKmer = segmentsAbundances.toList.flatMap(s =>
+    val byKmer = segmentsAbundances.iterator.flatMap(s =>
       Read.kmers(s._1, k).map(km => (km, s._2))
-    ).sorted
+    ).toList.sorted
     val distinct = collapseDuplicates(byKmer, Nil).toArray
-    new SimpleCountingBucket(distinct.map(_._1), distinct.map(x => Array(x._2)), k)
+    new KmerBucket(distinct.map(_._1), distinct.map(_._2))
   }
 }
 
-case class SimpleCountingBucket(override val sequences: Array[String],
-  override val abundances: Array[Array[Abundance]],
-  override val k: Int) extends CountingSeqBucket[SimpleCountingBucket](sequences, abundances, k)  {
-  def copy(sequences: Array[String], abundances: Array[Array[Abundance]],
-           sequencesUpdated: Boolean) =
-        new SimpleCountingBucket(sequences, abundances, k)
+/**
+ * A bucket that counts each k-mer separately and makes no attempt to join them into sequences.
+ */
+case class KmerBucket(kmers: Array[String], abundances: Array[Abundance]) {
+
+  def stats = new BucketStats(kmers.length, abundances.map(_.toInt).sum, kmers.length)
+
+  def kmersAbundances = kmers.iterator zip abundances.iterator
+
 }

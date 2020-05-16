@@ -1,6 +1,24 @@
 package hypercut.bucket
 import hypercut._
 
+import scala.collection.mutable.IndexedSeq
+
+object AbundanceBucket {
+  //The maximum abundance value that we track. Currently this is an ad hoc limit.
+  val abundanceCutoff = 5000.toShort
+
+
+  def clipAbundance(abund: Long): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund.toShort
+
+  def clipAbundance(abund: Int): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund.toShort
+
+  def clipAbundance(abund: Short): Abundance = if (abund > abundanceCutoff) abundanceCutoff else abund
+
+  def incrementAbundance(abundSeq: IndexedSeq[Abundance], pos: Int, amt: Abundance) = {
+    abundSeq(pos) = clipAbundance(abundSeq(pos) + amt)
+  }
+}
+
 trait AbundanceBucket extends Serializable {
   def abundances: Array[Array[Abundance]]
 

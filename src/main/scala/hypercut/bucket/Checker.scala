@@ -14,7 +14,7 @@ class Checker(space: MotifSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) 
    */
   var map = new HashMap[String, String]()
 
-  def checkBucket(key: String, bucket: CountingSeqBucket[_]) {
+  def checkBucket(key: String, bucket: JoinedSeqBucket[_]) {
     if (bucket.sequences.size > 100) {
       println(s"Warning: bucket $key contains ${bucket.sequences.size} sequences")
     }

@@ -5,8 +5,7 @@ import org.apache.spark.sql.SparkSession
 import org.rogach.scallop.Subcommand
 import hypercut._
 import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
-import org.rogach.scallop.ScallopOption
-import hypercut.bucket.CountingSeqBucket._
+import hypercut.bucket.AbundanceBucket._
 import hypercut.hash.prefix.PrefixSplitter
 import hypercut.hash.skc.MinimizerSplitter
 
@@ -56,11 +55,12 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val kmers = new Subcommand("kmers") {
     val count = new RunnableCommand("count") {
       val input = opt[String](required = true, descr = "Path to input data files")
+      val output = opt[String](required = false, descr = "Path to location where the kmer count table is written")
+      val stats = toggle("stats", default = Some(false), descrYes = "Output k-mer bucket stats")
 
       def run() {
         val spl = getSplitter(input())
-        val bkts = routines.bucketsOnly(input(), spl, None, addRC())
-        routines.bucketStats(bkts, None, Console.out)
+        val bkts = routines.kmerBucketsOnly(spl, input(), addRC(), output.toOption, stats())
       }
     }
     addSubcommand(count)

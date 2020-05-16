@@ -26,7 +26,8 @@ class Routines(spark: SparkSession) {
 
   val sc: org.apache.spark.SparkContext = spark.sparkContext
 
-  import hypercut.bucket.CountingSeqBucket._
+  import hypercut.bucket.JoinedSeqBucket._
+  import hypercut.bucket.AbundanceBucket._
   import org.apache.spark.sql._
   import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
@@ -97,7 +98,10 @@ class Routines(spark: SparkSession) {
   def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H],
                      addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
     val segments = reads.flatMap(r => createHashSegments(r, spl))
-    processedToBuckets(segments, spl, addReverseComplements)
+    countedToSequenceBuckets(
+      countedSegmentsByHash(segments, spl, addReverseComplements),
+      spl.k
+    )
   }
 
   /**
@@ -106,7 +110,7 @@ class Routines(spark: SparkSession) {
    */
   def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String],
                      addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
-    val reads = getReadsFromFasta(input, false)
+    val reads = getReadsFromFasta(input, addReverseComplements)
     val bkts = bucketsOnly(reads, spl, addReverseComplements)
     for (o <- output) {
       writeBuckets(bkts, o)
@@ -114,8 +118,30 @@ class Routines(spark: SparkSession) {
     bkts
   }
 
-  def processedToBuckets[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
-                            addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+  def kmerBucketsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
+                         output: Option[String], stats: Boolean): Dataset[(Array[Byte], KmerBucket)] = {
+    val reads = getReadsFromFasta(input, addReverseComplements)
+    val segments = reads.flatMap(r => createHashSegments(r, spl))
+
+    val bkts = countedToKmerBuckets(
+      countedSegmentsByHash(segments, spl, addReverseComplements),
+      spl.k)
+
+    //NB this function does not cache the buckets.
+    //If we simultaneously generate output and show stats, the buckets would probably be computed twice.
+    for (o <- output) {
+      writeKmerCounts(bkts, o)
+    }
+
+    if (stats) {
+      val statsTable = bkts.map(_._2.stats)
+      showStats(statsTable, Console.out)
+    }
+    bkts
+  }
+
+  def countedSegmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
+                            addReverseComplements: Boolean) = {
     val countedSegments = if (addReverseComplements) {
       val step1 =
         segments.groupBy($"hash", $"segment").count.
@@ -135,20 +161,26 @@ class Routines(spark: SparkSession) {
     }
 
     val grouped = countedSegments.groupBy($"hash")
-
-    val collected = grouped.agg(collect_list(struct($"segment", $"count"))).
+    grouped.agg(collect_list(struct($"segment", $"count"))).
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
+  }
 
-    collected.map { case (hash, segmentsCounts) => {
-//      val empty = SimpleCountingBucket.empty(spl.k)
-//      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-//        (x._1.toString, clipAbundance(x._2))).toList)
-      val bkt = SimpleCountingBucket.expandedFromBulkSequences(segmentsCounts.map(x =>
-          (x._1.toString, clipAbundance(x._2))).toList, spl.k)
+  def countedToKmerBuckets[H](counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+    counted.map { case (hash, segmentsCounts) => {
+      val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
+        (x._1.toString, clipAbundance(x._2))).toList, k)
       (hash, bkt)
     }
     }
-  }
+
+  def countedToSequenceBuckets[H](counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+    counted.map { case (hash, segmentsCounts) => {
+      val empty = SimpleCountingBucket.empty(k)
+      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+        (x._1.toString, clipAbundance(x._2))).toList)
+      (hash, bkt)
+    }
+    }
 
   def log10(x: Double) = Math.log(x) / Math.log(10)
 
@@ -205,6 +237,13 @@ class Routines(spark: SparkSession) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
+  def writeKmerCounts(bkts: Dataset[(Array[Byte], KmerBucket)], writeLocation: String) {
+    val allKmers = bkts.mapPartitions(buckets => {
+      buckets.flatMap(_._2.kmersAbundances)
+    })
+    allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
+  }
+
   def loadBuckets(readLocation: String, minAbundance: Option[Abundance]) = {
     val buckets = spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
     minAbundance match {
@@ -234,23 +273,26 @@ class Routines(spark: SparkSession) {
     }
   }
 
+  def showStats(stats: Dataset[BucketStats], output: PrintStream): Unit = {
+    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
+
+    stats.cache
+    println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences.toLong)))
+    println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers.toLong)))
+    println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance.toLong)))
+    println("Bucket stats:")
+    stats.describe().show()
+    stats.unpersist
+  }
+
   def bucketStats(
                    bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
                    edges: Option[Dataset[CompactEdge]],
                    output: PrintStream) {
-
-    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
-
-    val stats = bkts.map(_._2.stats).cache
+    val stats = bkts.map(_._2.stats)
+    showStats(stats, output)
 
     Console.withOut(output) {
-      println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences.toLong)))
-      println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers.toLong)))
-      println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance.toLong)))
-      println("Bucket stats:")
-      stats.describe().show()
-      stats.unpersist
-
       for (e <- edges) {
         println(s"Total number of edges: ${e.count}")
         val outDeg = e.groupByKey(_._1).count().cache
@@ -290,8 +332,7 @@ class Routines(spark: SparkSession) {
   def graphFromReads(input: String, ext: MotifSetExtractor,
                      outputLocation: Option[String] = None) = {
 
-    val r = bucketGraph(input, ext, outputLocation)
-    r
+    bucketGraph(input, ext, outputLocation)
   }
 
   def showBuckets(buckets: Dataset[SimpleCountingBucket], n: Int, amount: Int) {
