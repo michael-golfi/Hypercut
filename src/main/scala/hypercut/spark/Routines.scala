@@ -119,19 +119,27 @@ class Routines(spark: SparkSession) {
   }
 
   def kmerBucketsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
+                         precount: Boolean,
                          output: Option[String], stats: Boolean): Dataset[(Array[Byte], KmerBucket)] = {
     val reads = getReadsFromFasta(input, addReverseComplements)
     val segments = reads.flatMap(r => createHashSegments(r, spl))
 
-    val bkts = countedToKmerBuckets(
-      countedSegmentsByHash(segments, spl, addReverseComplements),
-      spl.k)
+    val bkts = if (precount) {
+      countedToKmerBuckets(
+        countedSegmentsByHash(segments, spl, addReverseComplements),
+        spl.k)
+    } else {
+      countedToKmerBuckets(
+        segmentsByHash(segments, spl, addReverseComplements),
+        spl.k)
+    }
 
     //NB this function does not cache the buckets.
     //If we simultaneously generate output and show stats, the buckets would probably be computed twice.
-    for (o <- output) {
-      writeKmerCounts(bkts, o)
-    }
+
+      for (o <- output) {
+        writeKmerCounts(bkts, o)
+      }
 
     if (stats) {
       val statsTable = bkts.map(_._2.stats)
@@ -162,6 +170,15 @@ class Routines(spark: SparkSession) {
 
     val grouped = countedSegments.groupBy($"hash")
     grouped.agg(collect_list(struct($"segment", $"count"))).
+      as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
+  }
+
+  def segmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
+                        addReverseComplements: Boolean) = {
+    assert (!addReverseComplements) //not yet implemented
+
+    val grouped = segments.groupBy($"hash")
+    grouped.agg(collect_list(struct($"segment", lit(1)))).
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
   }
 

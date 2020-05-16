@@ -57,10 +57,12 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val input = opt[String](required = true, descr = "Path to input data files")
       val output = opt[String](required = false, descr = "Path to location where the kmer count table is written")
       val stats = toggle("stats", default = Some(false), descrYes = "Output k-mer bucket stats")
+      val precount = toggle(name = "precount", default = Some(true), descrYes = "Pre-group superkmers during shuffle before creating buckets")
 
       def run() {
         val spl = getSplitter(input())
-        val bkts = routines.kmerBucketsOnly(spl, input(), addRC(), output.toOption, stats())
+        val bkts = routines.kmerBucketsOnly(spl, input(), addRC(), precount(), output.toOption, stats())
+
       }
     }
     addSubcommand(count)
