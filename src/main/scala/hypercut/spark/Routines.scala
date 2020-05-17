@@ -129,7 +129,7 @@ class Routines(spark: SparkSession) {
         countedSegmentsByHash(segments, spl, addReverseComplements),
         spl.k)
     } else {
-      countedToKmerBuckets(
+      uncountedToKmerBuckets(
         segmentsByHash(segments, spl, addReverseComplements),
         spl.k)
     }
@@ -178,26 +178,31 @@ class Routines(spark: SparkSession) {
     assert (!addReverseComplements) //not yet implemented
 
     val grouped = segments.groupBy($"hash")
-    grouped.agg(collect_list(struct($"segment", lit(1)))).
-      as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
+    grouped.agg(collect_list($"segment")).
+      as[(Array[Byte], Array[ZeroBPBuffer])]
   }
 
-  def countedToKmerBuckets[H](counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+  def countedToKmerBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
     counted.map { case (hash, segmentsCounts) => {
       val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))).toList, k)
+        (x._1.toString, clipAbundance(x._2))), k)
       (hash, bkt)
-    }
-    }
+    } }
 
-  def countedToSequenceBuckets[H](counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+  def uncountedToKmerBuckets(counted: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int) =
+    counted.map { case (hash, segmentsCounts) => {
+      val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
+        (x.toString, 1: Abundance)), k)
+      (hash, bkt)
+    } }
+
+  def countedToSequenceBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
     counted.map { case (hash, segmentsCounts) => {
       val empty = SimpleCountingBucket.empty(k)
       val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))).toList)
+        (x._1.toString, clipAbundance(x._2))))
       (hash, bkt)
-    }
-    }
+    } }
 
   def log10(x: Double) = Math.log(x) / Math.log(10)
 

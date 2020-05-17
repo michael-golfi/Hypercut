@@ -487,6 +487,7 @@ object KmerBucket {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
       Read.kmers(s._1, k).map(km => (km, s._2))
     ).toList.sorted
+
     val distinct = collapseDuplicates(byKmer, Nil).toArray
     new KmerBucket(distinct.map(_._1), distinct.map(_._2))
   }
