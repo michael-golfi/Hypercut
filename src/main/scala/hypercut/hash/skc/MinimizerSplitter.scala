@@ -30,8 +30,7 @@ object MinimizerSplitter {
  */
 final case class MinimizerSplitter(k: Int, m: Int, B: Int) extends ReadSplitter[Int] {
 
-//  private def bin(s: Int) = hash_to_bucket(s, B)
-  private def bin(s: Int) = s
+  private def bin(s: Int) = hash_to_bucket(s, B)
 
   //note: major source of memory usage for large m - should share between threads
   @transient

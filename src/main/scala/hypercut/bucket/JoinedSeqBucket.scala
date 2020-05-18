@@ -482,6 +482,7 @@ object KmerBucket {
     }
   }
 
+  //TODO reduce memory usage of this method
   def fromCountedSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int) : KmerBucket = {
     //kmers may appear in multiple segments
     val byKmer = segmentsAbundances.iterator.flatMap(s =>

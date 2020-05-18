@@ -34,7 +34,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val addRC = opt[Boolean](required = false, descr = "Add reverse complements")
 
-  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/prefix)",
+  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/prefix/minimizer)",
     default = Some("motifSet"))
 
   val numMotifs = opt[Int](
@@ -49,5 +49,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val prefixLength = opt[Int](required = false, descr = "Prefix hash: Prefix length",
     default = Some(10))
+
+  val maxBuckets = opt[Int](required = false, default = Some(2000), descr = "Minimizer hash: max buckets")
 
 }
