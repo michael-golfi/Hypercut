@@ -61,8 +61,11 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val spl = getSplitter(input())
-        val bkts = routines.kmerBucketsOnly(spl, input(), addRC(), precount(), output.toOption, stats())
-
+        output.toOption match {
+          case Some(o) =>
+            routines.writeCountedKmers(spl, input(), addRC(), precount(), o)
+          case _ => ???
+        }
       }
     }
     addSubcommand(count)

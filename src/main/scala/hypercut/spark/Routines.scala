@@ -118,38 +118,34 @@ class Routines(spark: SparkSession) {
     bkts
   }
 
-  def kmerBucketsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
-                         precount: Boolean,
-                         output: Option[String], stats: Boolean): Dataset[(Array[Byte], KmerBucket)] = {
+  def writeCountedKmers[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
+                           precount: Boolean,
+                           output: String) {
     val reads = getReadsFromFasta(input, addReverseComplements)
     val segments = reads.flatMap(r => createHashSegments(r, spl))
 
-    val bkts = if (precount) {
-      countedToKmerBuckets(
+    val counts = if (precount) {
+      countedToCounts(
         countedSegmentsByHash(segments, spl, addReverseComplements),
         spl.k)
     } else {
-      uncountedToKmerBuckets(
+      uncountedToCounts(
         segmentsByHash(segments, spl, addReverseComplements),
         spl.k)
     }
 
-    //NB this function does not cache the buckets.
-    //If we simultaneously generate output and show stats, the buckets would probably be computed twice.
+    writeKmerCounts(counts, output)
 
-      for (o <- output) {
-        writeKmerCounts(bkts, o)
-      }
+    //TODO restore stats
 
-    if (stats) {
-      val statsTable = bkts.map(_._2.stats)
-      showStats(statsTable, Console.out)
-    }
-    bkts
+    //    if (stats) {
+    //      val statsTable = bkts.map(_._2.stats)
+    //      showStats(statsTable, Console.out)
+    //    }
   }
 
   def countedSegmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
-                            addReverseComplements: Boolean) = {
+                               addReverseComplements: Boolean) = {
     val countedSegments = if (addReverseComplements) {
       val step1 =
         segments.groupBy($"hash", $"segment").count.
@@ -175,7 +171,7 @@ class Routines(spark: SparkSession) {
 
   def segmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
                         addReverseComplements: Boolean) = {
-    assert (!addReverseComplements) //not yet implemented
+    assert(!addReverseComplements) //not yet implemented
 
     val grouped = segments.groupBy($"hash")
     grouped.agg(collect_list($"segment")).
@@ -189,11 +185,22 @@ class Routines(spark: SparkSession) {
       (hash, bkt)
     } }
 
-  def uncountedToKmerBuckets(counted: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int) =
-    counted.map { case (hash, segmentsCounts) => {
-      val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
+  def uncountedToKmerBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int) =
+    segments.map { case (hash, segments) => {
+      val bkt = KmerBucket.fromCountedSequences(segments.map(x =>
         (x.toString, 1: Abundance)), k)
       (hash, bkt)
+    } }
+
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(String, Abundance)] =
+    counted.flatMap { case (hash, segmentsCounts) => {
+      KmerBucket.countsFromCountedSequences(segmentsCounts.map(x =>
+        (x._1.toString, clipAbundance(x._2))), k)
+    } }
+
+  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(String, Abundance)] =
+    segments.flatMap { case (hash, segments) => {
+      KmerBucket.countsFromSequences(segments.map(_.toString), k)
     } }
 
   def countedToSequenceBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
@@ -259,10 +266,7 @@ class Routines(spark: SparkSession) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
-  def writeKmerCounts(bkts: Dataset[(Array[Byte], KmerBucket)], writeLocation: String) {
-    val allKmers = bkts.mapPartitions(buckets => {
-      buckets.flatMap(_._2.kmersAbundances)
-    })
+  def writeKmerCounts(allKmers: Dataset[(String, Abundance)], writeLocation: String): Unit = {
     allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
   }
 

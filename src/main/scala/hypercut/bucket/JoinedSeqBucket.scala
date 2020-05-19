@@ -482,7 +482,8 @@ object KmerBucket {
     }
   }
 
-  //TODO reduce memory usage of this method
+  //Note: this method is memory hungry due to the allocations of tuples and arrays
+  //If possible, the two methods below (returning iterators) are preferred
   def fromCountedSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int) : KmerBucket = {
     //kmers may appear in multiple segments
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
@@ -492,15 +493,79 @@ object KmerBucket {
     val distinct = collapseDuplicates(byKmer, Nil).toArray
     new KmerBucket(distinct.map(_._1), distinct.map(_._2))
   }
+
+  /**
+   * From a series of sequences (where k-mers may be repeated) and abundances,
+   * produce an iterator with counted abundances where each k-mer appears only once.
+   * @param segmentsAbundances
+   * @param k
+   * @return
+   */
+  def countsFromCountedSequences(segmentsAbundances: Iterable[(String, Abundance)], k: Int): Iterator[(String, Abundance)] = {
+    val byKmer = segmentsAbundances.iterator.flatMap(s =>
+      Read.kmers(s._1, k).map(km => (km, s._2))
+    ).toList.sorted
+
+    new Iterator[(String, Abundance)] {
+      var i = 0
+      var remaining = byKmer
+      val len = byKmer.size
+
+      def hasNext = i < len
+
+      def next = {
+        var lastKmer = remaining.head._1
+        var count = 0
+        while (i < len && remaining.head._1 == lastKmer) {
+          count += remaining.head._2
+          i += 1
+          remaining = remaining.tail
+        }
+
+        (lastKmer, clipAbundance(count))
+      }
+    }
+  }
+
+  /**
+   * From a series of sequences (where k-mers may be repeated),
+   * produce an iterator with counted abundances where each k-mer appears only once.
+   * @param segmentsAbundances
+   * @param k
+   * @return
+   */
+  def countsFromSequences(segmentsAbundances: Iterable[String], k: Int): Iterator[(String, Abundance)] = {
+    val byKmer = segmentsAbundances.iterator.flatMap(s =>
+      Read.kmers(s, k)
+    ).toList.sorted
+
+    new Iterator[(String, Abundance)] {
+      var i = 0
+      var remaining = byKmer
+      val len = byKmer.size
+
+      def hasNext = i < len
+
+      def next = {
+        var lastKmer = remaining.head
+        var count = 0
+        while (i < len && remaining.head == lastKmer) {
+          count += 1
+          i += 1
+          remaining = remaining.tail
+        }
+
+        (lastKmer, clipAbundance(count))
+      }
+    }
+  }
 }
 
 /**
  * A bucket that counts each k-mer separately and makes no attempt to join them into sequences.
  */
 case class KmerBucket(kmers: Array[String], abundances: Array[Abundance]) {
-
   def stats = new BucketStats(kmers.length, abundances.map(_.toInt).sum, kmers.length)
 
   def kmersAbundances = kmers.iterator zip abundances.iterator
-
 }
