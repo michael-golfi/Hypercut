@@ -6,6 +6,7 @@ import hypercut._
 import hypercut.bucket._
 import hypercut.hash.{FeatureScanner, _}
 import friedrich.util._
+import hypercut.shortread.Read
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 import miniasm.genome.util.DNAHelpers
@@ -104,6 +105,14 @@ class Routines(spark: SparkSession) {
     )
   }
 
+  def countedToSequenceBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+    counted.map { case (hash, segmentsCounts) => {
+      val empty = SimpleCountingBucket.empty(k)
+      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
+        (x._1.toString, clipAbundance(x._2))))
+      (hash, bkt)
+    } }
+
   /**
    * Convenience function to compute buckets directly from an input specification
    * and optionally write them to the output location.
@@ -116,32 +125,6 @@ class Routines(spark: SparkSession) {
       writeBuckets(bkts, o)
     }
     bkts
-  }
-
-  def writeCountedKmers[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
-                           precount: Boolean,
-                           output: String) {
-    val reads = getReadsFromFasta(input, addReverseComplements)
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
-
-    val counts = if (precount) {
-      countedToCounts(
-        countedSegmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    } else {
-      uncountedToCounts(
-        segmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    }
-
-    writeKmerCounts(counts, output)
-
-    //TODO restore stats
-
-    //    if (stats) {
-    //      val statsTable = bkts.map(_._2.stats)
-    //      showStats(statsTable, Console.out)
-    //    }
   }
 
   def countedSegmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
@@ -177,39 +160,6 @@ class Routines(spark: SparkSession) {
     grouped.agg(collect_list($"segment")).
       as[(Array[Byte], Array[ZeroBPBuffer])]
   }
-
-  def countedToKmerBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
-    counted.map { case (hash, segmentsCounts) => {
-      val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))), k)
-      (hash, bkt)
-    } }
-
-  def uncountedToKmerBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int) =
-    segments.map { case (hash, segments) => {
-      val bkt = KmerBucket.fromCountedSequences(segments.map(x =>
-        (x.toString, 1: Abundance)), k)
-      (hash, bkt)
-    } }
-
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(String, Abundance)] =
-    counted.flatMap { case (hash, segmentsCounts) => {
-      KmerBucket.countsFromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))), k)
-    } }
-
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(String, Abundance)] =
-    segments.flatMap { case (hash, segments) => {
-      KmerBucket.countsFromSequences(segments.map(_.toString), k)
-    } }
-
-  def countedToSequenceBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
-    counted.map { case (hash, segmentsCounts) => {
-      val empty = SimpleCountingBucket.empty(k)
-      val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))))
-      (hash, bkt)
-    } }
 
   def log10(x: Double) = Math.log(x) / Math.log(10)
 
@@ -266,10 +216,6 @@ class Routines(spark: SparkSession) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
-  def writeKmerCounts(allKmers: Dataset[(String, Abundance)], writeLocation: String): Unit = {
-    allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
-  }
-
   def loadBuckets(readLocation: String, minAbundance: Option[Abundance]) = {
     val buckets = spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
     minAbundance match {
@@ -303,9 +249,9 @@ class Routines(spark: SparkSession) {
     def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
 
     stats.cache
-    println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences.toLong)))
-    println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers.toLong)))
-    println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance.toLong)))
+    println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences)))
+    println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers)))
+    println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist

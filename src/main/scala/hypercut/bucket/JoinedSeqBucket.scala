@@ -27,7 +27,7 @@ object JoinedSeqBucket {
   var mergeCount = 0
 }
 
-case class BucketStats(sequences: Int, totalAbundance: Int, kmers: Int)
+case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)
 
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.
@@ -45,7 +45,7 @@ abstract class JoinedSeqBucket[+Self <: JoinedSeqBucket[Self]](val sequences: Ar
 
   def numKmers = sequences.map(_.length() - (k-1)).sum
 
-  def stats = new BucketStats(sequences.length, abundances.flatten.map(_.toInt).sum, numKmers)
+  def stats = new BucketStats(sequences.length, abundances.flatten.map(_.toLong).sum, numKmers)
 
   def sequencesWithAbundance =
     sequences zip sequenceAvgAbundances

@@ -30,6 +30,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   footer("Also see the documentation (to be written).")
 
   def routines = new Routines(spark)
+  val counting = new Counting(spark)
 
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
@@ -63,8 +64,13 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val spl = getSplitter(input())
         output.toOption match {
           case Some(o) =>
-            routines.writeCountedKmers(spl, input(), addRC(), precount(), o)
-          case _ => ???
+            counting.writeCountedKmers(spl, input(), addRC(), precount(), o)
+          case _ =>
+            if (stats()) {
+              counting.statisticsOnly(spl, input(), addRC(), precount())
+            } else {
+              ???
+            }
         }
       }
     }
