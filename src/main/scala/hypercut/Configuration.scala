@@ -49,7 +49,4 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val prefixLength = opt[Int](required = false, descr = "Prefix hash: Prefix length",
     default = Some(10))
-
-  val maxBuckets = opt[Int](required = false, default = Some(2000), descr = "Minimizer hash: max buckets")
-
 }

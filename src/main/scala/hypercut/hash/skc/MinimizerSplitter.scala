@@ -20,17 +20,21 @@ object MinimizerSplitter {
 }
 
 
-/*
+/**
   Splits reads based on minimizers.
   Based on code from "K-mer counting" by Sorella et al.
-  See skc/SparkBinKmerCounter.scala in that project.
+  Ferraro Petrillo, U., Sorella, M., Cattaneo, G. et al. Analyzing big datasets of genomic sequences:
+    fast and scalable collection of k-mer statistics. BMC Bioinformatics 20, 2019.
+
+  This code mostly comes from skc/SparkBinKmerCounter.scala in:
   https://bitbucket.org/maruscia/kmercounting/src/master/
 
-  B currently ignored as we don't limit the number of buckets.
  */
 final case class MinimizerSplitter(k: Int, m: Int, B: Int) extends ReadSplitter[Int] {
 
-  private def bin(s: Int) = hash_to_bucket(s, B)
+//  private def bin(s: Int) = hash_to_bucket(s, B)
+  //B is currently ignored
+  private def bin(s: Int) = s
 
   //note: major source of memory usage for large m - should share between threads
   @transient

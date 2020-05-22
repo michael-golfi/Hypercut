@@ -1,4 +1,13 @@
 /**
+  From "K-mer counting" by Sorella et al.
+  Ferraro Petrillo, U., Sorella, M., Cattaneo, G. et al. Analyzing big datasets of genomic sequences:
+    fast and scalable collection of k-mer statistics. BMC Bioinformatics 20, 2019.
+
+  https://bitbucket.org/maruscia/kmercounting/src/master/
+
+ */
+
+/**
   * Created by Mara Sorella on 4/25/17.
   */
 

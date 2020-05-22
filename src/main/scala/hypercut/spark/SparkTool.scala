@@ -49,7 +49,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       case "prefix" =>
         new PrefixSplitter(prefixLength(), k())
       case "minimizer" =>
-        new MinimizerSplitter(k(), numMotifs(), maxBuckets())
+        //The final parameter (B) currently has no effect
+        new MinimizerSplitter(k(), numMotifs(), 2000)
     }
   }
 
