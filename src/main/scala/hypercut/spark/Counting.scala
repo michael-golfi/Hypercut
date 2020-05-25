@@ -73,6 +73,7 @@ class Counting(spark: SparkSession) {
 
   def writeCountedKmers[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
                            precount: Boolean,
+                           withKmers: Boolean,
                            output: String) {
     val reads = routines.getReadsFromFasta(input, addReverseComplements)
     val segments = reads.flatMap(r => createHashSegments(r, spl))
@@ -87,11 +88,30 @@ class Counting(spark: SparkSession) {
         spl.k)
     }
 
-    writeKmerCounts(counts, output)
+    if (withKmers) {
+      writeKmerCounts(counts, output)
+    } else {
+      writeKmerHistogram(counts.map(_._2), output)
+    }
   }
 
+  /**
+   * Write k-mers and associated counts.
+   * @param allKmers
+   * @param writeLocation
+   */
   def writeKmerCounts(allKmers: Dataset[(String, Abundance)], writeLocation: String): Unit = {
     allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
   }
+
+  /**
+   * Write counts for each k-mer only, without the associated sequence.
+   * @param histogram
+   * @param writeLocation
+   */
+  def writeKmerHistogram(histogram: Dataset[Abundance], writeLocation: String): Unit = {
+    histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
+  }
+
 
 }
