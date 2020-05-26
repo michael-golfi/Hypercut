@@ -29,11 +29,13 @@ object MotifSpace {
     "TT", "AA")
 
   val all3mers = all2mers.flatMap(x => all1mers.map(y => x + y))
+  val all4mers = all3mers.flatMap(x => all1mers.map(y => x + y))
 
   def named(name: String): Seq[String] = name match {
     case "all1" => all1mers
     case "all2" => all2mers
     case "all3" => all3mers
+    case "all4" => all4mers
     case "mixedTest" => mixedTest
     case _ => throw new Exception(s"Unknown motif space name: $name")
   }
