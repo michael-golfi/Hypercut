@@ -1,18 +1,17 @@
 package hypercut.bucket
+import java.util
+
 import hypercut._
 import hypercut.shortread.Read
-
 import AbundanceBucket._
+
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable.Buffer
 import scala.collection.mutable.IndexedSeq
 import scala.collection.mutable.{Map => MMap}
 import miniasm.genome.util.DNAHelpers
-import hypercut.graph.PathGraphBuilder
-import hypercut.graph.PathFinder
-import hypercut.graph.KmerNode
 
 import scala.annotation.tailrec
+import scala.util.Sorting
 
 object JoinedSeqBucket {
 
@@ -492,22 +491,22 @@ object KmerBucket {
   def countsFromCountedSequences(segmentsAbundances: Iterable[(String, Long)], k: Int): Iterator[(String, Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
       Read.kmers(s._1, k).map(km => (km, s._2))
-    ).toList.sorted
+    ).toArray
+    Sorting.quickSort(byKmer)
 
     new Iterator[(String, Long)] {
       var i = 0
       var remaining = byKmer
-      val len = byKmer.size
+      val len = byKmer.length
 
       def hasNext = i < len
 
       def next = {
-        var lastKmer = remaining.head._1
+        var lastKmer = byKmer(i)._1
         var count = 0L
-        while (i < len && remaining.head._1 == lastKmer) {
-          count += remaining.head._2
+        while (i < len && byKmer(i)._1 == lastKmer) {
+          count += byKmer(i)._2
           i += 1
-          remaining = remaining.tail
         }
 
         (lastKmer, count)
@@ -525,22 +524,22 @@ object KmerBucket {
   def countsFromSequences(segmentsAbundances: Iterable[String], k: Int): Iterator[(String, Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
       Read.kmers(s, k)
-    ).toList.sorted
+    ).toArray
+    Sorting.quickSort(byKmer)
 
     new Iterator[(String, Long)] {
       var i = 0
       var remaining = byKmer
-      val len = byKmer.size
+      val len = byKmer.length
 
       def hasNext = i < len
 
       def next = {
-        var lastKmer = remaining.head
+        var lastKmer = byKmer(i)
         var count = 0L
-        while (i < len && remaining.head == lastKmer) {
+        while (i < len && byKmer(i) == lastKmer) {
           count += 1
           i += 1
-          remaining = remaining.tail
         }
 
         (lastKmer, count)
