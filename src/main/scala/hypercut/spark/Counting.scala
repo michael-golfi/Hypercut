@@ -20,27 +20,13 @@ class Counting(spark: SparkSession) {
   import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
 
-  def countedToKmerBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
-    counted.map { case (hash, segmentsCounts) => {
-      val bkt = KmerBucket.fromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))), k)
-      (hash, bkt)
-    } }
-
-  def uncountedToKmerBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int) =
-    segments.map { case (hash, segments) => {
-      val bkt = KmerBucket.fromCountedSequences(segments.map(x =>
-        (x.toString, 1: Abundance)), k)
-      (hash, bkt)
-    } }
-
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(String, Abundance)] =
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(String, Long)] =
     counted.flatMap { case (hash, segmentsCounts) => {
       KmerBucket.countsFromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, clipAbundance(x._2))), k)
+        (x._1.toString, x._2)), k)
     } }
 
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(String, Abundance)] =
+  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(String, Long)] =
     segments.flatMap { case (hash, segments) => {
       KmerBucket.countsFromSequences(segments.map(_.toString), k)
     } }
@@ -100,7 +86,7 @@ class Counting(spark: SparkSession) {
    * @param allKmers
    * @param writeLocation
    */
-  def writeKmerCounts(allKmers: Dataset[(String, Abundance)], writeLocation: String): Unit = {
+  def writeKmerCounts(allKmers: Dataset[(String, Long)], writeLocation: String): Unit = {
     allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
   }
 
@@ -109,7 +95,7 @@ class Counting(spark: SparkSession) {
    * @param histogram
    * @param writeLocation
    */
-  def writeKmerHistogram(histogram: Dataset[Abundance], writeLocation: String): Unit = {
+  def writeKmerHistogram(histogram: Dataset[Long], writeLocation: String): Unit = {
     histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
   }
 
