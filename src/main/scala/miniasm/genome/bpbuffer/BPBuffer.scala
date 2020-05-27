@@ -84,6 +84,12 @@ trait BPBuffer {
    */
   def slice(from: Short, length: Short): BPBuffer = BPBuffer.wrap(this, from, length)
 
+  def kmers(k: Short): Iterable[BPBuffer] = {
+    (0 until (size - k + 1)).map(i => slice(i.toShort, k))
+  }
+
+  def asArray: Array[Int]
+
   /**
    * Copy the raw data representing this sequence into a new integer array.
    */
@@ -317,16 +323,21 @@ object BPBuffer {
       if (size != obfr.size) {
         return false //try to fail fast
       } else {
-        val n = numIntsInArray //must be same for both if they have same size
-        var i = 0
-        while (i < n) {
-          if (computeIntArrayElement(i) != obfr.computeIntArrayElement(i)) {
-            return false
-          }
-          i += 1
-        }
-        return true
+        deepCompareSameSize(obfr) == 0
       }
+    }
+
+    final def deepCompareSameSize(obfr: BPBuffer): Int = {
+      val n = asArray.length //must be same for both if they have same size
+      var i = 0
+      while (i < n) {
+        val x = asArray(i)
+        val y = obfr.asArray(i)
+        if (x < y) return -1
+        if (x > y) return 1
+        i += 1
+      }
+      return 0
     }
 
     /**
@@ -444,15 +455,24 @@ object BPBuffer {
       computeIntArray()
     }
 
+
+    lazy val asArray = rebuildAsArray
     /**
      * Compare with another BPBuffer for ordering.
      */
     final def compareWith(other: BPBuffer): Int = {
+      if (size == other.size) {
+        return deepCompareSameSize(other)
+      }
+
       var i = 0
+
       while (i < size && i < other.size) {
-        if (apply(i) < other.apply(i)) {
+        val x = apply(i)
+        val y = other.apply(i)
+        if (x < y) {
           return -1
-        } else if (apply(i) > other.apply(i)) {
+        } else if (x > y) {
           return 1
         }
         i += 1

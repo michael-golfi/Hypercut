@@ -1,12 +1,12 @@
 package hypercut.spark
 
 import hypercut._
-import hypercut.bucket.AbundanceBucket.clipAbundance
-import hypercut.bucket.{BucketStats, KmerBucket, SimpleCountingBucket}
+import hypercut.bucket.{BucketStats, KmerBucket}
 import hypercut.hash.ReadSplitter
 import hypercut.spark.SerialRoutines.createHashSegments
+import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
-import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
+import org.apache.spark.sql.SparkSession
 
 /**
  * Routines related to k-mer counting and statistics.
@@ -17,24 +17,21 @@ class Counting(spark: SparkSession) {
   val routines = new Routines(spark)
 
   import org.apache.spark.sql._
-  import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
 
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(String, Long)] =
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(BPBuffer, Long)] =
     counted.flatMap { case (hash, segmentsCounts) => {
-      KmerBucket.countsFromCountedSequences(segmentsCounts.map(x =>
-        (x._1.toString, x._2)), k)
+      KmerBucket.countsFromCountedSequences(segmentsCounts, k)
     } }
 
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(String, Long)] =
+  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(BPBuffer, Long)] =
     segments.flatMap { case (hash, segments) => {
-      KmerBucket.countsFromSequences(segments.map(_.toString), k)
+      KmerBucket.countsFromSequences(segments, k)
     } }
 
   def uncountedToStatBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[BucketStats] =
     segments.map { case (hash, segments) => {
-      val strings = segments.map(_.toString)
-      val counted = KmerBucket.countsFromSequences(strings, k)
+      val counted = KmerBucket.countsFromSequences(segments, k)
 
       val (numDistinct, totalAbundance): (Long, Long) =
         counted.foldLeft((0L, 0L))((a, b) => (a._1 + 1, a._2 + b._2))
@@ -75,7 +72,7 @@ class Counting(spark: SparkSession) {
     }
 
     if (withKmers) {
-      writeKmerCounts(counts, output)
+      writeKmerCounts(counts.map(x => (x._1.toString, x._2)), output)
     } else {
       writeKmerHistogram(counts.map(_._2), output)
     }

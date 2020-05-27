@@ -4,6 +4,7 @@ import java.util
 import hypercut._
 import hypercut.shortread.Read
 import AbundanceBucket._
+import miniasm.genome.bpbuffer.BPBuffer
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.IndexedSeq
@@ -481,6 +482,10 @@ object KmerBucket {
     }
   }
 
+  implicit object KmerOrdering extends Ordering[BPBuffer] {
+    override def compare(x: BPBuffer, y: BPBuffer): Int = x.compareWith(y)
+  }
+
   /**
    * From a series of sequences (where k-mers may be repeated) and abundances,
    * produce an iterator with counted abundances where each k-mer appears only once.
@@ -488,13 +493,13 @@ object KmerBucket {
    * @param k
    * @return
    */
-  def countsFromCountedSequences(segmentsAbundances: Iterable[(String, Long)], k: Int): Iterator[(String, Long)] = {
+  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(BPBuffer, Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      Read.kmers(s._1, k).map(km => (km, s._2))
+      s._1.kmers(k.toShort).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(String, Long)] {
+    new Iterator[(BPBuffer, Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length
@@ -521,13 +526,13 @@ object KmerBucket {
    * @param k
    * @return
    */
-  def countsFromSequences(segmentsAbundances: Iterable[String], k: Int): Iterator[(String, Long)] = {
+  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(BPBuffer, Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      Read.kmers(s, k)
+      s.kmers(k.toShort)
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(String, Long)] {
+    new Iterator[(BPBuffer, Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length
