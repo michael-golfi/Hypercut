@@ -19,12 +19,12 @@ class Counting(spark: SparkSession) {
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
 
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(BPBuffer, Long)] =
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] =
     counted.flatMap { case (hash, segmentsCounts) => {
       KmerBucket.countsFromCountedSequences(segmentsCounts, k)
     } }
 
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(BPBuffer, Long)] =
+  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(Array[Int], Long)] =
     segments.flatMap { case (hash, segments) => {
       KmerBucket.countsFromSequences(segments, k)
     } }
@@ -72,7 +72,8 @@ class Counting(spark: SparkSession) {
     }
 
     if (withKmers) {
-      writeKmerCounts(counts.map(x => (x._1.toString, x._2)), output)
+      writeKmerCounts(counts.map(x =>
+        (BPBuffer.wrap(x._1, 0.toShort, spl.k.toShort).toString, x._2)), output)
     } else {
       writeKmerHistogram(counts.map(_._2), output)
     }

@@ -1,4 +1,5 @@
 package hypercut.bucket
+import java.nio.IntBuffer
 import java.util
 
 import hypercut._
@@ -482,8 +483,17 @@ object KmerBucket {
     }
   }
 
-  implicit object KmerOrdering extends Ordering[BPBuffer] {
-    override def compare(x: BPBuffer, y: BPBuffer): Int = x.compareWith(y)
+  implicit object KmerOrdering extends Ordering[Array[Int]] {
+    override def compare(x: Array[Int], y: Array[Int]): Int = {
+      val l = x.length
+      var i = 0
+      while (i < l) {
+        val c = x(i) - y(i)
+        if (c != 0) { return c }
+        i += 1
+      }
+      0
+    }
   }
 
   /**
@@ -493,13 +503,13 @@ object KmerBucket {
    * @param k
    * @return
    */
-  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(BPBuffer, Long)] = {
+  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s._1.kmers(k.toShort).map(km => (km, s._2))
+      s._1.kmers(k.toShort).map(km => (km.rebuildAsArray, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(BPBuffer, Long)] {
+    new Iterator[(Array[Int], Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length
@@ -509,7 +519,7 @@ object KmerBucket {
       def next = {
         var lastKmer = byKmer(i)._1
         var count = 0L
-        while (i < len && byKmer(i)._1 == lastKmer) {
+        while (i < len && util.Arrays.equals(byKmer(i)._1, lastKmer)) {
           count += byKmer(i)._2
           i += 1
         }
@@ -526,13 +536,13 @@ object KmerBucket {
    * @param k
    * @return
    */
-  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(BPBuffer, Long)] = {
+  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s.kmers(k.toShort)
+      s.kmers(k.toShort).map(_.rebuildAsArray)
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(BPBuffer, Long)] {
+    new Iterator[(Array[Int], Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length
@@ -542,7 +552,7 @@ object KmerBucket {
       def next = {
         var lastKmer = byKmer(i)
         var count = 0L
-        while (i < len && byKmer(i) == lastKmer) {
+        while (i < len && util.Arrays.equals(byKmer(i), lastKmer)) {
           count += 1
           i += 1
         }

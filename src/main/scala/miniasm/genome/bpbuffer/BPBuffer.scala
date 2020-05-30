@@ -4,8 +4,11 @@
  * Dual GPL/MIT license. Please see the files README and LICENSE for details.
  */
 package miniasm.genome.bpbuffer
+import java.nio.{ByteBuffer, ByteOrder, IntBuffer}
 import java.util.Arrays
+
 import miniasm.genome._
+
 import scala.language.implicitConversions
 import miniasm.genome.util.DNAHelpers
 
@@ -87,8 +90,6 @@ trait BPBuffer {
   def kmers(k: Short): Iterable[BPBuffer] = {
     (0 until (size - k + 1)).map(i => slice(i.toShort, k))
   }
-
-  def asArray: Array[Int]
 
   /**
    * Copy the raw data representing this sequence into a new integer array.
@@ -184,6 +185,14 @@ object BPBuffer {
       (data >> 8).toByte & 0xff,
       data.toByte & 0xff)
     new ForwardBPBuffer(bytes, offset, size)
+  }
+
+  def wrap(data: Array[Int], offset: Short, size: Short): BPBuffer = {
+    val bb = ByteBuffer.allocate(data.length * 4)
+    for (d <- data) {
+      bb.putInt(d)
+    }
+    new ForwardBPBuffer(bb.array(), offset, size)
   }
 
   def reverseComplement(buffer: BPBuffer) = {
@@ -328,11 +337,13 @@ object BPBuffer {
     }
 
     final def deepCompareSameSize(obfr: BPBuffer): Int = {
-      val n = asArray.length //must be same for both if they have same size
+      val a1 = rebuildAsArray
+      val a2 = obfr.rebuildAsArray
+      val n = a1.length //must be same for both if they have same size
       var i = 0
       while (i < n) {
-        val x = asArray(i)
-        val y = obfr.asArray(i)
+        val x = a1(i)
+        val y = a2(i)
         if (x < y) return -1
         if (x > y) return 1
         i += 1
@@ -455,8 +466,6 @@ object BPBuffer {
       computeIntArray()
     }
 
-
-    lazy val asArray = rebuildAsArray
     /**
      * Compare with another BPBuffer for ordering.
      */
