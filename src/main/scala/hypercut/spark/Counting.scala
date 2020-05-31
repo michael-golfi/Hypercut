@@ -1,5 +1,7 @@
 package hypercut.spark
 
+import java.nio.ByteBuffer
+
 import hypercut._
 import hypercut.bucket.{BucketStats, KmerBucket}
 import hypercut.hash.ReadSplitter
@@ -72,8 +74,12 @@ class Counting(spark: SparkSession) {
     }
 
     if (withKmers) {
-      writeKmerCounts(counts.map(x =>
-        (BPBuffer.wrap(x._1, 0.toShort, spl.k.toShort).toString, x._2)), output)
+      writeKmerCounts(counts.mapPartitions(xs => {
+        //Reuse the byte buffer and string builder as much as possible
+        val buffer = ByteBuffer.allocate(spl.k / 4 + 4)
+        val builder = new StringBuilder(spl.k + 16)
+        xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, spl.k.toShort), x._2))
+      }), output)
     } else {
       writeKmerHistogram(counts.map(_._2), output)
     }

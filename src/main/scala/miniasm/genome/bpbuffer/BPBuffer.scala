@@ -87,14 +87,21 @@ trait BPBuffer {
    */
   def slice(from: Short, length: Short): BPBuffer = BPBuffer.wrap(this, from, length)
 
-  def kmers(k: Short): Iterable[BPBuffer] = {
-    (0 until (size - k + 1)).map(i => slice(i.toShort, k))
-  }
+  def kmers(k: Short): Iterator[BPBuffer] =
+    (0 until (size - k + 1)).iterator.map(i => slice(i.toShort, k))
+
+  def kmersAsArrays(k: Short): Iterator[Array[Int]] =
+    (0 until (size - k + 1)).iterator.map(i => rebuildAsArray(i.toShort, k))
 
   /**
    * Copy the raw data representing this sequence into a new integer array.
    */
   def rebuildAsArray: Array[Int]
+
+  /**
+   * Copy the raw data representing part of this sequence into a new integer array.
+   */
+  def rebuildAsArray(offset: Short, size: Short): Array[Int]
 
   /**
    * Print detailed information about this object, including internal
@@ -189,8 +196,10 @@ object BPBuffer {
 
   def wrap(data: Array[Int], offset: Short, size: Short): BPBuffer = {
     val bb = ByteBuffer.allocate(data.length * 4)
-    for (d <- data) {
-      bb.putInt(d)
+    var i = 0
+    while (i < data.length) {
+      bb.putInt(data(i))
+      i += 1
     }
     new ForwardBPBuffer(bb.array(), offset, size)
   }
@@ -201,6 +210,89 @@ object BPBuffer {
       case fwd: BPBufferImpl   => new RCBPBuffer(fwd.data, fwd.offset, fwd.size)
       case _                   => { throw new Exception("Unexpected buffer implementation") }
     }
+  }
+
+  //Optimised version for repeated calls - avoids allocating a new buffer each time
+  def intsToString(buffer: ByteBuffer, builder: StringBuilder, data: Array[Int], offset: Short, size: Short): String = {
+    buffer.clear()
+    builder.clear()
+    var i = 0
+    while (i < data.length) {
+      buffer.putInt(data(i))
+      i += 1
+    }
+    BitRepresentation.bytesToString(buffer.array(), builder, offset, size)
+  }
+
+  def intsToString(data: Array[Int], offset: Short, size: Short): String = {
+    val bb = ByteBuffer.allocate(data.length * 4)
+    val builder = new StringBuilder(data.length * 16)
+    intsToString(bb, builder, data, offset, size)
+  }
+
+  /**
+   * One integer contains 4 bytes (16 bps). This function computes a single such integer from the
+   * underlying backing buffer to achieve a simpler representation.
+   * Main bottleneck in equality testing, hashing, ordering etc.
+   */
+  def computeIntArrayElement(data: Array[Byte], offset: Short, size: Short, i: Int): Int = {
+    val os = offset
+    val spo = size + os
+    val shift = (os % 4) * 2
+    val mask = (spo) % 4
+    var res = 0
+
+    val finalByte = (if (mask == 0) {
+      (spo / 4) - 1
+    } else {
+      spo / 4
+    })
+
+    var pos = (os / 4) + i * 4
+    var intshift = 32 + shift
+
+    //adjust pos here, since some bytes may need to be used both for the final byte of one int
+    //and for the first byte of the next
+    pos -= 1
+
+    var j = 0
+    val dl = data.length
+    while (j < 5 && pos + 1 <= finalByte) {
+      //process 1 byte for each iteration
+
+      intshift -= 8
+      pos += 1
+
+      var src = data(pos)
+
+      //mask redundant bits from the final byte
+      if (pos == finalByte) {
+        if (mask == 1) {
+          src = src & (0xfc << 4)
+        } else if (mask == 2) {
+          src = src & (0xfc << 2)
+        } else if (mask == 3) {
+          src = src & 0xfc
+        }
+
+      }
+      var shifted = (src & 0xff)
+
+      //adjust to position in the current int
+      if (intshift > 0) {
+        shifted = (shifted << intshift)
+      } else {
+        shifted = (shifted >> (-intshift))
+      }
+
+      //The bits should be mutually exclusive
+      //				assert ((res & shifted) == 0)
+      res |= shifted
+      //				print(binint(newData(i)) + " ")
+
+      j += 1
+    }
+    res
   }
 
   /**
@@ -228,6 +320,10 @@ object BPBuffer {
 
     final def rebuildAsArray: Array[Int] = computeIntArray()
 
+    final def rebuildAsArray(offset: Short, size: Short): Array[Int] = computeIntArray(offset, size)
+
+    def numIntsInArray = if (size % 16 == 0) { size / 16 } else { size / 16 + 1 }
+
     /**
      * Create a new int array that contains the data in this bpbuffer, starting from offset 0.
      * This means that it's suitable for direct comparison and equality testing.
@@ -235,9 +331,6 @@ object BPBuffer {
      * and starting from different offsets, so the backing buffers cannot easily be compared
      * directly for equality testing)
      */
-
-    protected def numIntsInArray = if (size % 16 == 0) { size / 16 } else { size / 16 + 1 }
-
     final def computeIntArray() = {
       var i = 0
       val ns = numIntsInArray
@@ -250,70 +343,21 @@ object BPBuffer {
     }
 
     /**
-     * One integer contains 4 bytes. This function computes a single such integer from the
-     * underlying backing buffer.
-     *
-     * This function is the main bottleneck of kmer equality and hashing,
-     * so it needs to be fast!
+     * Create an int array representing a subsequence of this bpbuffer.
      */
-    protected def computeIntArrayElement(i: Int): Int = {
-      val os = offset
-      val spo = size + os
-      val shift = (os % 4) * 2
-      val mask = (spo) % 4
-      var res = 0
-
-      val finalByte = (if (mask == 0) {
-        (spo / 4) - 1
-      } else {
-        spo / 4
-      })
-
-      var pos = (os / 4) + i * 4
-      var intshift = 32 + shift
-
-      //adjust pos here, since some bytes may need to be used both for the final byte of one int
-      //and for the first byte of the next
-      pos -= 1
-
-      var j = 0
-      val dl = data.length
-      while (j < 5 && pos + 1 <= finalByte) {
-        //process 1 byte for each iteration
-
-        intshift -= 8
-        pos += 1
-
-        var src = data(pos)
-
-        //mask redundant bits from the final byte
-        if (pos == finalByte) {
-          if (mask == 1) {
-            src = src & (0xfc << 4)
-          } else if (mask == 2) {
-            src = src & (0xfc << 2)
-          } else if (mask == 3) {
-            src = src & 0xfc
-          }
-
-        }
-        var shifted = (src & 0xff)
-
-        //adjust to position in the current int
-        if (intshift > 0) {
-          shifted = (shifted << intshift)
-        } else {
-          shifted = (shifted >> (-intshift))
-        }
-
-        //The bits should be mutually exclusive
-        //				assert ((res & shifted) == 0)
-        res |= shifted
-        //				print(binint(newData(i)) + " ")
-
-        j += 1
+    def computeIntArray(offset: Short, size: Short) = {
+      var i = 0
+      val ns = (size / 16 + 1) //safely going slightly over in some cases
+      val newData = new Array[Int](ns)
+      while (i < ns) {
+        newData(i) = BPBuffer.computeIntArrayElement(data, offset, size, i)
+        i += 1
       }
-      res
+      newData
+    }
+
+    protected def computeIntArrayElement(pos: Int): Int = {
+      BPBuffer.computeIntArrayElement(data, offset, size, pos)
     }
 
     def binbyte(byte: Byte) = byteToQuad(byte)
@@ -381,7 +425,7 @@ object BPBuffer {
     }
 
     def toBPString: String = {
-      bytesToString(data, offset, size)
+      bytesToString(data, new StringBuilder(size), offset, size)
     }
 
     override def toString(): String = toBPString
@@ -546,7 +590,12 @@ object BPBuffer {
       r
     }
 
-    override def toBPString: String = DNAHelpers.reverseComplement(bytesToString(data, offset, size))
+    override def computeIntArray(offset: Short, size: Short) = {
+      //Subsequence computation not yet supported
+      ???
+    }
+
+    override def toBPString: String = DNAHelpers.reverseComplement(bytesToString(data, new StringBuilder(size), offset, size))
 
     //not a bug! appending is implemented in terms of prepending to the reverse complement.
     override def appendTwobit(twobit: Byte): BPBuffer = prependTwobit(complementOne(twobit), true)

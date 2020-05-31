@@ -505,7 +505,7 @@ object KmerBucket {
    */
   def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s._1.kmers(k.toShort).map(km => (km.rebuildAsArray, s._2))
+      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
@@ -538,7 +538,7 @@ object KmerBucket {
    */
   def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s.kmers(k.toShort).map(_.rebuildAsArray)
+      s.kmersAsArrays(k.toShort)
     ).toArray
     Sorting.quickSort(byKmer)
 

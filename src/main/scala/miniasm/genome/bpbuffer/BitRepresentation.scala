@@ -129,22 +129,21 @@ object BitRepresentation {
    * Convert a byte array of quads to a string. The length of the
    * resulting string must be supplied.
    */
-  def bytesToString(bytes: Array[Byte], offset: Int, size: Int): String = {
-    val res = new StringBuilder()
-
+  def bytesToString(bytes: Array[Byte], builder: StringBuilder, offset: Int, size: Int): String = {
     val startByte = offset / 4
 
-    for (i <- startByte until bytes.size) {
-      if (res.size < size) {
+    var i = startByte
+    while (i < bytes.size) {
+      if (builder.size < size) {
         if (i == startByte) {
-          res.append(byteToQuad(bytes(i)).substring(offset % 4, 4))
+          builder.append(byteToQuad(bytes(i)).substring(offset % 4, 4))
         } else {
-          res.append(byteToQuad(bytes(i)))
+          builder.append(byteToQuad(bytes(i)))
         }
       }
-
+      i += 1
     }
-    res.substring(0, size)
+    builder.substring(0, size)
   }
 
   def continuations(km: BPBuffer) = twobits.map {
