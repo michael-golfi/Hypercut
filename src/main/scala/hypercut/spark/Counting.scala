@@ -1,6 +1,7 @@
 package hypercut.spark
 
 import java.nio.ByteBuffer
+import java.util
 
 import hypercut._
 import hypercut.bucket.{BucketStats, KmerBucket}
@@ -9,6 +10,8 @@ import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
+
+import scala.util.Sorting
 
 /**
  * Routines related to k-mer counting and statistics.
@@ -23,17 +26,17 @@ class Counting(spark: SparkSession) {
 
   def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] =
     counted.flatMap { case (hash, segmentsCounts) => {
-      KmerBucket.countsFromCountedSequences(segmentsCounts, k)
+      countsFromCountedSequences(segmentsCounts, k)
     } }
 
   def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(Array[Int], Long)] =
     segments.flatMap { case (hash, segments) => {
-      KmerBucket.countsFromSequences(segments, k)
+      countsFromSequences(segments, k)
     } }
 
   def uncountedToStatBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[BucketStats] =
     segments.map { case (hash, segments) => {
-      val counted = KmerBucket.countsFromSequences(segments, k)
+      val counted = countsFromSequences(segments, k)
 
       val (numDistinct, totalAbundance): (Long, Long) =
         counted.foldLeft((0L, 0L))((a, b) => (a._1 + 1, a._2 + b._2))
@@ -103,5 +106,82 @@ class Counting(spark: SparkSession) {
     histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
   }
 
+  implicit object KmerOrdering extends Ordering[Array[Int]] {
+    override def compare(x: Array[Int], y: Array[Int]): Int = {
+      val l = x.length
+      var i = 0
+      while (i < l) {
+        val c = x(i) - y(i)
+        if (c != 0) { return c }
+        i += 1
+      }
+      0
+    }
+  }
 
+  /**
+   * From a series of sequences (where k-mers may be repeated) and abundances,
+   * produce an iterator with counted abundances where each k-mer appears only once.
+   * @param segmentsAbundances
+   * @param k
+   * @return
+   */
+  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
+    val byKmer = segmentsAbundances.iterator.flatMap(s =>
+      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
+    ).toArray
+    Sorting.quickSort(byKmer)
+
+    new Iterator[(Array[Int], Long)] {
+      var i = 0
+      var remaining = byKmer
+      val len = byKmer.length
+
+      def hasNext = i < len
+
+      def next = {
+        var lastKmer = byKmer(i)._1
+        var count = 0L
+        while (i < len && java.util.Arrays.equals(byKmer(i)._1, lastKmer)) {
+          count += byKmer(i)._2
+          i += 1
+        }
+
+        (lastKmer, count)
+      }
+    }
+  }
+
+  /**
+   * From a series of sequences (where k-mers may be repeated),
+   * produce an iterator with counted abundances where each k-mer appears only once.
+   * @param segmentsAbundances
+   * @param k
+   * @return
+   */
+  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
+    val byKmer = segmentsAbundances.iterator.flatMap(s =>
+      s.kmersAsArrays(k.toShort)
+    ).toArray
+    Sorting.quickSort(byKmer)
+
+    new Iterator[(Array[Int], Long)] {
+      var i = 0
+      var remaining = byKmer
+      val len = byKmer.length
+
+      def hasNext = i < len
+
+      def next = {
+        var lastKmer = byKmer(i)
+        var count = 0L
+        while (i < len && java.util.Arrays.equals(byKmer(i), lastKmer)) {
+          count += 1
+          i += 1
+        }
+
+        (lastKmer, count)
+      }
+    }
+  }
 }

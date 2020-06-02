@@ -453,7 +453,6 @@ abstract class JoinedSeqBucket[+Self <: JoinedSeqBucket[Self]](val sequences: Ar
 }
 
 object SimpleCountingBucket {
-  import JoinedSeqBucket._
 
   def empty(k: Int) = new SimpleCountingBucket(Array(), Array(), k)
 }
@@ -465,100 +464,4 @@ case class SimpleCountingBucket(override val sequences: Array[String],
   def copy(sequences: Array[String], abundances: Array[Array[Abundance]],
            sequencesUpdated: Boolean) =
         new SimpleCountingBucket(sequences, abundances, k)
-}
-
-object KmerBucket {
-
-  @tailrec
-  def collapseDuplicates(data: List[(String, Abundance)], acc: List[(String, Abundance)]): List[(String, Abundance)] = {
-    data match {
-      case k :: j :: ks =>
-        if (k._1 == j._1) {
-          collapseDuplicates(((k._1, clipAbundance(k._2 + j._2))) :: ks, acc)
-        } else {
-          collapseDuplicates(j :: ks, k :: acc)
-        }
-      case k :: ks => k :: acc
-      case _ => acc
-    }
-  }
-
-  implicit object KmerOrdering extends Ordering[Array[Int]] {
-    override def compare(x: Array[Int], y: Array[Int]): Int = {
-      val l = x.length
-      var i = 0
-      while (i < l) {
-        val c = x(i) - y(i)
-        if (c != 0) { return c }
-        i += 1
-      }
-      0
-    }
-  }
-
-  /**
-   * From a series of sequences (where k-mers may be repeated) and abundances,
-   * produce an iterator with counted abundances where each k-mer appears only once.
-   * @param segmentsAbundances
-   * @param k
-   * @return
-   */
-  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
-    val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
-    ).toArray
-    Sorting.quickSort(byKmer)
-
-    new Iterator[(Array[Int], Long)] {
-      var i = 0
-      var remaining = byKmer
-      val len = byKmer.length
-
-      def hasNext = i < len
-
-      def next = {
-        var lastKmer = byKmer(i)._1
-        var count = 0L
-        while (i < len && util.Arrays.equals(byKmer(i)._1, lastKmer)) {
-          count += byKmer(i)._2
-          i += 1
-        }
-
-        (lastKmer, count)
-      }
-    }
-  }
-
-  /**
-   * From a series of sequences (where k-mers may be repeated),
-   * produce an iterator with counted abundances where each k-mer appears only once.
-   * @param segmentsAbundances
-   * @param k
-   * @return
-   */
-  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
-    val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s.kmersAsArrays(k.toShort)
-    ).toArray
-    Sorting.quickSort(byKmer)
-
-    new Iterator[(Array[Int], Long)] {
-      var i = 0
-      var remaining = byKmer
-      val len = byKmer.length
-
-      def hasNext = i < len
-
-      def next = {
-        var lastKmer = byKmer(i)
-        var count = 0L
-        while (i < len && util.Arrays.equals(byKmer(i), lastKmer)) {
-          count += 1
-          i += 1
-        }
-
-        (lastKmer, count)
-      }
-    }
-  }
 }
