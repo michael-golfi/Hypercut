@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.util
 
 import hypercut._
-import hypercut.bucket.{BucketStats, KmerBucket}
+import hypercut.bucket.BucketStats
 import hypercut.hash.ReadSplitter
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
@@ -21,6 +21,7 @@ class Counting(spark: SparkSession) {
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
 
+  import Counting._
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
 
@@ -34,18 +35,28 @@ class Counting(spark: SparkSession) {
       countsFromSequences(segments, k)
     } }
 
-  def uncountedToStatBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[BucketStats] =
-    segments.map { case (hash, segments) => {
-      val counted = countsFromSequences(segments, k)
+  def uncountedToStatBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int,
+                             raw: Boolean): Dataset[BucketStats] = {
+    if (raw) {
+      segments.map { case (hash, segments) => {
+        //Simply count number of k-mers as a whole (including duplicates)
+        //This algorithm should work even when the data is very skewed.
+        val totalAbundance = segments.iterator.map(x => x.size.toLong - (k - 1)).sum
+        BucketStats(segments.length, totalAbundance, 0)
+      } }
+    } else {
+      segments.map { case (hash, segments) => {
+        val counted = countsFromSequences(segments, k)
+        val (numDistinct, totalAbundance): (Long, Long) =
+          counted.foldLeft((0L, 0L))((acc, item) => (acc._1 + 1, acc._2 + item._2))
 
-      val (numDistinct, totalAbundance): (Long, Long) =
-        counted.foldLeft((0L, 0L))((a, b) => (a._1 + 1, a._2 + b._2))
-
-      BucketStats(segments.length, totalAbundance, numDistinct)
-    } }
+        BucketStats(segments.length, totalAbundance, numDistinct)
+      } }
+    }
+  }
 
   def statisticsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
-                        precount: Boolean): Unit = {
+                        precount: Boolean, raw: Boolean): Unit = {
     val reads = routines.getReadsFromFasta(input, addReverseComplements)
     val segments = reads.flatMap(r => createHashSegments(r, spl))
 
@@ -54,7 +65,7 @@ class Counting(spark: SparkSession) {
     } else {
       uncountedToStatBuckets(
         routines.segmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
+        spl.k, raw)
     }
     routines.showStats(bkts, Console.out)
   }
@@ -106,6 +117,12 @@ class Counting(spark: SparkSession) {
     histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
   }
 
+}
+
+/**
+ * Serialization-safe methods for counting
+ */
+object Counting {
   implicit object KmerOrdering extends Ordering[Array[Int]] {
     override def compare(x: Array[Int], y: Array[Int]): Int = {
       val l = x.length

@@ -58,7 +58,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     val count = new RunnableCommand("count") {
       val input = opt[String](required = true, descr = "Path to input data files")
       val output = opt[String](required = false, descr = "Path to location where the kmer count table is written")
-      val stats = toggle("stats", default = Some(false), descrYes = "Output k-mer bucket stats")
+      val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
+      val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers")
       val precount = toggle(name = "precount", default = Some(true), descrYes = "Pre-group superkmers during shuffle before creating buckets")
       val sequence = toggle(name = "sequence", default = Some(true), descrYes = "Output sequence for each k-mer in the histogram")
 
@@ -68,8 +69,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
           case Some(o) =>
             counting.writeCountedKmers(spl, input(), addRC(), precount(), sequence(), o)
           case _ =>
-            if (stats()) {
-              counting.statisticsOnly(spl, input(), addRC(), precount())
+            if (stats() || rawStats()) {
+              counting.statisticsOnly(spl, input(), addRC(), precount(), rawStats())
             } else {
               ???
             }
