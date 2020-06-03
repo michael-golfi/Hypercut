@@ -2,13 +2,13 @@
 
 Hypercut is a tool for k-mer counting, hashing, De Bruijn graph (DBG) construction and DBG compaction.
 
-Copyright (c) Johan Nyström-Persson 2018-2019.
+Copyright (c) Johan Nyström-Persson 2018-2020.
 This is currently under development, and may not work properly. There are no guarantees. 
 For any comments or questions, please contact me at jtnystrom@gmail.com.
 
-Licensed under GPL v3 (see LICENSE.txt). 
-The source code includes parts of the Friedrich framework (GPL license), authored by
-Johan Nyström-Persson and Gabriel Keeble-Gagnere. It also includes parts of Scalgos by Pathikrit Bowmick.
+Licensed under GPL v3 (see LICENSE.txt). The source code includes parts of Scalgos by Pathikrit Bowmick.
+
+For comparison purposes, this project includes the minimizer algorithm from kmercounting by Mara Sorella et al. Ferraro Petrillo, U., Sorella, M., Cattaneo, G. et al. Analyzing big datasets of genomic sequences: fast and scalable collection of k-mer statistics. BMC Bioinformatics 20, 2019. 
 
 Hypercut is being developed with Scala 2.11 and Spark 2.4, to match the current Google Cloud dataproc images.
 However, if you run your own Spark cluster, using Scala 2.12 should not be a problem.
