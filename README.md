@@ -20,7 +20,6 @@ The command `sbt package` will produce the necessary jar file.
 
 Copy spark-submit.sh.template to spark-submit.sh and edit the necessary variables in the file.
 Alternatively, if you submit to a GCloud cluster, you can use submit-gcloud.sh.template.
-For the standalone data analysis tool, copy run.sh.template to run.sh and edit.
 
 ## Usage
 

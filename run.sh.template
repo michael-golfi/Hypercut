@@ -1,5 +1,0 @@
-#!/bin/bash
-#Copy this file to run.sh and edit the config variables.
-
-export JAVA_OPTS="-Djava.library.path=/usr/local/lib -XX:+UseParallelGC -Xmx8g -Xms8g"
-exec java $JAVA_OPTS -jar target/scala-2.11/dbpart_2.11-0.1-SNAPSHOT-one-jar.jar $*
