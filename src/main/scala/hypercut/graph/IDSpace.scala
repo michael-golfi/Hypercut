@@ -1,6 +1,4 @@
-package hypercut
-
-import scala.reflect.ClassTag
+package hypercut.graph
 
 trait HasID {
   var id: Int = 0

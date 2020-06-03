@@ -16,6 +16,13 @@ class BenchConf(args: Array[String]) extends CoreConf(args) {
   val threads = opt[Int](required = false, descr = "Number of threads", default = Some(1))
 }
 
+/**
+ * Microbenchmark tool for Hypercut, for standalone speed measurements of certain operations.
+ *
+ * Example usage:
+ * sbt "run hypercut.Benchmark -k 41 --input ERR233459_1.fastq.gz --threads 1 extract extract extract"
+ * To measure the "extract" function three times on one thread. See below for the functions that can be measured.
+ */
 object Benchmark {
   def hashCode(x: String, k: Int) = {
     for (k <- Read.kmers(x, k)) { k.hashCode() }

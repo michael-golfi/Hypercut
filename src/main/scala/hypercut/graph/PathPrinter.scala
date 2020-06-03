@@ -1,7 +1,8 @@
-package hypercut
+package hypercut.graph
+
+import java.io.PrintWriter
 
 import hypercut._
-import java.io.PrintWriter
 
 case class Contig(nodes: List[String], k: Int,
   stopReasonStart: String, stopReasonEnd: String) {

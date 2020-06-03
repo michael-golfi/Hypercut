@@ -1,7 +1,7 @@
 package hypercut.bucket
 
 import hypercut._
-import hypercut.graph.{KmerNode, PathFinder, PathGraphBuilder}
+import hypercut.graph.{Contig, KmerNode, PathFinder, PathGraphBuilder}
 import hypercut.shortread.Read
 import miniasm.genome.util.DNAHelpers
 

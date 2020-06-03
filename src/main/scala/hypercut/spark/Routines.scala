@@ -6,6 +6,7 @@ import hypercut._
 import hypercut.bucket._
 import hypercut.hash.{FeatureScanner, _}
 import friedrich.util._
+import hypercut.graph.Contig
 import hypercut.shortread.Read
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._

@@ -3,8 +3,8 @@ package hypercut.spark
 import java.text.SimpleDateFormat
 import java.util.Date
 
-import hypercut.Contig
 import hypercut.bucket.{BloomBucket, BloomFilterOverlap, BoundaryBucket, MapOverlapFinder, Util}
+import hypercut.graph.Contig
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession

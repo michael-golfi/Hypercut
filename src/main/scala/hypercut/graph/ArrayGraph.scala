@@ -1,8 +1,6 @@
 package hypercut.graph
 
-import hypercut.HasID
 import scala.reflect._
-import hypercut.IDSpace
 import friedrich.graph.Graph
 
 trait ArrayBackedGraph[N <: HasID] extends Graph[N] {

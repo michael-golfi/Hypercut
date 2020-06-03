@@ -2,8 +2,6 @@ package hypercut.graph
 
 import scala.annotation.tailrec
 import friedrich.graph.Graph
-import hypercut.Contig
-import hypercut.PathPrinter
 
 /**
  * Finds and prints branch-free paths.
