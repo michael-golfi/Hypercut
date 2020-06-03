@@ -8,13 +8,14 @@ For any comments or questions, please contact me at jtnystrom@gmail.com.
 
 Licensed under GPL v3 (see LICENSE.txt). The source code includes parts of Scalgos by Pathikrit Bowmick.
 
-For comparison purposes, this project includes the minimizer algorithm from kmercounting by Mara Sorella et al. Ferraro Petrillo, U., Sorella, M., Cattaneo, G. et al. Analyzing big datasets of genomic sequences: fast and scalable collection of k-mer statistics. BMC Bioinformatics 20, 2019. 
+For comparison purposes, this project includes the minimizer algorithm from kmercounting by Mara Sorella et al. (Ferraro Petrillo, U., Sorella, M., Cattaneo, G. et al. Analyzing big datasets of genomic sequences: fast and scalable collection of k-mer statistics. BMC Bioinformatics 20, 2019.)
+
+## Compiling
 
 Hypercut is being developed with Scala 2.11 and Spark 2.4, to match the current Google Cloud dataproc images.
 However, if you run your own Spark cluster, using Scala 2.12 should not be a problem.
 In addition to a working Spark installation, the sbt build tool is also needed.
 
-## Compiling
 The command `sbt package` will produce the necessary jar file.
 
 Copy spark-submit.sh.template to spark-submit.sh and edit the necessary variables in the file.
