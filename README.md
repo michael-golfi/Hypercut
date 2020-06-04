@@ -12,8 +12,8 @@ For comparison purposes, this project includes the minimizer algorithm from kmer
 
 ## Compiling
 
-Hypercut is being developed with Scala 2.11 and Spark 2.4, to match the current Google Cloud dataproc images.
-However, if you run your own Spark cluster, using Scala 2.12 should not be a problem.
+Hypercut is being developed with Scala 2.11 and Spark 2.4.
+In Google Cloud, we use Dataproc image version 1.4 (Debian 9, Hadoop 2.9, Spark 2.4).
 In addition to a working Spark installation, the sbt build tool is also needed.
 
 The command `sbt package` will produce the necessary jar file.

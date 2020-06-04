@@ -128,8 +128,10 @@ object Counting {
       val l = x.length
       var i = 0
       while (i < l) {
-        val c = x(i) - y(i)
-        if (c != 0) { return c }
+        val a = x(i)
+        val b = y(i)
+        if (a < b) return -1
+        else if (a > b) return 1
         i += 1
       }
       0
