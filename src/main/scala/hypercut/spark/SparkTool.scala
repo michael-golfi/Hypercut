@@ -31,6 +31,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
   def routines = new Routines(spark)
   val counting = new Counting(spark)
+  val bgraph = new BucketGraph(routines)
 
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
@@ -92,9 +93,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
          val ext = new MotifSetExtractor(getSpace(input()), k())
          val minAbundance = None
          if (edges()) {
-           routines.graphFromReads(input(), ext, location.toOption)
+           bgraph.graphFromReads(input(), ext, location.toOption)
          } else {
-           routines.bucketsOnly(input(), ext, location.toOption, addRC())
+           bgraph.bucketsOnly(input(), ext, location.toOption, addRC())
          }
       }
     }
@@ -108,8 +109,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       //Note: could add a minAbundance flag here in the future if needed
 
       def run() {
-       val buckets = routines.loadBuckets(location(), None)
-       routines.showBuckets(buckets.map(_._2),
+       val buckets = bgraph.loadBuckets(location(), None)
+       bgraph.showBuckets(buckets.map(_._2),
            n(), amount())
       }
     }
@@ -123,7 +124,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val loc = location()
-        val graph = routines.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
+        val graph = bgraph.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
         val it = new IterativeMerge(spark, showStats(), minLength.toOption, k(), loc)
         it.iterate(graph, stopAtKmers())
       }
@@ -134,7 +135,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
       val stdout = opt[Boolean](required = false, default = Some(false), descr = "Print stats to stdout")
       def run() {
-        routines.bucketStats(location(), minAbundance.toOption.map(clipAbundance), stdout())
+        bgraph.bucketStats(location(), minAbundance.toOption.map(clipAbundance), stdout())
       }
     }
 
