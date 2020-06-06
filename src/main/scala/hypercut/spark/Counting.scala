@@ -55,6 +55,20 @@ class Counting(spark: SparkSession) {
     }
   }
 
+  def countKmers[H](spl: ReadSplitter[H], reads: Dataset[String], addReverseComplements: Boolean, precount: Boolean) = {
+    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val counts = if (precount) {
+      countedToCounts(
+        routines.countedSegmentsByHash(segments, spl, addReverseComplements),
+        spl.k)
+    } else {
+      uncountedToCounts(
+        routines.segmentsByHash(segments, spl, addReverseComplements),
+        spl.k)
+    }
+    countedWithStrings(spl, counts)
+  }
+
   def statisticsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
                         precount: Boolean, raw: Boolean): Unit = {
     val reads = routines.getReadsFromFasta(input, addReverseComplements)
@@ -88,15 +102,19 @@ class Counting(spark: SparkSession) {
     }
 
     if (withKmers) {
-      writeKmerCounts(counts.mapPartitions(xs => {
-        //Reuse the byte buffer and string builder as much as possible
-        val buffer = ByteBuffer.allocate(spl.k / 4 + 4)
-        val builder = new StringBuilder(spl.k + 16)
-        xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, spl.k.toShort), x._2))
-      }), output)
+      writeKmerCounts(countedWithStrings(spl, counts), output)
     } else {
       writeKmerHistogram(counts.map(_._2), output)
     }
+  }
+
+  def countedWithStrings[H](spl: ReadSplitter[H], counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+    counted.mapPartitions(xs => {
+      //Reuse the byte buffer and string builder as much as possible
+      val buffer = ByteBuffer.allocate(spl.k / 4 + 4)
+      val builder = new StringBuilder(spl.k + 16)
+      xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, spl.k.toShort), x._2))
+    })
   }
 
   /**
