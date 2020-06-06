@@ -22,8 +22,9 @@ object Motif {
  */
 final case class Features(val tag: String, val tagRank: Int) {
 
-  def strongEquivalent(other: Features) = {
-    tag == other.tag
+  def equivalent(other: Features) = {
+    //tagRank is sufficient to identify tag
+    tagRank == other.tagRank
   }
 }
 
@@ -47,17 +48,13 @@ final case class Motif(pos: Int, features: Features) {
 
   override def toString = "[%s,%02d]".format(tag, pos)
 
-  def equivalent(other: Motif) = {
-    tag == other.tag && pos == other.pos
-  }
-
-  def strongEquivalent(other: Motif) = {
-    pos == other.pos && ((features eq other.features) || features.strongEquivalent(other.features))
+  def fastEquivalent(other: Motif) = {
+    pos == other.pos && ((features eq other.features) || features.equivalent(other.features))
   }
 
   override def equals(other: Any) = {
     other match {
-      case m: Motif => this.strongEquivalent(m)
+      case m: Motif => this.fastEquivalent(m)
       case _ => false
     }
   }

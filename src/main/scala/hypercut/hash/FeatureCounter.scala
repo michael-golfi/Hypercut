@@ -2,6 +2,10 @@ package hypercut.hash
 
 import scala.collection.mutable.Map
 
+/**
+ * Counts motif occurrences (independently) in a dataset
+ * to establish relative frequencies.
+ */
 final case class FeatureCounter() {
   val counter: scala.collection.mutable.Map[String,Long] = Map.empty
 

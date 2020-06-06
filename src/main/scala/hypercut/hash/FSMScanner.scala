@@ -24,9 +24,11 @@ final case class ScannerState(val seenString: String, foundMotif: Option[String]
 }
 
 /**
- * Builds a state machine for fast parsing.
- * We expect to match on short motifs, so we are not too worried about wasted memory
- * (most of the positions in the transitions arrays will be unused).
+ * A state machine for fast scanning.
+ * For convenience, we use the ASCII character directly to index into the state array.
+ * This means that some memory will be wasted, since the majority of the ASCII characters do not participate in
+ * the tokens we look for (which come from A,C,T,G,N only). However, this is a fixed cost per state and not
+ * much of a concern in the big picture.
  */
 final class FSMScanner(val space: MotifSpace) {
   def motifsByPriority = space.byPriority
