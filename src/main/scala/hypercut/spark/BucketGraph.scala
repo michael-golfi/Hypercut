@@ -69,7 +69,7 @@ class BucketGraph(routines: Routines) {
     bkts
   }
 
-  def log10(x: Double) = Math.log(x) / Math.log(10)
+  def log10(x: Double) = Math.log10(x)
 
   def plotBuckets(location: String, numBins: Int) {
     //Get the buckets

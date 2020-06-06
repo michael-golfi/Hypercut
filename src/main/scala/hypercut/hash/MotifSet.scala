@@ -229,40 +229,4 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
   }
 
   override def toString = "ms{" + relativeMotifs.mkString(",") + "}"
-
-  def relativeByRank =
-    relativeMotifs.zipWithIndex.sortBy(m => (space.priorityOf(m._1.tag), m._2)).map(_._1)
-
-  def removeMotif(pos: Int, ms: List[Motif]): List[Motif] = {
-    if (pos == 0) {
-      ms match {
-        case a :: b :: xs =>
-          b.copy(pos = a.pos + b.pos) :: xs
-        case a :: xs =>
-          xs
-        case _ => ???
-      }
-    } else {
-      ms match {
-        case a :: xs =>
-          a :: removeMotif(pos - 1, xs)
-        case _ => ???
-      }
-    }
-  }
-
-  lazy val collapse = {
-    if (relativeMotifs.nonEmpty) {
-      val lowest = relativeMotifs.sortBy(_.rankSort).last
-      val i = relativeMotifs.indexOf(lowest)
-      new MotifSet(space, removeMotif(i, relativeMotifs))
-    } else {
-      new MotifSet(space, List())
-    }
-  }
-
-  /**
-   * Produce a copy with canonical motifs, to save memory.
-   */
-  def canonical = new MotifSet(space, relativeMotifs.map(_.canonical(space)))
 }

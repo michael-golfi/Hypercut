@@ -59,7 +59,7 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int) {
     maxMotifLength - motif.length()
 
   @volatile
-  private var lookup = Map[String, Features]()
+  private var lookup = Map.empty[String, Features]
 
   def getFeatures(pattern: String): Features = {
     if (!lookup.contains(pattern)) {

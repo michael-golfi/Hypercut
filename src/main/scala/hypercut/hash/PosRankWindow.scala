@@ -25,8 +25,7 @@ object PosRankWindow {
    * Build a list from position-sorted nodes.
    */
   def fromNodes(nodes: Seq[MotifNode]) = {
-    var i = 0
-    var r = new PosRankWindow()
+    val r = new PosRankWindow()
 
     for { n <- nodes } {
       r :+= n
@@ -232,6 +231,7 @@ final case class PosRankWindow() extends PRNode with Iterable[Motif] {
         linkPos(this, mn, end)
     }
 
+    //isEmpty rather than pattern match for efficiency
     if (treeRoot.isEmpty) {
       treeRoot = Some(mn)
     } else {

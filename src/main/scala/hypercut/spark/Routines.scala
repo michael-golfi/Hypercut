@@ -39,7 +39,7 @@ class Routines(val spark: SparkSession) {
 
     if (withRC) {
       lines.flatMap(r => {
-        if (r.startsWith(">")) Seq() else
+        if (r.startsWith(">")) Seq.empty else
           Seq(r, DNAHelpers.reverseComplement(r))
       })
     } else {

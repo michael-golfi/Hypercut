@@ -34,6 +34,6 @@ trait AbundanceBucket extends Serializable {
   def hasMinAbundance(min: Abundance): Boolean = kmerAbundances.exists(_ >= min)
 }
 
-case class ShortAbundanceBucket(abundanceData: Array[Array[Short]]) extends AbundanceBucket {
+final case class ShortAbundanceBucket(abundanceData: Array[Array[Short]]) extends AbundanceBucket {
   def abundances: Array[Array[Abundance]] = abundanceData
 }

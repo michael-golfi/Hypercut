@@ -28,7 +28,7 @@ object JoinedSeqBucket {
   var mergeCount = 0
 }
 
-case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)
+final case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)
 
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.
@@ -458,7 +458,7 @@ object SimpleCountingBucket {
 }
 
 //TODO remove the k parameter
-case class SimpleCountingBucket(override val sequences: Array[String],
+final case class SimpleCountingBucket(override val sequences: Array[String],
   override val abundances: Array[Array[Abundance]],
   override val k: Int) extends JoinedSeqBucket[SimpleCountingBucket](sequences, abundances, k)  {
   def copy(sequences: Array[String], abundances: Array[Array[Abundance]],

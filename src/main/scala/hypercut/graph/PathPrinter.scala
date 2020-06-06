@@ -4,7 +4,7 @@ import java.io.PrintWriter
 
 import hypercut._
 
-case class Contig(nodes: List[String], k: Int,
+final case class Contig(nodes: List[String], k: Int,
   stopReasonStart: String, stopReasonEnd: String) {
 
   def touchesBoundary =

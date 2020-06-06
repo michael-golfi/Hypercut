@@ -159,7 +159,7 @@ object Counting {
       def hasNext = i < len
 
       def next = {
-        var lastKmer = byKmer(i)._1
+        val lastKmer = byKmer(i)._1
         var count = 0L
         while (i < len && java.util.Arrays.equals(byKmer(i)._1, lastKmer)) {
           count += byKmer(i)._2
@@ -192,7 +192,7 @@ object Counting {
       def hasNext = i < len
 
       def next = {
-        var lastKmer = byKmer(i)
+        val lastKmer = byKmer(i)
         var count = 0L
         while (i < len && java.util.Arrays.equals(byKmer(i), lastKmer)) {
           count += 1
