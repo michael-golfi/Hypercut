@@ -2,15 +2,15 @@ package hypercut
 
 import org.scalatest.Matchers
 import org.scalatest.FunSuite
-import hypercut.hash.PosRankList
+import hypercut.hash.PosRankWindow
 import hypercut.hash.End
 
-class PosRankListTest extends FunSuite with Matchers {
+class PosRankWindowTest extends FunSuite with Matchers {
   import Testing._
 
   test("position") {
     val test = ms(Seq(("AC", 3), ("AC", 5), ("GT", 10)))
-    val prl = PosRankList(test)
+    val prl = PosRankWindow(test)
     prl should contain theSameElementsAs(test)
 
     prl.dropUntilPosition(2, space)
@@ -32,7 +32,7 @@ class PosRankListTest extends FunSuite with Matchers {
 
    test("rank") {
     val test = ms(Seq(("AC", 3), ("AC", 5), ("AT", 10), ("GT", 15)))
-    val prl = PosRankList(test)
+    val prl = PosRankWindow(test)
     prl should contain theSameElementsAs(test)
 
     assert(prl.takeByRank(2) === Seq(test(0), test(2)))
@@ -42,7 +42,7 @@ class PosRankListTest extends FunSuite with Matchers {
 
    test("insert") {
     val test = ms(Seq(("AC", 3), ("AC", 5), ("AT", 10), ("GT", 15)))
-    val prl = PosRankList(test)
+    val prl = PosRankWindow(test)
     val app = m("AC", 17)
     prl :+= app
     assert(prl.takeByRank(4) === Seq(test(0), test(1), test(2), app))
@@ -51,20 +51,20 @@ class PosRankListTest extends FunSuite with Matchers {
 
    test("overlap resolution") {
     var test = ms(Seq(("AC", 3), ("AC", 5), ("CTT", 6), ("GT", 15)))
-    var prl = PosRankList(test)
+    var prl = PosRankWindow(test)
     assert(prl.takeByRank(3) === Seq(test(0), test(1), test(3)))
 
     test = ms(Seq(("TTA", 3), ("AC", 5), ("AT", 6), ("GT", 15)))
-    prl = PosRankList(test)
+    prl = PosRankWindow(test)
     assert(prl.takeByRank(3) === Seq(test(0), test(2), test(3)))
 
     test = ms(Seq(("AT", 1), ("TTA", 2), ("AC", 4), ("AT", 6), ("GT", 15)))
-    prl = PosRankList(test)
+    prl = PosRankWindow(test)
     assert(prl.takeByRank(1) === Seq(test(1)))
     assert(prl.takeByRank(3) === Seq(test(1), test(3), test(4)))
 
     test = ms(Seq(("TTA", 5), ("AC", 7)))
-    prl = PosRankList(test)
+    prl = PosRankWindow(test)
     assert(prl.takeByRank(1) === Seq(test(0)))
     assert(prl.takeByRank(2) === Seq(test(0)))
    }

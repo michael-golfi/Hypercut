@@ -1,29 +1,18 @@
 package hypercut.hash
 
-import scala.util.Either.MergeableEither
 import scala.annotation.tailrec
-import scala.collection.mutable
 
-/**
- * A node that participates in two mutable doubly linked lists:
- * One sorted by rank, one sorted by position.
- */
-sealed trait DLNode {
-  type Backward = DLNode //PosRankList or MotifNode
-  type Forward = DLNode // End or MotifNode
-  var prevPos: Backward = _
-  var nextPos: Forward = _
-
+sealed trait PRNode {
+  var prevPos: PRNode = _  //PosRankList or MotifNode
+  var nextPos: PRNode = _  // End or MotifNode
 }
 
 /**
  * End marker for both lists
  */
-final case class End() extends DLNode {
+final case class End() extends PRNode
 
-}
-
-object PosRankList {
+object PosRankWindow {
 
   /**
    * Build a list from nodes with absolute positions.
@@ -37,7 +26,7 @@ object PosRankList {
    */
   def fromNodes(nodes: Seq[MotifNode]) = {
     var i = 0
-    var r = new PosRankList()
+    var r = new PosRankWindow()
 
     for { n <- nodes } {
       r :+= n
@@ -45,7 +34,7 @@ object PosRankList {
     r
   }
 
-  def linkPos(before: DLNode, middle: MotifNode, after: DLNode) {
+  def linkPos(before: PRNode, middle: MotifNode, after: PRNode) {
     before.nextPos = middle
     middle.prevPos = before
     middle.nextPos = after
@@ -53,7 +42,7 @@ object PosRankList {
   }
 
   @tailrec
-  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace, top: PosRankList) {
+  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace, top: PosRankWindow) {
     if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
       from.remove(top)
       from.nextPos match {
@@ -197,14 +186,14 @@ object PosRankList {
 }
 
 /**
- * The PosRankList maintains two mutable doubly linked lists, corresponding to
- * position and rank ordering of items.
+ * The PosRankWindow maintains two sequences, one implemented using a mutable doubly linked list,
+ * the other implemented using a tree, corresponding to position and rank ordering of items.
  *
  * This class is the start motif (highest (minimum) rank, lowest pos) for both lists,
  * and also the main public interface.
  */
-final case class PosRankList() extends DLNode with Iterable[Motif] {
-  import PosRankList._
+final case class PosRankWindow() extends PRNode with Iterable[Motif] {
+  import PosRankWindow._
 
   nextPos = End()
   nextPos.prevPos = this
@@ -278,12 +267,15 @@ final case class PosRankList() extends DLNode with Iterable[Motif] {
   }
 
   override def toString = {
-    "PList(" + this.map(_.packedString).mkString(" ") + ")\n" +
-    "  RList(" + this.rankIterator.map(_.packedString).mkString(" ") + ")\n"
+    "PRWin(" + this.map(_.packedString).mkString(" ") + ")\n" +
+    "  PRWin(" + this.rankIterator.map(_.packedString).mkString(" ") + ")\n"
   }
 }
 
-final class RankListBuilder(from: PosRankList, n: Int) {
+/**
+ * Utility class to efficiently pick the n top ranked PRNodes from a PosRankWindow.
+ */
+final class RankListBuilder(from: PosRankWindow, n: Int) {
   //Number of remaining items to generate for the resulting output list
   private[this] var rem: Int = n
 
@@ -363,19 +355,17 @@ final class RankListBuilder(from: PosRankList, n: Int) {
 
   def build: List[Motif] = {
     if (from.treeRoot.isEmpty) return Nil
-    PosRankList.traverse(from.treeRoot.get, this)
+    PosRankWindow.traverse(from.treeRoot.get, this)
     building
   }
 }
 
 /**
- * A node that participates in two doubly linked lists, sorted by position and by rank,
- * respectively.
- *
- * Position is absolute.
+ * A node that participates in the two sequences and contains a motif.
+ * Pos is absolute position.
  */
-final case class MotifNode(pos: Int, m: Motif) extends DLNode {
-  import PosRankList._
+final case class MotifNode(pos: Int, m: Motif) extends PRNode {
+  import PosRankWindow._
 
   //Binary tree
   //Using null instead of Option for performance
@@ -387,13 +377,13 @@ final case class MotifNode(pos: Int, m: Motif) extends DLNode {
   val rankSort = m.rankSort
 
   /**
-   * Remove this node from both of the two lists.
+   * Remove this node from both of the two sequences.
    */
-  def remove(top: PosRankList) {
+  def remove(top: PosRankWindow) {
     prevPos.nextPos = nextPos
     nextPos.prevPos = prevPos
 
-//    PosRankList.synchronized {
+//    PosRankWindow.synchronized {
 //      println("before:")
 //      printTree(top.treeRoot.get)
       if (top.treeRoot.get eq this) {
@@ -412,7 +402,7 @@ final case class MotifNode(pos: Int, m: Motif) extends DLNode {
 /**
  * Avoid recomputing takeByRank(n) by using a smart cache.
  */
-final class TopRankCache(list: PosRankList, n: Int) {
+final class TopRankCache(list: PosRankWindow, n: Int) {
   var cache: Option[List[Motif]] = None
   var firstByPos: Motif = _
   var lowestRank: Int = _
@@ -421,7 +411,7 @@ final class TopRankCache(list: PosRankList, n: Int) {
   def :+= (m: Motif) {
     list :+= m
     if (m.rankSort < lowestRank || cacheLength < n) {
-      //Force recompute
+      //Force recompute since we know that the cached data might now be invalid
       cache = None
     }
   }
