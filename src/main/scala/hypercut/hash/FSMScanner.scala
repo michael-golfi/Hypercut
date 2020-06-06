@@ -49,7 +49,7 @@ final class FSMScanner(val space: MotifSpace) {
 
   //Construct padded states such as ACT, ACG, ACT from AC when ACA is also a pattern
   //This map will match an extended motif such as ACT to its "true match" AC
-  val trueMatches = Map() ++ motifsByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
+  val trueMatches = Map.empty ++ motifsByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
 
   def buildStatesFrom(seen: String, filtered: Seq[String]): Array[ScannerState] = {
     val candidates = filtered.filter(_.startsWith(seen))

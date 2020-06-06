@@ -54,7 +54,7 @@ final class FeatureScanner(val space: MotifSpace) {
     counter
   }
 
-  def scan(inputFile: String, matesFile: Option[String]) {
+  def scan(inputFile: String) {
     val counter = handle(ReadFiles.iterator(inputFile))
     counter.print("Total feature count")
     println("In order from rare to common: ")

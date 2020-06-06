@@ -161,9 +161,9 @@ class BucketGraph(routines: Routines) {
                    edges: Option[Dataset[CompactEdge]],
                    output: PrintStream) {
     val stats = bkts.map(_._2.stats)
-    routines.showStats(stats, output)
 
     Console.withOut(output) {
+      routines.showStats(stats)
       for (e <- edges) {
         println(s"Total number of edges: ${e.count}")
         val outDeg = e.groupByKey(_._1).count().cache

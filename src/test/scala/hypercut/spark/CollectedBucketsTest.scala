@@ -22,14 +22,14 @@ class CollectedBucketsTest extends FunSuite with Matchers with SparkSessionTestW
     val b2 = mkBB(2, "GTTG", "TTTT")
 
     var cb = CollectedBuckets(b1, 1, true, Array((b2, 1)))
-    cb.unified(k).size should equal(1)
-    cb.unified(k).head.comparable should equal(
+    cb.unified.size should equal(1)
+    cb.unified.head.comparable should equal(
       (2, List("ACTG", "GTTG", "TTTT"), List("GGGG"))
     )
 
     cb = CollectedBuckets(b1, 1, false, Array((b2, 1)))
-    cb.unified(k).size should equal(1)
-    cb.unified(k).head.comparable should equal(
+    cb.unified.size should equal(1)
+    cb.unified.head.comparable should equal(
       b2.comparable
     )
   }

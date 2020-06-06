@@ -126,22 +126,6 @@ object MotifSet {
     new MotifSet(space, ms.toList)
   }
 
-  def addToFirst(s: Seq[Motif], n: Int) = {
-    if (s.isEmpty) {
-      List()
-    } else {
-      s.head.copy(pos = s.head.pos + n) +: s.tail
-    }
-  }
-
-  def setFirstToZero(s: List[Motif]) = {
-    if (s.nonEmpty) {
-      s.head.copy(pos = 0) :: s.tail
-    } else {
-      List()
-    }
-  }
-
   @tailrec
   def relativePositionsSorted(space: MotifSpace, ms: List[Motif],
                               acc: List[Motif]): List[Motif] = {
@@ -152,6 +136,10 @@ object MotifSet {
     }
   }
 
+  /**
+   * Sort motifs by position and change absolute to relative positions,
+   * and set the first motif position to 0.
+   */
   def relativePositionsSortedFirstZero(space: MotifSpace, ms: List[Motif]): List[Motif] = {
       ms match {
       case Nil => ms
@@ -160,7 +148,7 @@ object MotifSet {
   }
 
   /**
-   * Sort motifs by position (should be absolute) and change to relative positions
+   * Sort motifs by position (should initially be absolute) and change to relative positions
    * (motif intervals)
    */
   def relativePositions(space: MotifSpace, ms: List[Motif]): List[Motif] = {

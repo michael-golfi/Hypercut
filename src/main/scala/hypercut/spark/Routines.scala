@@ -108,7 +108,7 @@ class Routines(val spark: SparkSession) {
   }
 
 
-  def showStats(stats: Dataset[BucketStats], output: PrintStream): Unit = {
+  def showStats(stats: Dataset[BucketStats]): Unit = {
     def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
 
     stats.cache

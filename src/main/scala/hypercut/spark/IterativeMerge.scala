@@ -306,7 +306,7 @@ class IterativeMerge(spark: SparkSession, showStats: Boolean = false,
 //      collected.show
 //    }
 
-    val r = materialize(collected.flatMap(_.unified(k)).cache)
+    val r = materialize(collected.flatMap(_.unified).cache)
     val edgeTranslation = collected.flatMap(_.edgeTranslation)
     val nextEdges = materialize(translateAndNormalizeEdges(graph.edges, edgeTranslation.toDF).cache)
     aggVerts.unpersist
@@ -496,9 +496,9 @@ final case class CollectedBuckets(centre: BoundaryBucket, degree: Int, receiver:
     else
       shared.flatMap(_._1.boundary) ++ centre.boundary
 
-  def unified(k: Int): Iterable[BoundaryBucket] = {
+  def unified: Iterable[BoundaryBucket] = {
     if (safeSurrounding.isEmpty && !receiver) {
-      Seq()
+      Seq.empty
     } else if (!receiver) {
       surrounding.map(_._1)
     } else {

@@ -23,7 +23,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
 
     def run() {
       if (motifs()) {
-       new FeatureScanner(preferredSpace).scan(input(), None)
+       new FeatureScanner(preferredSpace).scan(input())
       } else {
         defaultExtractor.prettyPrintMotifs(input())
       }

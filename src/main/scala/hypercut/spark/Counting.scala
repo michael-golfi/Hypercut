@@ -67,7 +67,7 @@ class Counting(spark: SparkSession) {
         routines.segmentsByHash(segments, spl, addReverseComplements),
         spl.k, raw)
     }
-    routines.showStats(bkts, Console.out)
+    routines.showStats(bkts)
   }
 
   def writeCountedKmers[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
