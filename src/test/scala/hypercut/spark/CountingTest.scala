@@ -5,7 +5,6 @@ import org.scalatest.{FunSuite, Matchers}
 
 class CountingTest extends FunSuite with Matchers with SparkSessionTestWrapper {
   import spark.implicits._
-  val counting = new Counting(spark)
 
   test("k-mer counting integration test") {
     val data = Seq("ACTGGGTTG", "ACTGTTTTT").toDS()
@@ -16,6 +15,9 @@ class CountingTest extends FunSuite with Matchers with SparkSessionTestWrapper {
   }
 
   def testSplitter[H](spl: ReadSplitter[H]): Unit = {
+    val counting = new SimpleCounting(spark, spl, false)
+    val gCounting = new GroupedCounting(spark, spl, false)
+
     val data = Seq("ACTGGGTTG", "ACTGTTTTT").toDS()
     val verify = List[(String, Long)](
       ("ACTG", 2), ("CTGG", 1), ("TGGG", 1),
@@ -23,10 +25,10 @@ class CountingTest extends FunSuite with Matchers with SparkSessionTestWrapper {
       ("GGGT", 1), ("GGTT", 1), ("GTTG", 1),
       ("TGTT", 1), ("GTTT", 1), ("TTTT", 2))
 
-    var counted = counting.countKmers(spl, data, false, false).collect()
+    var counted = counting.countKmers(data).collect()
     counted should contain theSameElementsAs(verify)
 
-    counted = counting.countKmers(spl, data, false, true).collect()
+    counted = gCounting.countKmers(data).collect()
     counted should contain theSameElementsAs(verify)
   }
 }

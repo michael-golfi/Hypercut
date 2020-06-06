@@ -29,7 +29,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   footer("Also see the documentation (to be written).")
 
   def routines = new Routines(spark)
-  val counting = new Counting(spark)
   val bgraph = new BucketGraph(routines)
 
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
@@ -63,12 +62,16 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val spl = getSplitter(input())
+        val reads = routines.getReadsFromFasta(input(), false)
+        val counting: Counting[_] = if (precount()) new GroupedCounting(spark, spl, addRC())
+          else new SimpleCounting(spark, spl, addRC())
+
         output.toOption match {
           case Some(o) =>
-            counting.writeCountedKmers(spl, input(), addRC(), precount(), sequence(), o)
+            counting.writeCountedKmers(reads, sequence(), o)
           case _ =>
             if (stats() || rawStats()) {
-              counting.statisticsOnly(spl, input(), addRC(), precount(), rawStats())
+              counting.statisticsOnly(reads, rawStats())
             } else {
               ???
             }

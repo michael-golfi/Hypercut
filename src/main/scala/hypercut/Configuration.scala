@@ -46,7 +46,4 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
       default = None)
 
   def preferredSpace = MotifSpace.named(space(), numMotifs())
-
-  val prefixLength = opt[Int](required = false, descr = "Prefix hash: Prefix length",
-    default = Some(10))
 }

@@ -6,10 +6,11 @@ import java.util
 import hypercut._
 import hypercut.bucket.BucketStats
 import hypercut.hash.ReadSplitter
+import hypercut.spark.Counting.{countsFromCountedSequences, countsFromSequences}
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, SparkSession}
 
 import scala.util.Sorting
 
@@ -17,98 +18,46 @@ import scala.util.Sorting
  * Routines related to k-mer counting and statistics.
  * @param spark
  */
-class Counting(spark: SparkSession) {
+abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
 
-  import Counting._
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
 
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] =
-    counted.flatMap { case (hash, segmentsCounts) => {
-      countsFromCountedSequences(segmentsCounts, k)
-    } }
+  def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats]
 
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int): Dataset[(Array[Int], Long)] =
-    segments.flatMap { case (hash, segments) => {
-      countsFromSequences(segments, k)
-    } }
-
-  def uncountedToStatBuckets(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])], k: Int,
-                             raw: Boolean): Dataset[BucketStats] = {
-    if (raw) {
-      segments.map { case (hash, segments) => {
-        //Simply count number of k-mers as a whole (including duplicates)
-        //This algorithm should work even when the data is very skewed.
-        val totalAbundance = segments.iterator.map(x => x.size.toLong - (k - 1)).sum
-        BucketStats(segments.length, totalAbundance, 0)
-      } }
-    } else {
-      segments.map { case (hash, segments) => {
-        val counted = countsFromSequences(segments, k)
-        val (numDistinct, totalAbundance): (Long, Long) =
-          counted.foldLeft((0L, 0L))((acc, item) => (acc._1 + 1, acc._2 + item._2))
-
-        BucketStats(segments.length, totalAbundance, numDistinct)
-      } }
-    }
+  def countKmers[H](reads: Dataset[String]) = {
+    val spl = this.spl
+    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val counts = segmentsToCounts(segments)
+    countedWithStrings(counts)
   }
 
-  def countKmers[H](spl: ReadSplitter[H], reads: Dataset[String], addReverseComplements: Boolean, precount: Boolean) = {
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
-    val counts = if (precount) {
-      countedToCounts(
-        routines.countedSegmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    } else {
-      uncountedToCounts(
-        routines.segmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    }
-    countedWithStrings(spl, counts)
-  }
-
-  def statisticsOnly[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
-                        precount: Boolean, raw: Boolean): Unit = {
-    val reads = routines.getReadsFromFasta(input, addReverseComplements)
+  def statisticsOnly[H](reads: Dataset[String], raw: Boolean): Unit = {
+    val spl = this.spl
     val segments = reads.flatMap(r => createHashSegments(r, spl))
 
-    val bkts = if (precount) {
-      ???
-    } else {
-      uncountedToStatBuckets(
-        routines.segmentsByHash(segments, spl, addReverseComplements),
-        spl.k, raw)
-    }
+    val bkts = toStatBuckets(segments, raw)
     routines.showStats(bkts)
   }
 
-  def writeCountedKmers[H](spl: ReadSplitter[H], input: String, addReverseComplements: Boolean,
-                           precount: Boolean,
-                           withKmers: Boolean,
-                           output: String) {
-    val reads = routines.getReadsFromFasta(input, addReverseComplements)
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)]
 
-    val counts = if (precount) {
-      countedToCounts(
-        routines.countedSegmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    } else {
-      uncountedToCounts(
-        routines.segmentsByHash(segments, spl, addReverseComplements),
-        spl.k)
-    }
+  def writeCountedKmers[H](reads: Dataset[String], withKmers: Boolean, output: String) {
+    val spl = this.spl
+    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val counts = segmentsToCounts(segments)
 
     if (withKmers) {
-      writeKmerCounts(countedWithStrings(spl, counts), output)
+      writeKmerCounts(countedWithStrings(counts), output)
     } else {
       writeKmerHistogram(counts.map(_._2), output)
     }
   }
 
-  def countedWithStrings[H](spl: ReadSplitter[H], counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+  def countedWithStrings[H](counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+    val spl = this.spl
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible
       val buffer = ByteBuffer.allocate(spl.k / 4 + 4)
@@ -135,6 +84,69 @@ class Counting(spark: SparkSession) {
     histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
   }
 
+}
+
+class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
+                         addReverseComplements: Boolean) extends Counting(s, spl) {
+
+  import org.apache.spark.sql._
+  import spark.sqlContext.implicits._
+
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] =
+    counted.flatMap { case (hash, segmentsCounts) => {
+      countsFromCountedSequences(segmentsCounts, k)
+    } }
+
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
+    countedToCounts(
+      routines.countedSegmentsByHash(segments, spl, addReverseComplements),
+      spl.k)
+  }
+
+  def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
+    ???
+  }
+}
+
+class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
+                        addReverseComplements: Boolean) extends Counting(s, spl) {
+
+  import org.apache.spark.sql._
+  import spark.sqlContext.implicits._
+
+  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])]): Dataset[(Array[Int], Long)] = {
+    val k = spl.k
+    segments.flatMap { case (hash, segments) => {
+      countsFromSequences(segments, k)
+    } }
+  }
+
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
+    val spl = this.spl
+    uncountedToCounts(
+      routines.segmentsByHash(segments, spl, addReverseComplements))
+  }
+
+  def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
+    val k = spl.k
+    val byHash = routines.segmentsByHash(segments, spl, addReverseComplements)
+    if (raw) {
+      byHash.map { case (hash, segments) => {
+        //Simply count number of k-mers as a whole (including duplicates)
+        //This algorithm should work even when the data is very skewed.
+        val totalAbundance = segments.iterator.map(x => x.size.toLong - (k - 1)).sum
+        BucketStats(segments.length, totalAbundance, 0)
+      } }
+    } else {
+      byHash.map { case (hash, segments) => {
+        val counted = countsFromSequences(segments, k)
+        val (numDistinct, totalAbundance): (Long, Long) =
+          counted.foldLeft((0L, 0L))((acc, item) => (acc._1 + 1, acc._2 + item._2))
+
+        BucketStats(segments.length, totalAbundance, numDistinct)
+      } }
+    }
+  }
 }
 
 /**
