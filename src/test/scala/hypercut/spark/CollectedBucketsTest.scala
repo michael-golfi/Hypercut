@@ -8,7 +8,7 @@ class CollectedBucketsTest extends FunSuite with Matchers with SparkSessionTestW
   val k = 4
 
   implicit class ExtBoundaryBucket(bb: BoundaryBucket) {
-    def comparable: (Long, Seq[String], Seq[String], Int) = (bb.id, bb.core.toSeq, bb.boundary.toSeq, k)
+    def comparable: (Long, Seq[String], Seq[String]) = (bb.id, bb.core.toList, bb.boundary.toList)
   }
 
   def mkBB(id: Int, core: Array[String], boundary: Array[String]) =
@@ -24,7 +24,7 @@ class CollectedBucketsTest extends FunSuite with Matchers with SparkSessionTestW
     var cb = CollectedBuckets(b1, 1, true, Array((b2, 1)))
     cb.unified(k).size should equal(1)
     cb.unified(k).head.comparable should equal(
-      (2, Seq("ACTG", "GTTG", "TTTT"), Seq("GGGG"))
+      (2, List("ACTG", "GTTG", "TTTT"), List("GGGG"))
     )
 
     cb = CollectedBuckets(b1, 1, false, Array((b2, 1)))

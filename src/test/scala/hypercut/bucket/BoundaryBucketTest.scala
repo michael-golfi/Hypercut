@@ -79,8 +79,8 @@ class BoundaryBucketTest extends FunSuite with Matchers {
     //TODO test boundary flag as well
     val k = 4
     val bkt = BoundaryBucket(1, Array(), Array("ACTGGG", "CTGAA", "CCCC", "TTTT", "GGGA"))
-    bkt.ops(k).splitSequences.map(_.map(_._1)) should contain theSameElementsAs(List(
-      List("ACTGGG", "CTGAA", "GGGA"),
+    bkt.ops(k).splitSequences.map(_.map(_._1).sorted) should contain theSameElementsAs(List(
+      List("ACTGGG", "CTGAA", "GGGA").sorted,
       List("CCCC"),
       List("TTTT")
       ))
