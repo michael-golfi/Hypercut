@@ -90,21 +90,23 @@ object MotifSet {
     }
   }
 
-  /**
-   * Size of a compact motif set in bytes
-   */
-  def compactSize(space: MotifSpace) = 2 * space.n
-
   def unpackToCompact(space: MotifSpace, key: String) =
     unpack(space, key).compact
 
   def uncompactToString(data: Array[Byte], space: MotifSpace): String = {
     val b = ByteBuffer.wrap(data)
     val r = new StringBuilder
-    val n = b.capacity() / 2
+    val n = b.capacity() / space.compactBytesPerMotif
     var i = 0
     while (i < n) {
-      r.append(space.byPriority(b.get))
+      if (space.width > 8) {
+        r.append(space.byPriority(b.getInt))
+      } else if (space.width > 4) {
+        r.append(space.byPriority(b.getShort))
+      } else {
+        r.append(space.byPriority(b.get))
+      }
+
       val pos = b.get
       if (pos < 10) {
         r.append("0")
@@ -198,13 +200,19 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
   }
 
   lazy val compact = {
-    val r = ByteBuffer.allocate(compactSize(space))
+    val r = ByteBuffer.allocate(space.compactSize)
     val it = relativeMotifs.iterator
     var hash = 0
     while (it.hasNext) {
       val m = it.next
-      val tag = m.features.tagRank.toByte
-      r.put(tag)
+      val tag = m.features.tagRank
+      if (space.width > 8) {
+        r.putInt(tag)
+      } else if (space.width > 4) {
+        r.putShort(tag.toShort)
+      } else {
+        r.put(tag.toByte)
+      }
       //TODO check/warn about max size of positions, if we're not using short for the position
       val pos = m.pos.toByte
       r.put(pos)

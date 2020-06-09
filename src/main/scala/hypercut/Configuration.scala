@@ -42,8 +42,15 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
     descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(4))
   val space = opt[String](required = false, descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
 
+  val width = opt[Int](required = false, descr = "MotifSet hash: Width of motifs", default = None)
+
   val sample = opt[Double](required = false, descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
       default = None)
 
-  def preferredSpace = MotifSpace.named(space(), numMotifs())
+  def preferredSpace = {
+    width.toOption match {
+      case Some(w) => MotifSpace.ofLength(w, numMotifs())
+      case None => MotifSpace.named(space(), numMotifs())
+    }
+  }
 }

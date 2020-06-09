@@ -1,6 +1,8 @@
 package hypercut.hash
 
 import scala.annotation.tailrec
+import scala.collection.Searching
+import scala.collection.Searching.{Found, InsertionPoint}
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -32,15 +34,16 @@ final case class ScannerState(val seenString: String, foundMotif: Option[String]
  */
 final class FSMScanner(val space: MotifSpace) {
   def motifsByPriority = space.byPriority
+  def motifs = motifsByPriority.toSet
 
   val alphabet = (0.toChar to 'T').toArray //includes ACTG
   val initState = ScannerState("", None, None, alphabet.map(a => null))
   val usedCharSet = Seq('A', 'C', 'T', 'G', 'N')
 
-  val maxPtnLength = motifsByPriority.map(_.length).max
+  val maxPtnLength = space.width
   def padToLength(ptn: String): Seq[String] = {
     if (ptn.length < maxPtnLength) {
-      Seq(ptn + "A", ptn + "C", ptn + "T", ptn + "G").filter(! motifsByPriority.contains(_)).
+      Seq(ptn + "A", ptn + "C", ptn + "T", ptn + "G").filter(! motifs.contains(_)).
         flatMap(padToLength(_))
     } else {
       Seq(ptn)
@@ -51,30 +54,19 @@ final class FSMScanner(val space: MotifSpace) {
   //This map will match an extended motif such as ACT to its "true match" AC
   val trueMatches = Map.empty ++ motifsByPriority.flatMap(x => (padToLength(x).map(_ -> x)))
 
-  def buildStatesFrom(seen: String, filtered: Seq[String]): Array[ScannerState] = {
-    val candidates = filtered.filter(_.startsWith(seen))
-    val i = seen.length()
-    alphabet.map(a => {
-      if (candidates.exists(_.startsWith(seen + a))) {
-        val next = seen + a
-        val (matched, features) = {
-          if (filtered.contains(next)) {
-            val trueMatch = trueMatches(next)
-            (Some(trueMatch), Some(space.getFeatures(trueMatch)))
-          } else {
-            (None, None)
-          }
-        }
-
-        ScannerState(next, matched, features,
-          buildStatesFrom(next, filtered.filter(_.startsWith(next)))
-        )
-      } else initState
-    }).toArray
+  def hasItemWithPrefix(keys: Seq[String], prefix: String) = {
+    Searching.search(keys).search(prefix) match {
+      case InsertionPoint(i) =>
+        (i < keys.length) &&
+          keys(i).startsWith(prefix)
+      case Found(i) => true
+      case _ => false
+    }
   }
 
   def buildStates() {
-    val matchKeys = trueMatches.keys.toSeq
+    val matchKeys = trueMatches.keys.toSeq.sorted
+
     var tmpMap = Map[String, ScannerState]("" -> initState)
     var i = 1
     var strings = usedCharSet.map(_.toString)
@@ -92,7 +84,7 @@ final class FSMScanner(val space: MotifSpace) {
         //Transition into same length, e.g. AGG into GGT
         tmpMap(s).transitions(a) = tmpMap(s.substring(1) + a)
         //Transition into longer, e.g. AG into AGG, when a match is possible
-        if (matchKeys.exists(_.startsWith(s))) {
+        if (hasItemWithPrefix(matchKeys, s)) {
           tmpMap(s.dropRight(1)).transitions(s.last) = tmpMap(s)
         }
       }

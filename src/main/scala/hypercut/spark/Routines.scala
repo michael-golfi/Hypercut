@@ -63,7 +63,7 @@ class Routines(val spark: SparkSession) {
     val in = getReadsFromFasta(input, true, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(s"Discovered frequencies in fraction $fraction")
-    counter.toSpaceByFrequency(space.n)
+    counter.toSpaceByFrequency(space.n, space.width)
   }
 
   /**

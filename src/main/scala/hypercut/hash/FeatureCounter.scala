@@ -46,17 +46,19 @@ final case class FeatureCounter() {
     def perc(x: Long) = "%.2f%%".format(x.toDouble/s * 100)
 
     println(heading)
-    println(counter.map(_._1).mkString("\t"))
-    println(counter.map(_._2).mkString("\t"))
-    println(counter.map(c => perc(c._2)).mkString("\t"))
+    val first = counter.take(20)
+    println(s"Showing max 20/${counter.size} motifs")
+    println(first.map(_._1).mkString("\t"))
+    println(first.map(_._2).mkString("\t"))
+    println(first.map(c => perc(c._2)).mkString("\t"))
   }
 
   /**
    * Construct a new motif space where the least common motifs in this counter
    * have the highest priority.
    */
-  def toSpaceByFrequency(n: Int) = {
-    new MotifSpace(counter.toSeq.sortBy(_._2).map(_._1).toArray, n)
+  def toSpaceByFrequency(n: Int, width: Int) = {
+    new MotifSpace(counter.toSeq.sortBy(_._2).map(_._1).toArray, n, width)
   }
 
 }
