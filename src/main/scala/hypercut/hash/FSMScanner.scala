@@ -5,6 +5,37 @@ import scala.collection.Searching
 import scala.collection.Searching.{Found, InsertionPoint}
 import scala.collection.mutable.ArrayBuffer
 
+object SingletonScanner {
+
+  private var scanner: Option[FSMScanner] = None
+
+  //The scanner is identified by an ID string to avoid expensive equality checks.
+  private var lastId: Option[String] = None
+
+  /*
+   * Avoid expensive re-initialization of the scanner.
+   * The scanner should be cleared when no longer needed, to reclaim memory.
+   */
+  def get(space: MotifSpace): FSMScanner = synchronized {
+    lastId match {
+      case Some(li) =>
+        if (li != space.id) {
+          scanner = Some(new FSMScanner(space))
+          lastId = Some(space.id)
+        }
+      case None =>
+        scanner = Some(new FSMScanner(space))
+        lastId = Some(space.id)
+    }
+    scanner.get
+  }
+
+  def clear(): Unit = {
+    scanner = None
+    lastId = None
+  }
+}
+
 /**
  * In the 'transitions' array the next state will be looked up through the value of the seen character.
  */

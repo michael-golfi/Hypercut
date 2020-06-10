@@ -11,7 +11,7 @@ object MotifSpace {
         "TTA",
         "AT", "AC",
         "GT", "GC",
-        "CTT"), n, 3)
+        "CTT"), n, "simple")
 
   val mixedTest = Seq(
     "ATA", "CCT", "AGG",
@@ -47,23 +47,23 @@ object MotifSpace {
     }
   }
 
-  def named(name: String, n: Int): MotifSpace = using(namedMotifs(name), n, 4)
+  def named(name: String, n: Int): MotifSpace = using(namedMotifs(name), n, name)
 
-  def ofLength(w: Int, n: Int): MotifSpace = using(motifsOfLength(w), n, w)
+  def ofLength(w: Int, n: Int, id: String): MotifSpace = using(motifsOfLength(w), n, id)
 
-  def using(mers: Seq[String], n: Int, width: Int) = new MotifSpace(mers.toArray, n, width)
+  def using(mers: Seq[String], n: Int, id: String) = new MotifSpace(mers, n, id)
 }
 
 /**
  * A set of motifs that can be used, and their relative priorities.
  * @param n Number of motifs in a motif set.
  * @param width Max width of motifs in bps.
+ * @param id To help distinguish this space from other spaces, for quick equality check
  */
-final case class MotifSpace(val byPriority: Array[String], val n: Int, val width: Int) {
-  val maxMotifLength = byPriority.map(_.length()).max
+final case class MotifSpace(val byPriority: Seq[String], val n: Int, id: String) {
+  val width = byPriority.map(_.length()).max
+  def maxMotifLength = width
   val minMotifLength = byPriority.map(_.length()).min
-
-  val byFirstChar = byPriority.groupBy(_.charAt(0)).toMap
 
   def minPermittedStartOffset(motif: String) =
     maxMotifLength - motif.length()

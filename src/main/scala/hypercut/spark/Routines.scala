@@ -51,19 +51,19 @@ class Routines(val spark: SparkSession) {
    * Count motifs such as AC, AT, TTT in a set of reads.
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
-    reads.map(r => {
-      val c = new FeatureCounter
+    reads.mapPartitions(rs => {
       val s = new FeatureScanner(space)
-      s.scanRead(c, r)
-      c
+      val c = new FeatureCounter(space)
+      s.scanGroup(c, rs)
+      Iterator(c)
     }).reduce(_ + _)
   }
 
   def createSampledSpace(input: String, fraction: Double, space: MotifSpace): MotifSpace = {
-    val in = getReadsFromFasta(input, true, Some(fraction))
+    val in = getReadsFromFasta(input, false, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(s"Discovered frequencies in fraction $fraction")
-    counter.toSpaceByFrequency(space.n, space.width)
+    counter.toSpaceByFrequency(space.n, s"sampled$fraction")
   }
 
   /**

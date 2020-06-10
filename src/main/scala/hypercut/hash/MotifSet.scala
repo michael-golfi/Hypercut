@@ -96,15 +96,15 @@ object MotifSet {
   def uncompactToString(data: Array[Byte], space: MotifSpace): String = {
     val b = ByteBuffer.wrap(data)
     val r = new StringBuilder
-    val n = b.capacity() / space.compactBytesPerMotif
+    val n = b.capacity() / (space.compactBytesPerMotif + 1)
     var i = 0
     while (i < n) {
       if (space.width > 8) {
         r.append(space.byPriority(b.getInt))
       } else if (space.width > 4) {
-        r.append(space.byPriority(b.getShort))
+        r.append(space.byPriority(b.getShort - Short.MinValue))
       } else {
-        r.append(space.byPriority(b.get))
+        r.append(space.byPriority(b.get - Byte.MinValue))
       }
 
       val pos = b.get
@@ -209,9 +209,9 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
       if (space.width > 8) {
         r.putInt(tag)
       } else if (space.width > 4) {
-        r.putShort(tag.toShort)
+        r.putShort((tag + Short.MinValue).toShort)
       } else {
-        r.put(tag.toByte)
+        r.put((tag + Byte.MinValue).toByte)
       }
       //TODO check/warn about max size of positions, if we're not using short for the position
       val pos = m.pos.toByte

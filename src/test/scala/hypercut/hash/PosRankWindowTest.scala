@@ -1,9 +1,7 @@
-package hypercut
+package hypercut.hash
 
-import org.scalatest.Matchers
-import org.scalatest.FunSuite
-import hypercut.hash.PosRankWindow
-import hypercut.hash.End
+import hypercut.Testing
+import org.scalatest.{FunSuite, Matchers}
 
 class PosRankWindowTest extends FunSuite with Matchers {
   import Testing._

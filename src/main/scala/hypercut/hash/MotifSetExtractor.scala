@@ -8,15 +8,16 @@ import hypercut.shortread.Read
 import scala.collection.mutable.ArrayBuffer
 
 final case class MotifSetExtractor(space: MotifSpace, k: Int) extends ReadSplitter[MotifSet] {
+
+  @volatile
+  lazy val scanner = SingletonScanner.get(space)
+
   @volatile
   var readCount = 0
   @volatile
   var kmerCount = 0
 
   val n = space.n
-
-  @volatile
-  lazy val scanner = new FSMScanner(space)
 
   /**
    * Scans a single read, using mutable state to track the current motif set
@@ -195,6 +196,7 @@ object MotifSetExtractor {
 
   def fromSpace(spaceName: String, numMotifs: Int, k: Int) = {
     val space = MotifSpace.named(spaceName, numMotifs)
+    val scanner = SingletonScanner.get(space)
     new MotifSetExtractor(space, k)
   }
 

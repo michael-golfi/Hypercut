@@ -1,4 +1,4 @@
-package hypercut
+package hypercut.hash
 
 import org.scalatest.{FunSuite, Matchers}
 

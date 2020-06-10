@@ -2,32 +2,19 @@ package hypercut.hash
 
 import hypercut.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
+import scala.collection.mutable
 
 /**
  * Looks for raw motifs in reads, counting them in a histogram.
  */
 final class FeatureScanner(val space: MotifSpace) {
-
-  def motifTagAt(read: String, pos: Int): Iterator[String] = {
-    //rely on these also being rank sorted
-    val candidates = space.byFirstChar.get(read.charAt(pos))
-    candidates match {
-      case Some(cs) =>
-        cs.iterator.filter(m => read.regionMatches(pos + 1, m, 1, m.length() - 1))
-      case None => Iterator.empty
-    }
-  }
+  val scanner = SingletonScanner.get(space)
 
   @volatile var readCount: Int = 0
   def scanRead(counter: FeatureCounter, read: String) {
     readCount += 1
-    var i = 0
-    val max = read.length - space.minMotifLength
-    while (i < max) {
-      for (m <- motifTagAt(read, i)) {
-        counter += m
-      }
-      i += 1
+    for { m <- scanner.allMatches(read) } {
+      counter += m
     }
   }
 
@@ -42,7 +29,7 @@ final class FeatureScanner(val space: MotifSpace) {
         {
           println(s"$readCount reads seen")
           gg.par.map(rs => {
-            val counter = new FeatureCounter
+            val counter = new FeatureCounter(space)
             val forward = scanGroup(counter, rs)
             val rev = scanGroup(counter, rs.map(DNAHelpers.reverseComplement))
             FeatureScanner.this.synchronized {
@@ -57,8 +44,9 @@ final class FeatureScanner(val space: MotifSpace) {
   def scan(inputFile: String) {
     val counter = handle(ReadFiles.iterator(inputFile))
     counter.print("Total feature count")
-    println("In order from rare to common: ")
-    println(counter.counter.toList.sortBy(_._2).map(_._1))
+    println("In order from rare to common (first 20): ")
+    println(counter.motifsWithCounts.sortBy(_._2).
+      take(20).toList.map(_._1))
     println("")
   }
 }

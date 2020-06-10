@@ -49,7 +49,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   def preferredSpace = {
     width.toOption match {
-      case Some(w) => MotifSpace.ofLength(w, numMotifs())
+      case Some(w) => MotifSpace.ofLength(w, numMotifs(), "default")
       case None => MotifSpace.named(space(), numMotifs())
     }
   }
