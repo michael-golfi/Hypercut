@@ -36,12 +36,19 @@ object SingletonScanner {
   }
 }
 
+object FSMScanner {
+  val charMod = 5
+  val usedCharSet = "ACTGN".toSeq
+  //These must all be unique and preferrably small
+  val alphabet = usedCharSet.map(x => x % charMod).toArray
+}
 /**
  * In the 'transitions' array the next state will be looked up through the value of the seen character.
+ * There is a match iff features is not None.
  */
-final case class ScannerState(val seenString: String, foundMotif: Option[String] = None,
-                              features: Option[Features] = None,
-                              var transitions: Array[ScannerState]) {
+final case class ScannerState(val seenString: String, features: Option[Features] = None,
+                              val transitions: Array[ScannerState]) {
+  import FSMScanner._
 
   //TODO populate this state with the found code pattern (etc) for each found motif, to avoid lookups later
 
@@ -50,7 +57,7 @@ final case class ScannerState(val seenString: String, foundMotif: Option[String]
   override def toString = s"State[$seenString]"
 
   def advance(next: Char): ScannerState = {
-    transitions(next)
+    transitions(next % charMod)
   }
 
   def isTerminal(init: ScannerState) = !transitions.exists(x => !(x eq init))
@@ -64,12 +71,11 @@ final case class ScannerState(val seenString: String, foundMotif: Option[String]
  * much of a concern in the big picture.
  */
 final class FSMScanner(val space: MotifSpace) {
+  import FSMScanner._
   def motifsByPriority = space.byPriority
   def motifs = motifsByPriority.toSet
 
-  val alphabet = (0.toChar to 'T').toArray //includes ACTG
-  val initState = ScannerState("", None, None, alphabet.map(a => null))
-  val usedCharSet = Seq('A', 'C', 'T', 'G', 'N')
+  val initState = ScannerState("", None, alphabet.map(a => null))
 
   val maxPtnLength = space.width
   def padToLength(ptn: String): Seq[String] = {
@@ -104,8 +110,7 @@ final class FSMScanner(val space: MotifSpace) {
     while (i <= maxPtnLength) {
       //Set up the states for seen strings of a certain length
       //Not all will be needed.
-      tmpMap ++= strings.map(s => (s -> ScannerState(s, trueMatches.get(s),
-        trueMatches.get(s).map(m => space.getFeatures(m)),
+      tmpMap ++= strings.map(s => (s -> ScannerState(s, trueMatches.get(s).map(m => space.getFeatures(m)),
         alphabet.map(a => initState))))
 
       for {
@@ -113,10 +118,10 @@ final class FSMScanner(val space: MotifSpace) {
         a <- usedCharSet
       } {
         //Transition into same length, e.g. AGG into GGT
-        tmpMap(s).transitions(a) = tmpMap(s.substring(1) + a)
+        tmpMap(s).transitions(a % charMod) = tmpMap(s.substring(1) + a)
         //Transition into longer, e.g. AG into AGG, when a match is possible
         if (hasItemWithPrefix(matchKeys, s)) {
-          tmpMap(s.dropRight(1)).transitions(s.last) = tmpMap(s)
+          tmpMap(s.dropRight(1)).transitions(s.last % charMod) = tmpMap(s)
         }
       }
       i += 1
@@ -126,7 +131,7 @@ final class FSMScanner(val space: MotifSpace) {
       a <- usedCharSet
     } {
       //Initial transitions from the init state
-      initState.transitions(a) = tmpMap(a.toString)
+      initState.transitions(a % charMod) = tmpMap(a.toString)
     }
   }
 
