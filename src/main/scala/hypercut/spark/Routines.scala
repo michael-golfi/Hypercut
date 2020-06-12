@@ -8,6 +8,7 @@ import hypercut.graph.Contig
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 import miniasm.genome.util.DNAHelpers
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.SparkSession
 
 final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
@@ -51,9 +52,10 @@ class Routines(val spark: SparkSession) {
    * Count motifs such as AC, AT, TTT in a set of reads.
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
+    val brSpace = sc.broadcast(space)
     reads.mapPartitions(rs => {
-      val s = new FeatureScanner(space)
-      val c = new FeatureCounter(space)
+      val s = new FeatureScanner(brSpace.value)
+      val c = new FeatureCounter(brSpace.value)
       s.scanGroup(c, rs)
       Iterator(c)
     }).reduce(_ + _)
@@ -73,7 +75,7 @@ class Routines(val spark: SparkSession) {
   type ProcessedRead = (Array[HashSegment])
 
 
-  def countedSegmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
+  def countedSegmentsByHash[H](segments: Dataset[HashSegment], spl: Broadcast[ReadSplitter[H]],
                                addReverseComplements: Boolean) = {
     val countedSegments = if (addReverseComplements) {
       val step1 =
@@ -98,7 +100,7 @@ class Routines(val spark: SparkSession) {
       as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
   }
 
-  def segmentsByHash[H](segments: Dataset[HashSegment], spl: ReadSplitter[H],
+  def segmentsByHash[H](segments: Dataset[HashSegment],
                         addReverseComplements: Boolean) = {
     assert(!addReverseComplements) //not yet implemented
 
@@ -134,11 +136,16 @@ object SerialRoutines {
     case _ => Some(c)
   }
 
-  def createHashSegments[H](r: String, spl: ReadSplitter[H]) = {
+  def createHashSegments[H](r: String, spl: Broadcast[ReadSplitter[H]]): Iterator[HashSegment] = {
+    val splitter = spl.value
+    createHashSegments(r, splitter)
+  }
+
+  def createHashSegments[H](r: String, splitter: ReadSplitter[H]): Iterator[HashSegment] = {
     for {
-      (h, s) <- spl.split(r)
-      ss <- removeN(s, spl.k)
-      r = HashSegment(spl.compact(h), BPBuffer.wrap(ss))
+      (h, s) <- splitter.split(r)
+      ss <- removeN(s, splitter.k)
+      r = HashSegment(splitter.compact(h), BPBuffer.wrap(ss))
     } yield r
   }
 }

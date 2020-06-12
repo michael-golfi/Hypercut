@@ -50,8 +50,6 @@ final case class ScannerState(val seenString: String, features: Option[Features]
                               val transitions: Array[ScannerState]) {
   import FSMScanner._
 
-  //TODO populate this state with the found code pattern (etc) for each found motif, to avoid lookups later
-
   val startOffset = (seenString.length - 1)
 
   override def toString = s"State[$seenString]"

@@ -40,9 +40,10 @@ class BucketGraph(routines: Routines) {
    */
   def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H],
                      addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+    val bcSplit = sc.broadcast(spl) //TODO test
     val segments = reads.flatMap(r => createHashSegments(r, spl))
     countedToSequenceBuckets(
-      routines.countedSegmentsByHash(segments, spl, addReverseComplements),
+      routines.countedSegmentsByHash(segments, bcSplit, addReverseComplements),
       spl.k
     )
   }

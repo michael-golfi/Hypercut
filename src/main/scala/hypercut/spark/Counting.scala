@@ -1,15 +1,14 @@
 package hypercut.spark
 
 import java.nio.ByteBuffer
-import java.util
 
 import hypercut._
 import hypercut.bucket.BucketStats
 import hypercut.hash.{ReadSplitter, SingletonScanner}
-import hypercut.spark.Counting.{countsFromCountedSequences, countsFromSequences}
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.{Dataset, SparkSession}
 
 import scala.util.Sorting
@@ -25,19 +24,23 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
 
+  //Broadcasting the splitter mainly because it contains a reference to the MotifSpace,
+  //which can be large
+  val bcSplit = sc.broadcast(spl)
+
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats]
 
   def countKmers[H](reads: Dataset[String]) = {
-    val spl = this.spl
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val bcSplit = this.bcSplit
+    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
     val counts = segmentsToCounts(segments)
     countedWithStrings(counts)
   }
 
   def statisticsOnly[H](reads: Dataset[String], raw: Boolean): Unit = {
-    val spl = this.spl
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val bcSplit = this.bcSplit
+    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
     val bkts = toStatBuckets(segments, raw)
     routines.showStats(bkts)
@@ -46,8 +49,8 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)]
 
   def writeCountedKmers[H](reads: Dataset[String], withKmers: Boolean, output: String) {
-    val spl = this.spl
-    val segments = reads.flatMap(r => createHashSegments(r, spl))
+    val bcSplit = this.bcSplit
+    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val counts = segmentsToCounts(segments)
 
     if (withKmers) {
@@ -58,12 +61,12 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
   }
 
   def countedWithStrings[H](counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
-    val spl = this.spl
+    val k = spl.k
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible
-      val buffer = ByteBuffer.allocate(spl.k / 4 + 4)
-      val builder = new StringBuilder(spl.k + 16)
-      xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, spl.k.toShort), x._2))
+      val buffer = ByteBuffer.allocate(k / 4 + 4)
+      val builder = new StringBuilder(k + 16)
+      xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, k.toShort), x._2))
     })
   }
 
@@ -87,22 +90,23 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
 }
 
-class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
+final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
                          addReverseComplements: Boolean) extends Counting(s, spl) {
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
   import Counting._
 
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] =
+  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] = {
     counted.flatMap { case (hash, segmentsCounts) => {
       hashingStageCleanup()
       countsFromCountedSequences(segmentsCounts, k)
     } }
+  }
 
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
-    countedToCounts(
-      routines.countedSegmentsByHash(segments, spl, addReverseComplements),
+    val bcSplit = this.bcSplit
+    countedToCounts(routines.countedSegmentsByHash(segments, bcSplit, addReverseComplements),
       spl.k)
   }
 
@@ -111,7 +115,7 @@ class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
   }
 }
 
-class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
+final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
                         addReverseComplements: Boolean) extends Counting(s, spl) {
 
   import org.apache.spark.sql._
@@ -127,14 +131,13 @@ class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
   }
 
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
-    val spl = this.spl
     uncountedToCounts(
-      routines.segmentsByHash(segments, spl, addReverseComplements))
+      routines.segmentsByHash(segments, addReverseComplements))
   }
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
     val k = spl.k
-    val byHash = routines.segmentsByHash(segments, spl, addReverseComplements)
+    val byHash = routines.segmentsByHash(segments, addReverseComplements)
     if (raw) {
       byHash.map { case (hash, segments) => {
         hashingStageCleanup()
@@ -163,6 +166,7 @@ object Counting {
   def hashingStageCleanup(): Unit = {
     //Cleanup from last stage, needs to be run once per executor only
     //TODO is there a better place for this?
+    //TODO consider using broadcast vars instead of static singleton
     SingletonScanner.clear()
   }
 
