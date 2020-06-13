@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import hypercut._
 import hypercut.bucket.BucketStats
-import hypercut.hash.{ReadSplitter, SingletonScanner}
+import hypercut.hash.ReadSplitter
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
@@ -99,7 +99,6 @@ final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
 
   def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] = {
     counted.flatMap { case (hash, segmentsCounts) => {
-      hashingStageCleanup()
       countsFromCountedSequences(segmentsCounts, k)
     } }
   }
@@ -125,7 +124,6 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
   def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])]): Dataset[(Array[Int], Long)] = {
     val k = spl.k
     segments.flatMap { case (hash, segments) => {
-      hashingStageCleanup()
       countsFromSequences(segments, k)
     } }
   }
@@ -140,7 +138,6 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
     val byHash = routines.segmentsByHash(segments, addReverseComplements)
     if (raw) {
       byHash.map { case (hash, segments) => {
-        hashingStageCleanup()
         //Simply count number of k-mers as a whole (including duplicates)
         //This algorithm should work even when the data is very skewed.
         val totalAbundance = segments.iterator.map(x => x.size.toLong - (k - 1)).sum
@@ -148,7 +145,6 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
       } }
     } else {
       byHash.map { case (hash, segments) => {
-        hashingStageCleanup()
         val counted = countsFromSequences(segments, k)
         val (numDistinct, totalAbundance): (Long, Long) =
           counted.foldLeft((0L, 0L))((acc, item) => (acc._1 + 1, acc._2 + item._2))
@@ -163,13 +159,6 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
  * Serialization-safe methods for counting
  */
 object Counting {
-  def hashingStageCleanup(): Unit = {
-    //Cleanup from last stage, needs to be run once per executor only
-    //TODO is there a better place for this?
-    //TODO consider using broadcast vars instead of static singleton
-    SingletonScanner.clear()
-  }
-
   implicit object KmerOrdering extends Ordering[Array[Int]] {
     override def compare(x: Array[Int], y: Array[Int]): Int = {
       val l = x.length

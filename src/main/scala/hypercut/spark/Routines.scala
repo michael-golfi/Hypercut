@@ -52,10 +52,10 @@ class Routines(val spark: SparkSession) {
    * Count motifs such as AC, AT, TTT in a set of reads.
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
-    val brSpace = sc.broadcast(space)
+    val brScanner = sc.broadcast(new FeatureScanner(space))
     reads.mapPartitions(rs => {
-      val s = new FeatureScanner(brSpace.value)
-      val c = new FeatureCounter(brSpace.value)
+      val s = brScanner.value
+      val c = new FeatureCounter(s.space)
       s.scanGroup(c, rs)
       Iterator(c)
     }).reduce(_ + _)
