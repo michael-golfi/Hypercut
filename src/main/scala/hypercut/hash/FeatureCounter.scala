@@ -2,14 +2,18 @@ package hypercut.hash
 
 import scala.collection.mutable.Map
 
+object FeatureCounter {
+  def apply(space: MotifSpace) = new FeatureCounter(space.byPriority.length)
+}
+
 /**
  * Counts motif occurrences (independently) in a dataset
  * to establish relative frequencies.
  */
-final case class FeatureCounter(space: MotifSpace) {
-  val counter = new Array[Long](space.byPriority.length)
+final case class FeatureCounter(numMotifs: Int) {
+  val counter = new Array[Long](numMotifs)
 
-  def motifsWithCounts = space.byPriority zip counter
+  def motifsWithCounts(space: MotifSpace) = space.byPriority zip counter
 
   def increment(motif: Motif, n: Long = 1) {
     counter(motif.features.tagRank) += n
@@ -43,7 +47,7 @@ final case class FeatureCounter(space: MotifSpace) {
    * @return
    */
   def + (other: FeatureCounter) = {
-    val r = new FeatureCounter(space)
+    val r = FeatureCounter(other.numMotifs)
     r += this
     r += other
     r
@@ -51,12 +55,12 @@ final case class FeatureCounter(space: MotifSpace) {
 
   def sum: Long = counter.sum
 
-  def print(heading: String) {
+  def print(space: MotifSpace, heading: String) {
     val s = sum
     def perc(x: Long) = "%.2f%%".format(x.toDouble/s * 100)
 
     println(heading)
-    val first = (motifsWithCounts).take(20)
+    val first = (motifsWithCounts(space)).take(20)
     println(s"Showing max 20/${counter.size} motifs")
     println(first.map(_._1).mkString("\t"))
     println(first.map(_._2).mkString("\t"))
@@ -66,10 +70,11 @@ final case class FeatureCounter(space: MotifSpace) {
   /**
    * Construct a new motif space where the least common motifs in this counter
    * have the highest priority.
+   * Other parameters (e.g. n) will be shared with the old space that this is based on.
    */
-  def toSpaceByFrequency(n: Int, id: String) = {
-    val pairs = motifsWithCounts
-    new MotifSpace(pairs.sortBy(_._2).map(_._1), n, id)
+  def toSpaceByFrequency(oldSpace: MotifSpace, id: String) = {
+    val pairs = motifsWithCounts(oldSpace)
+    new MotifSpace(pairs.sortBy(_._2).map(_._1), oldSpace.n, id)
   }
 
 }

@@ -29,11 +29,11 @@ final class FeatureScanner(val space: MotifSpace) extends Serializable {
         {
           println(s"$readCount reads seen")
           gg.par.map(rs => {
-            val counter = new FeatureCounter(space)
+            val counter = FeatureCounter(space)
             val forward = scanGroup(counter, rs)
             val rev = scanGroup(counter, rs.map(DNAHelpers.reverseComplement))
             FeatureScanner.this.synchronized {
-              counter.print("Scanned features")
+              counter.print(space, "Scanned features")
             }
             counter
           }).seq.reduce(_ + _)
@@ -43,9 +43,9 @@ final class FeatureScanner(val space: MotifSpace) extends Serializable {
 
   def scan(inputFile: String) {
     val counter = handle(ReadFiles.iterator(inputFile))
-    counter.print("Total feature count")
+    counter.print(space, "Total feature count")
     println("In order from rare to common (first 20): ")
-    println(counter.motifsWithCounts.sortBy(_._2).
+    println(counter.motifsWithCounts(space).sortBy(_._2).
       take(20).toList.map(_._1))
     println("")
   }

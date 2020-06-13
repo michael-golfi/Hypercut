@@ -1,7 +1,7 @@
 package hypercut.hash
 
 import scala.annotation.tailrec
-import scala.collection.Searching
+import scala.collection.{Searching, mutable}
 import scala.collection.Searching.{Found, InsertionPoint}
 import scala.collection.mutable.ArrayBuffer
 
@@ -15,19 +15,15 @@ object FSMScanner {
  * In the 'transitions' array the next state will be looked up through the value of the seen character.
  * There is a match iff features is not None.
  */
-final case class ScannerState(val seenString: String, features: Option[Features] = None,
+final case class ScannerState(val startOffset: Int, features: Option[Features],
                               val transitions: Array[ScannerState]) {
   import FSMScanner._
 
-  val startOffset = (seenString.length - 1)
-
-  override def toString = s"State[$seenString]"
+//  override def toString = s"State[$seenString]"
 
   def advance(next: Char): ScannerState = {
     transitions(next % charMod)
   }
-
-  def isTerminal(init: ScannerState) = !transitions.exists(x => !(x eq init))
 }
 
 /**
@@ -42,7 +38,7 @@ final class FSMScanner(val space: MotifSpace) {
   def motifsByPriority = space.byPriority
   def motifs = motifsByPriority.toSet
 
-  val initState = ScannerState("", None, alphabet.map(a => null))
+  val initState = ScannerState(-1, None, alphabet.map(a => null))
 
   val maxPtnLength = space.width
   def padToLength(ptn: String): Seq[String] = {
@@ -71,13 +67,14 @@ final class FSMScanner(val space: MotifSpace) {
   def buildStates() {
     val matchKeys = trueMatches.keys.toSeq.sorted
 
-    var tmpMap = Map[String, ScannerState]("" -> initState)
+    val tmpMap = mutable.Map[String, ScannerState]("" -> initState)
     var i = 1
     var strings = usedCharSet.map(_.toString)
     while (i <= maxPtnLength) {
       //Set up the states for seen strings of a certain length
       //Not all will be needed.
-      tmpMap ++= strings.map(s => (s -> ScannerState(s, trueMatches.get(s).map(m => space.getFeatures(m)),
+
+      tmpMap ++= strings.map(s => (s -> ScannerState(s.length - 1, trueMatches.get(s).map(m => space.getFeatures(m)),
         alphabet.map(a => initState))))
 
       for {

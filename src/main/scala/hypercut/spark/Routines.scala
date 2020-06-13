@@ -55,7 +55,7 @@ class Routines(val spark: SparkSession) {
     val brScanner = sc.broadcast(new FeatureScanner(space))
     reads.mapPartitions(rs => {
       val s = brScanner.value
-      val c = new FeatureCounter(s.space)
+      val c = FeatureCounter(s.space)
       s.scanGroup(c, rs)
       Iterator(c)
     }).reduce(_ + _)
@@ -64,8 +64,8 @@ class Routines(val spark: SparkSession) {
   def createSampledSpace(input: String, fraction: Double, space: MotifSpace): MotifSpace = {
     val in = getReadsFromFasta(input, false, Some(fraction))
     val counter = countFeatures(in, space)
-    counter.print(s"Discovered frequencies in fraction $fraction")
-    counter.toSpaceByFrequency(space.n, s"sampled$fraction")
+    counter.print(space, s"Discovered frequencies in fraction $fraction")
+    counter.toSpaceByFrequency(space, s"sampled$fraction")
   }
 
   /**
