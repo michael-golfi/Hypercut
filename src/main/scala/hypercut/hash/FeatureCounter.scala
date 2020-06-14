@@ -47,7 +47,7 @@ final case class FeatureCounter(numMotifs: Int) {
    * @return
    */
   def + (other: FeatureCounter) = {
-    val r = FeatureCounter(other.numMotifs)
+    val r = FeatureCounter(numMotifs)
     r += this
     r += other
     r

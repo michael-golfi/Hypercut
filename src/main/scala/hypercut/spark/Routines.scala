@@ -53,7 +53,9 @@ class Routines(val spark: SparkSession) {
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
     val brScanner = sc.broadcast(new FeatureScanner(space))
-    reads.mapPartitions(rs => {
+    //Repartition since for large data, too many partitions causes a lot of counters to be generated
+    //and collected to the driver
+    reads.repartition(100).mapPartitions(rs => {
       val s = brScanner.value
       val c = FeatureCounter(s.space)
       s.scanGroup(c, rs)

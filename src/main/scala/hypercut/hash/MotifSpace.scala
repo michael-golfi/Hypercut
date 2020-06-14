@@ -7,15 +7,7 @@ import scala.annotation.tailrec
 import scala.collection.Seq
 
 object MotifSpace {
-  def simple(n: Int) = new MotifSpace(Array(
-        "TTA",
-        "AT", "AC",
-        "GT", "GC",
-        "CTT"), n, "simple")
-
-  val mixedTest = Seq(
-    "ATA", "CCT", "AGG",
-    "GT", "AC", "GC", "CC", "GG", "AT")
+  def simple(n: Int) = named("all2", n)
 
   val all1mers = Seq("A", "C", "T", "G")
 
@@ -34,7 +26,6 @@ object MotifSpace {
     case "all2" => all2mers
     case "all3" => all3mers
     case "all4" => all4mers
-    case "mixedTest" => mixedTest
     case _ => throw new Exception(s"Unknown motif space name: $name")
   }
 
@@ -51,7 +42,7 @@ object MotifSpace {
 
   def ofLength(w: Int, n: Int, id: String): MotifSpace = using(motifsOfLength(w), n, id)
 
-  def using(mers: Seq[String], n: Int, id: String) = new MotifSpace(mers, n, id)
+  def using(mers: Seq[String], n: Int, id: String) = new MotifSpace(mers.toArray, n, id)
 }
 
 /**
@@ -60,7 +51,7 @@ object MotifSpace {
  * @param width Max width of motifs in bps.
  * @param id To help distinguish this space from other spaces, for quick equality check
  */
-final case class MotifSpace(val byPriority: Seq[String], val n: Int, id: String) {
+final case class MotifSpace(val byPriority: Array[String], val n: Int, id: String) {
   val width = byPriority.map(_.length()).max
   def maxMotifLength = width
   val minMotifLength = byPriority.map(_.length()).min
