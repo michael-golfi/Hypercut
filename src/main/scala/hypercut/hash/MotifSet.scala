@@ -199,8 +199,8 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
     r.toString
   }
 
-  lazy val compact = {
-    val r = ByteBuffer.allocate(space.compactSize)
+  def asBuffer(size: Int) = {
+    val r = ByteBuffer.allocate(size)
     val it = relativeMotifs.iterator
     var hash = 0
     while (it.hasNext) {
@@ -218,7 +218,18 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
       r.put(pos)
       hash = (hash * 41 + tag) * 41 + pos
     }
-    new CompactNode(r.array(), hash)
+    (r, hash)
+  }
+
+  lazy val compact: CompactNode = {
+    val bufHash = asBuffer(space.compactSize)
+    new CompactNode(bufHash._1.array(), bufHash._2)
+  }
+
+  lazy val compactLong: Long = {
+    assert(space.compactSize <= 8)
+    val buf = asBuffer(8)._1
+    buf.getLong(0)
   }
 
   override def toString = "ms{" + relativeMotifs.mkString(",") + "}"

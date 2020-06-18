@@ -5,7 +5,7 @@ import java.io.PrintStream
 import friedrich.util.Histogram
 import hypercut.{Abundance, CompactEdge}
 import hypercut.bucket.SimpleCountingBucket
-import hypercut.hash.{MotifSetExtractor, ReadSplitter}
+import hypercut.hash.{BucketId, MotifSetExtractor, ReadSplitter}
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.graphframes.GraphFrame
 import vegas.{Bar, Quant, Vegas}
@@ -39,7 +39,7 @@ class BucketGraph(routines: Routines) {
    * (thus, counting k-mers), not collecting edges.
    */
   def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H],
-                     addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+                     addReverseComplements: Boolean): Dataset[(BucketId, SimpleCountingBucket)] = {
     val bcSplit = sc.broadcast(spl) //TODO test
     val segments = reads.flatMap(r => createHashSegments(r, spl))
     countedToSequenceBuckets(
@@ -48,7 +48,7 @@ class BucketGraph(routines: Routines) {
     )
   }
 
-  def countedToSequenceBuckets(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int) =
+  def countedToSequenceBuckets(counted: Dataset[(BucketId, Array[(ZeroBPBuffer, Long)])], k: Int) =
     counted.map { case (hash, segmentsCounts) => {
       val empty = SimpleCountingBucket.empty(k)
       val bkt = empty.insertBulkSegments(segmentsCounts.map(x =>
@@ -61,7 +61,7 @@ class BucketGraph(routines: Routines) {
    * and optionally write them to the output location.
    */
   def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String],
-                     addReverseComplements: Boolean): Dataset[(Array[Byte], SimpleCountingBucket)] = {
+                     addReverseComplements: Boolean): Dataset[(BucketId, SimpleCountingBucket)] = {
     val reads = routines.getReadsFromFasta(input, addReverseComplements)
     val bkts = bucketsOnly(reads, spl, addReverseComplements)
     for (o <- output) {
@@ -115,7 +115,7 @@ class BucketGraph(routines: Routines) {
   }
 
   def toGraphFrame(
-                    bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
+                    bkts: Dataset[(BucketId, SimpleCountingBucket)],
                     edges: Dataset[(CompactEdge)]): GraphFrame = {
     val vertDF = bkts.toDF("id", "bucket")
     val edgeDF = edges.toDF("src", "dst")
@@ -123,12 +123,12 @@ class BucketGraph(routines: Routines) {
     GraphFrame(vertDF, edgeDF)
   }
 
-  def writeBuckets(bkts: Dataset[(Array[Byte], SimpleCountingBucket)], writeLocation: String) {
+  def writeBuckets(bkts: Dataset[(BucketId, SimpleCountingBucket)], writeLocation: String) {
     bkts.write.mode(SaveMode.Overwrite).parquet(s"${writeLocation}_buckets")
   }
 
   def loadBuckets(readLocation: String, minAbundance: Option[Abundance]) = {
-    val buckets = spark.read.parquet(s"${readLocation}_buckets").as[(Array[Byte], SimpleCountingBucket)]
+    val buckets = spark.read.parquet(s"${readLocation}_buckets").as[(BucketId, SimpleCountingBucket)]
     minAbundance match {
       case Some(min) => buckets.flatMap(x => (
         x._2.atMinAbundance(minAbundance).nonEmptyOption.map(b => (x._1, b)))
@@ -158,7 +158,7 @@ class BucketGraph(routines: Routines) {
 
 
   def bucketStats(
-                   bkts: Dataset[(Array[Byte], SimpleCountingBucket)],
+                   bkts: Dataset[(BucketId, SimpleCountingBucket)],
                    edges: Option[Dataset[CompactEdge]],
                    output: PrintStream) {
     val stats = bkts.map(_._2.stats)

@@ -11,9 +11,9 @@ import miniasm.genome.util.DNAHelpers
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.SparkSession
 
-final case class HashSegment(hash: Array[Byte], segment: ZeroBPBuffer)
+final case class HashSegment(hash: BucketId, segment: ZeroBPBuffer)
 
-final case class CountedHashSegment(hash: Array[Byte], segment: ZeroBPBuffer, count: Long)
+final case class CountedHashSegment(hash: BucketId, segment: ZeroBPBuffer, count: Long)
 
 /**
  * Core routines for executing Hypercut from Apache Spark.
@@ -99,7 +99,7 @@ class Routines(val spark: SparkSession) {
 
     val grouped = countedSegments.groupBy($"hash")
     grouped.agg(collect_list(struct($"segment", $"count"))).
-      as[(Array[Byte], Array[(ZeroBPBuffer, Long)])]
+      as[(BucketId, Array[(ZeroBPBuffer, Long)])]
   }
 
   def segmentsByHash[H](segments: Dataset[HashSegment],
@@ -108,7 +108,7 @@ class Routines(val spark: SparkSession) {
 
     val grouped = segments.groupBy($"hash")
     grouped.agg(collect_list($"segment")).
-      as[(Array[Byte], Array[ZeroBPBuffer])]
+      as[(BucketId, Array[ZeroBPBuffer])]
   }
 
 

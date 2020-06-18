@@ -191,7 +191,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
     }
   }
 
-  def compact(hash: MotifSet) = hash.compact.data
+  def compact(hash: MotifSet) = hash.compactLong
 }
 
 object MotifSetExtractor {

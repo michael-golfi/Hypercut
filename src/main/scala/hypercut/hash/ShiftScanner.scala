@@ -29,6 +29,13 @@ final class ShiftScanner(val space: MotifSpace) extends Scanner {
     r
   }
 
+  val featuresByPriority = {
+    space.byPriority.iterator.zipWithIndex.map(p => {
+      new Features(p._1, p._2)
+    }).toArray
+  }
+
+
   /*
   Find all matches in the string.
   Returns an array with the matches in order.
@@ -45,8 +52,7 @@ final class ShiftScanner(val space: MotifSpace) extends Scanner {
     while (pos < data.length) {
       window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
       val priority = space.priorityLookup(window)
-      val tag = space.byPriority(priority)
-      val motif = space.get(tag, (pos - (width -1)))
+      val motif = Motif(pos - (width - 1), featuresByPriority(priority))
       r += motif
       pos += 1
     }

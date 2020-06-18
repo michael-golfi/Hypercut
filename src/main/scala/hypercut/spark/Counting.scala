@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import hypercut._
 import hypercut.bucket.BucketStats
-import hypercut.hash.ReadSplitter
+import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
@@ -97,7 +97,7 @@ final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
   import spark.sqlContext.implicits._
   import Counting._
 
-  def countedToCounts(counted: Dataset[(Array[Byte], Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] = {
+  def countedToCounts(counted: Dataset[(BucketId, Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] = {
     counted.flatMap { case (hash, segmentsCounts) => {
       countsFromCountedSequences(segmentsCounts, k)
     } }
@@ -121,7 +121,7 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
   import spark.sqlContext.implicits._
   import Counting._
 
-  def uncountedToCounts(segments: Dataset[(Array[Byte], Array[ZeroBPBuffer])]): Dataset[(Array[Int], Long)] = {
+  def uncountedToCounts(segments: Dataset[(BucketId, Array[ZeroBPBuffer])]): Dataset[(Array[Int], Long)] = {
     val k = spl.k
     segments.flatMap { case (hash, segments) => {
       countsFromSequences(segments, k)

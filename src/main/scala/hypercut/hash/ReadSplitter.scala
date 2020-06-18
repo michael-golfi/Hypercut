@@ -20,5 +20,5 @@ trait ReadSplitter[H] {
    * @param hash
    * @return
    */
-  def compact(hash: H): Array[Byte]
+  def compact(hash: H): BucketId
 }

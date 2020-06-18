@@ -136,10 +136,11 @@ final case class MinimizerSplitter(k: Int, m: Int, B: Int) extends ReadSplitter[
    * @param hash
    * @return
    */
-  override def compact(hash: Int): Array[Byte] =
-    Array((hash & 255).toByte,
-      ((hash >> 8) & 255).toByte,
-      ((hash >> 16) & 255).toByte,
-      (hash >> 24).toByte
-    )
+  override def compact(hash: Int): Long = hash.toLong
+//    Array((hash & 255).toByte,
+//      ((hash >> 8) & 255).toByte,
+//      ((hash >> 16) & 255).toByte,
+//      (hash >> 24).toByte
+  // )
+
 }
