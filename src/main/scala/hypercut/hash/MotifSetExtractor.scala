@@ -7,7 +7,8 @@ import hypercut.shortread.Read
 
 import scala.collection.mutable.ArrayBuffer
 
-final case class MotifSetExtractor(space: MotifSpace, k: Int) extends ReadSplitter[MotifSet] {
+final case class MotifSetExtractor(space: MotifSpace, k: Int,
+                                   distances: Boolean = true) extends ReadSplitter[MotifSet] {
   //Avoid serializing this large complex object, instead initialize on each executor
   @volatile lazy val scanner = new ShiftScanner(space)
 
@@ -105,7 +106,12 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int) extends ReadSplitt
     while (p <= read.length - 1) {
       val scan = ext.scanTo(p)
       if (!(scan eq lastMotifs)) {
-        lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSortedFirstZero(space, scan))
+        if (distances) {
+          lastMotifSet = new MotifSet(space, MotifSet.relativePositionsSortedFirstZero(space, scan))
+        } else {
+          //TODO this can probably be made more efficient by not generating motifs with positions in the first place
+          lastMotifSet = new MotifSet(space, scan.iterator.map(_.copy(pos = 0)).toList)
+        }
         lastMotifs = scan
         perBucket += ((lastMotifSet, p))
       }

@@ -44,7 +44,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   def getSplitter(input: String): ReadSplitter[_] = {
     hash() match {
       case "motifSet" =>
-        new MotifSetExtractor(getSpace(input), k())
+        new MotifSetExtractor(getSpace(input), k(), distances())
       case "minimizer" =>
         //The final parameter (B) currently has no effect
         new MinimizerSplitter(k(), numMotifs(), 2000)

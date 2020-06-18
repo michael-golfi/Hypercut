@@ -34,7 +34,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val addRC = opt[Boolean](required = false, descr = "Add reverse complements")
 
-  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/prefix/minimizer)",
+  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/minimizer)",
     default = Some("motifSet"))
 
   val numMotifs = opt[Int](
@@ -46,6 +46,8 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val sample = opt[Double](required = false, descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
       default = None)
+
+  val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
 
   def preferredSpace = {
     width.toOption match {
