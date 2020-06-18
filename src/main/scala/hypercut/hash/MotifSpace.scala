@@ -11,11 +11,10 @@ object MotifSpace {
 
   val all1mers = Seq("A", "C", "T", "G")
 
-  //Roughly in order from rare to common in an e.coli dataset
-  val all2mers = Seq("AG", "CT", "GG", "CC",
-    "GT", "AC", "GA", "TC",
+  val all2mers = Seq("AT", "AG", "CT", "GG", "CC",
+    "AC", "GT", "GA", "TC",
     "CG", "GC",
-    "TG", "CA", "AT", "TA",
+    "TG", "CA", "TA",
     "TT", "AA")
 
   val all3mers = all2mers.flatMap(x => all1mers.map(y => x + y))
