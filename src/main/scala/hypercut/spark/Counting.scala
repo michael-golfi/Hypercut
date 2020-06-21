@@ -48,15 +48,17 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)]
 
-  def writeCountedKmers[H](reads: Dataset[String], withKmers: Boolean, output: String) {
+  def writeCountedKmers[H](reads: Dataset[String], withKmers: Boolean, histogram: Boolean, output: String) {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val counts = segmentsToCounts(segments)
 
-    if (withKmers) {
-      writeKmerCounts(countedWithStrings(counts), output)
+    if (histogram) {
+      writeCountsTable(countedToHistogram(counts), output)
+    } else if (withKmers) {
+      writeCountsTable(countedWithStrings(counts), output)
     } else {
-      writeKmerHistogram(counts.map(_._2), output)
+      writeCountsTable(counts.map(_._2), output)
     }
   }
 
@@ -64,10 +66,15 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     val k = spl.k
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible
+      //The strings generated here are a big source of memory pressure.
       val buffer = ByteBuffer.allocate(k / 4 + 4)
       val builder = new StringBuilder(k + 16)
       xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, k.toShort), x._2))
     })
+  }
+
+  def countedToHistogram(counted: Dataset[(Array[Int], Long)]): Dataset[(Long, Long)] = {
+    counted.map(_._2).groupBy("value").count().sort("value").as[(Long, Long)]
   }
 
   /**
@@ -75,17 +82,8 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
    * @param allKmers
    * @param writeLocation
    */
-  def writeKmerCounts(allKmers: Dataset[(String, Long)], writeLocation: String): Unit = {
-    allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_kmers")
-  }
-
-  /**
-   * Write counts for each k-mer only, without the associated sequence.
-   * @param histogram
-   * @param writeLocation
-   */
-  def writeKmerHistogram(histogram: Dataset[Long], writeLocation: String): Unit = {
-    histogram.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_hist")
+  def writeCountsTable[A](allKmers: Dataset[A], writeLocation: String): Unit = {
+    allKmers.write.mode(SaveMode.Overwrite).option("sep", "\t").csv(s"${writeLocation}_counts")
   }
 
 }
