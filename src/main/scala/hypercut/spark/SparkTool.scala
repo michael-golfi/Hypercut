@@ -57,14 +57,14 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val output = opt[String](required = false, descr = "Location where the kmer count table is written")
       val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
       val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers (for debugging)")
-      val precount = toggle("precount", default = Some(true), descrYes = "Pre-group superkmers during shuffle before creating buckets")
+      val precount = toggle("precount", default = Some(false), descrYes = "Pre-group superkmers during shuffle before creating buckets")
       val sequence = toggle("sequence", default = Some(true), descrYes = "Output sequence for each k-mer in the counts table")
       val histogram = opt[Boolean]("histogram", default = Some(false), descr = "Output a histogram instead of a counts table")
 
       def run() {
         val inData = input().mkString(",")
         val spl = getSplitter(inData)
-        val reads = routines.getReadsFromFasta(inData, false)
+        val reads = routines.getReadsFromFiles(inData, false)
         val counting: Counting[_] = if (precount()) new GroupedCounting(spark, spl, addRC())
           else new SimpleCounting(spark, spl, addRC())
 
