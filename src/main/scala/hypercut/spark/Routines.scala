@@ -30,21 +30,21 @@ class Routines(val spark: SparkSession) {
 
 
   /**
-   * Load reads and their reverse complements from DNA files.
+   * Load reads and optionally their reverse complements from DNA files.
    */
-  def getReadsFromFasta(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
+  def getReadsFromFiles(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
+    val raw = hypercut.spark.HadoopReadFiles.getShortReads(sc, fileSpec).toDS
     val lines = frac match {
-      case Some(f) => sc.textFile(fileSpec).toDS.sample(f)
-      case None => sc.textFile(fileSpec).toDS
+      case Some(f) => raw.sample(f)
+      case None => raw
     }
 
     if (withRC) {
       lines.flatMap(r => {
-        if (r.startsWith(">")) Seq.empty else
           Seq(r, DNAHelpers.reverseComplement(r))
       })
     } else {
-      lines.filter(r => !r.startsWith(">"))
+      lines
     }
   }
 
@@ -64,7 +64,7 @@ class Routines(val spark: SparkSession) {
   }
 
   def createSampledSpace(input: String, fraction: Double, space: MotifSpace): MotifSpace = {
-    val in = getReadsFromFasta(input, false, Some(fraction))
+    val in = getReadsFromFiles(input, false, Some(fraction))
     val counter = countFeatures(in, space)
     counter.print(space, s"Discovered frequencies in fraction $fraction")
     counter.toSpaceByFrequency(space, s"sampled$fraction")

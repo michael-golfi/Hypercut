@@ -62,7 +62,7 @@ class BucketGraph(routines: Routines) {
    */
   def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String],
                      addReverseComplements: Boolean): Dataset[(BucketId, SimpleCountingBucket)] = {
-    val reads = routines.getReadsFromFasta(input, addReverseComplements)
+    val reads = routines.getReadsFromFiles(input, addReverseComplements)
     val bkts = bucketsOnly(reads, spl, addReverseComplements)
     for (o <- output) {
       writeBuckets(bkts, o)
@@ -100,9 +100,9 @@ class BucketGraph(routines: Routines) {
                   addReverseComplements: Boolean = true): GraphFrame = {
     //NB this assumes we can get all significant edges without looking at reverse complements
     val edges = splitReadsToEdges(
-      routines.getReadsFromFasta(reads, false), ext).distinct
+      routines.getReadsFromFiles(reads, false), ext).distinct
     val verts = bucketsOnly(
-      routines.getReadsFromFasta(reads, false), ext, addReverseComplements)
+      routines.getReadsFromFiles(reads, false), ext, addReverseComplements)
 
     edges.cache
     verts.cache
