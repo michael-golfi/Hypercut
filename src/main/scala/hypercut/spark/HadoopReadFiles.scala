@@ -18,12 +18,12 @@ object HadoopReadFiles {
       println(s"Assuming fastq format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[fastdoop.QRecord],
         sc.hadoopConfiguration)
-      ss.map(_._2.getValue.replaceAll("\n", ""))
+      ss.map(_._2.getValue)
     } else {
       println(s"Assuming fasta format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTAshortInputFileFormat], classOf[Text], classOf[fastdoop.Record],
         sc.hadoopConfiguration)
-      ss.map(_._2.getValue.replaceAll("\n", ""))
+      ss.map(_._2.getValue)
     }
   }
 }

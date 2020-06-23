@@ -38,13 +38,14 @@ class Routines(val spark: SparkSession) {
       case Some(f) => raw.sample(f)
       case None => raw
     }
+    val filt = lines.filter(r => r.indexOf('N') == -1)
 
     if (withRC) {
-      lines.flatMap(r => {
+      filt.flatMap(r => {
           Seq(r, DNAHelpers.reverseComplement(r))
       })
     } else {
-      lines
+      filt
     }
   }
 
