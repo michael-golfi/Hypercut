@@ -8,7 +8,8 @@ import scala.collection.mutable
  * Looks for raw motifs in reads, counting them in a histogram.
  */
 final class FeatureScanner(val space: MotifSpace) extends Serializable {
-  @volatile lazy val scanner = new ShiftScanner(space)
+  @transient
+  lazy val scanner = new ShiftScanner(space)
 
   @volatile var readCount: Int = 0
   def scanRead(counter: FeatureCounter, read: String) {

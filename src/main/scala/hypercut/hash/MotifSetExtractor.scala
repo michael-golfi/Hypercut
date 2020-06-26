@@ -9,8 +9,8 @@ import scala.collection.mutable.ArrayBuffer
 
 final case class MotifSetExtractor(space: MotifSpace, k: Int,
                                    distances: Boolean = true) extends ReadSplitter[MotifSet] {
-  //Avoid serializing this large complex object, instead initialize on each executor
-  @volatile lazy val scanner = new ShiftScanner(space)
+  @transient
+  lazy val scanner = new ShiftScanner(space)
 
   @volatile
   var readCount = 0

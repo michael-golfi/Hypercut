@@ -53,7 +53,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
   val kmers = new Subcommand("kmers") {
     val count = new RunnableCommand("count") {
-      val input = trailArg[List[String]](required = true, descr = "Input data files")
+      val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
       val output = opt[String](required = false, descr = "Location where the kmer count table is written")
       val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
       val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers (for debugging)")
@@ -62,7 +62,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val histogram = opt[Boolean]("histogram", default = Some(false), descr = "Output a histogram instead of a counts table")
 
       def run() {
-        val inData = input().mkString(",")
+        val inData = inFiles().mkString(",")
         val spl = getSplitter(inData)
         val reads = routines.getReadsFromFiles(inData, false)
         val counting: Counting[_] = if (precount()) new GroupedCounting(spark, spl, addRC())
@@ -88,17 +88,18 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
 
     val build = new RunnableCommand("build") {
-      val input = opt[String](required = true, descr = "Path to input data files")
+      val input = trailArg[List[String]](required = true, descr = "Input sequence files")
       val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
 
       def run() {
-         val ext = new MotifSetExtractor(getSpace(input()), k())
-         val minAbundance = None
-         if (edges()) {
-           bgraph.graphFromReads(input(), ext, location.toOption)
-         } else {
-           bgraph.bucketsOnly(input(), ext, location.toOption, addRC())
-         }
+        val inFiles = input().mkString(",")
+        val ext = new MotifSetExtractor(getSpace(inFiles), k())
+        val minAbundance = None
+        if (edges()) {
+          bgraph.graphFromReads(inFiles, ext, location.toOption)
+        } else {
+          bgraph.bucketsOnly(inFiles, ext, location.toOption, addRC())
+        }
       }
     }
     addSubcommand(build)
