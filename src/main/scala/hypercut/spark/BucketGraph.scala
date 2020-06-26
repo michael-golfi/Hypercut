@@ -7,6 +7,7 @@ import hypercut.{Abundance, CompactEdge}
 import hypercut.bucket.SimpleCountingBucket
 import hypercut.hash.{BucketId, MotifSetExtractor, ReadSplitter}
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.graphframes.GraphFrame
 import vegas.{Bar, Quant, Vegas}
 
@@ -137,8 +138,16 @@ class BucketGraph(routines: Routines) {
     }
   }
 
-  def loadBucketsEdges(readLocation: String, minAbundance: Option[Abundance]) = {
-    val edges = spark.read.parquet(s"${readLocation}_edges").as[CompactEdge]
+  def loadBucketsEdges(readLocation: String, minAbundance: Option[Abundance]):
+    (Dataset[(BucketId, SimpleCountingBucket)], Option[Dataset[CompactEdge]]) = {
+    val hdfs = FileSystem.get(sc.hadoopConfiguration)
+    val edgeLoc = s"${readLocation}_edges"
+    val edges = (if (hdfs.exists(new Path(edgeLoc))) {
+      Some(spark.read.parquet(s"${readLocation}_edges").as[CompactEdge])
+    } else {
+      None
+    })
+
     val bkts = loadBuckets(readLocation, minAbundance)
     (bkts, edges)
   }
@@ -151,8 +160,8 @@ class BucketGraph(routines: Routines) {
     val (buckets, edges) = loadBucketsEdges(readLocation, minAbundance)
 
     limit match {
-      case Some(l) => toGraphFrame(buckets.limit(l), edges)
-      case _ => toGraphFrame(buckets, edges)
+      case Some(l) => toGraphFrame(buckets.limit(l), edges.get)
+      case _ => toGraphFrame(buckets, edges.get)
     }
   }
 
@@ -180,9 +189,7 @@ class BucketGraph(routines: Routines) {
   }
 
   def bucketStats(input: String, minAbundance: Option[Abundance], stdout: Boolean) {
-    val (verts, edges) = loadBucketsEdges(input, minAbundance) match {
-      case (b, e) => (b, Some(e))
-    }
+    val (verts, edges) = loadBucketsEdges(input, minAbundance)
 
     if (stdout) {
       bucketStats(verts, edges, Console.out)
