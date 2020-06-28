@@ -9,7 +9,8 @@ import scala.collection.Seq
 object MotifSpace {
   def simple(n: Int) = named("all2", n)
 
-  val all1mers = Seq("A", "C", "T", "G")
+  val all1mersDNA = Seq("A", "C", "T", "G")
+  val all1mersRNA = Seq("A", "C", "U", "G")
 
   val all2mers = Seq("AT", "AG", "CT", "GG", "CC",
     "AC", "GT", "GA", "TC",
@@ -17,21 +18,23 @@ object MotifSpace {
     "TG", "CA", "TA",
     "TT", "AA")
 
-  val all3mers = all2mers.flatMap(x => all1mers.map(y => x + y))
-  val all4mers = all3mers.flatMap(x => all1mers.map(y => x + y))
+  val all3mers = all2mers.flatMap(x => all1mersDNA.map(y => x + y))
+  val all4mers = all3mers.flatMap(x => all1mersDNA.map(y => x + y))
 
   def namedMotifs(name: String): Seq[String] = name match {
-    case "all1" => all1mers
+    case "all1" => all1mersDNA
     case "all2" => all2mers
     case "all3" => all3mers
     case "all4" => all4mers
     case _ => throw new Exception(s"Unknown motif space name: $name")
   }
 
-  def motifsOfLength(length: Int): Seq[String] = {
-    if (length == 1) all1mers
-    else if (length > 1) {
-      motifsOfLength(length - 1).flatMap(x => all1mers.iterator.map(y => x + y))
+  def motifsOfLength(length: Int, rna: Boolean = false): Seq[String] = {
+    val bases = if (rna) all1mersRNA else all1mersDNA
+    if (length == 1) {
+      bases
+    } else if (length > 1) {
+      motifsOfLength(length - 1).flatMap(x => bases.iterator.map(y => x + y))
     } else {
       throw new Exception(s"Unsupported motif length $length")
     }
@@ -39,7 +42,7 @@ object MotifSpace {
 
   def named(name: String, n: Int): MotifSpace = using(namedMotifs(name), n, name)
 
-  def ofLength(w: Int, n: Int, id: String): MotifSpace = using(motifsOfLength(w), n, id)
+  def ofLength(w: Int, n: Int, rna: Boolean, id: String): MotifSpace = using(motifsOfLength(w, rna), n, id)
 
   def using(mers: Seq[String], n: Int, id: String) = new MotifSpace(mers.toArray, n, id)
 }

@@ -18,6 +18,7 @@ object BitRepresentation {
   val C: Byte = 0x1
   val G: Byte = 0x2
   val T: Byte = 0x3
+  val U: Byte = 0x3 //In RNA, instead of T. Note: RNA support is currently only partial.
 
   val twobits = List(A, C, T, G)
 
@@ -43,6 +44,7 @@ object BitRepresentation {
       case 'C' => C
       case 'G' => G
       case 'T' => T
+      case 'U' => U
     }
   }
 

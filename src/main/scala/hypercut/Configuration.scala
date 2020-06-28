@@ -32,26 +32,28 @@ class HCCommand(name: String)(act: => Unit) extends RunnableCommand(name) {
 class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val k = opt[Int](required = true, descr = "Length of each k-mer")
 
-  val addRC = opt[Boolean](required = false, descr = "Add reverse complements")
+  val addRC = opt[Boolean](descr = "Add reverse complements")
 
-  val hash = opt[String](required = false, descr = "Hash function to use (motifSet/minimizer)",
+  val hash = opt[String](descr = "Hash function to use (motifSet/minimizer)",
     default = Some("motifSet"))
 
   val numMotifs = opt[Int](
     required = true,
     descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(4))
-  val space = opt[String](required = false, descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
+  val space = opt[String](descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
 
-  val width = opt[Int](required = false, descr = "MotifSet hash: Width of motifs", default = None)
+  val width = opt[Int](descr = "MotifSet hash: Width of motifs", default = None)
 
-  val sample = opt[Double](required = false, descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
+  val sample = opt[Double](descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
       default = None)
 
   val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
 
+  val rna = opt[Boolean](descr = "RNA mode (default is DNA)", default = Some(false))
+
   def preferredSpace = {
     width.toOption match {
-      case Some(w) => MotifSpace.ofLength(w, numMotifs(), "default")
+      case Some(w) => MotifSpace.ofLength(w, numMotifs(), rna(), "default")
       case None => MotifSpace.named(space(), numMotifs())
     }
   }

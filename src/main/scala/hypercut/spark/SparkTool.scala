@@ -54,7 +54,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val kmers = new Subcommand("kmers") {
     val count = new RunnableCommand("count") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
-      val output = opt[String](required = false, descr = "Location where the kmer count table is written")
+      val output = opt[String](descr = "Location where the kmer count table is written")
       val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
       val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers (for debugging)")
       val precount = toggle("precount", default = Some(false), descrYes = "Pre-group superkmers during shuffle before creating buckets")
@@ -110,10 +110,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     addSubcommand(build)
 
     val top = new RunnableCommand("top") {
-      val n = opt[Int](required = false, default = Some(10),
-          descr = "Number of buckets to print")
-      val amount = opt[Int](required = false, default = Some(10),
-          descr = "Amount of sequence to print")
+      val n = opt[Int](default = Some(10), descr = "Number of buckets to print")
+      val amount = opt[Int](default = Some(10), descr = "Amount of sequence to print")
       //Note: could add a minAbundance flag here in the future if needed
 
       def run() {
@@ -125,10 +123,10 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     addSubcommand(top)
 
     val merge = new RunnableCommand("merge") {
-      val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
-      val minLength = opt[Int](required = false, descr = "Minimum unitig length for output")
-      val showStats = opt[Boolean](required = false, descr = "Show statistics for each merge iteration")
-      val stopAtKmers = opt[Long](required = false, default = Some(1000000), descr = "Stop iterating at k-mer count")
+      val minAbundance = opt[Int](default = Some(1), descr = "Minimum k-mer abundance")
+      val minLength = opt[Int](descr = "Minimum unitig length for output")
+      val showStats = opt[Boolean](descr = "Show statistics for each merge iteration")
+      val stopAtKmers = opt[Long](default = Some(1000000), descr = "Stop iterating at k-mer count")
 
       def run() {
         val loc = location()
@@ -140,8 +138,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     addSubcommand(merge)
 
     val stats = new RunnableCommand("stats") {
-      val minAbundance = opt[Int](required = false, default = Some(1), descr = "Minimum k-mer abundance")
-      val stdout = opt[Boolean](required = false, default = Some(false), descr = "Print stats to stdout")
+      val minAbundance = opt[Int](default = Some(1), descr = "Minimum k-mer abundance")
+      val stdout = opt[Boolean](default = Some(false), descr = "Print stats to stdout")
       def run() {
         bgraph.bucketStats(location(), minAbundance.toOption.map(clipAbundance), stdout())
       }
