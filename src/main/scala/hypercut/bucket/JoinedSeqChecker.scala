@@ -3,7 +3,14 @@ package hypercut.bucket
 import hypercut.hash.MotifSet
 import hypercut.hash.MotifSpace
 
-class Checker(space: MotifSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) {
+/**
+ * Routines for checking the integrity of JoinedSeqBuckets.
+ * @param space
+ * @param k
+ * @param kmerCheck
+ * @param seqCheck
+ */
+class JoinedSeqChecker(space: MotifSpace, k: Int, kmerCheck: Boolean, seqCheck: Boolean) {
   import scala.collection.mutable.HashMap
   var errors = 0
   var count = 0

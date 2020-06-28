@@ -60,6 +60,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val precount = toggle("precount", default = Some(false), descrYes = "Pre-group superkmers during shuffle before creating buckets")
       val sequence = toggle("sequence", default = Some(true), descrYes = "Output sequence for each k-mer in the counts table")
       val histogram = opt[Boolean]("histogram", default = Some(false), descr = "Output a histogram instead of a counts table")
+      val buckets = opt[Boolean]("buckets", default = Some(false), descr = "Write buckets")
 
       def run() {
         val inData = inFiles().mkString(",")
@@ -70,7 +71,11 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
         output.toOption match {
           case Some(o) =>
-            counting.writeCountedKmers(reads, sequence(), histogram(), o)
+            if (buckets()) {
+              counting.writeBuckets(reads, o)
+            } else {
+              counting.writeCountedKmers(reads, sequence(), histogram(), o)
+            }
           case _ =>
             if (stats() || rawStats()) {
               counting.statisticsOnly(reads, rawStats())

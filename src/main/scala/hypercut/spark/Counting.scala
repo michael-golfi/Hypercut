@@ -3,7 +3,7 @@ package hypercut.spark
 import java.nio.ByteBuffer
 
 import hypercut._
-import hypercut.bucket.BucketStats
+import hypercut.bucket.{BucketStats, SimpleBucket}
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
@@ -30,7 +30,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats]
 
-  def countKmers[H](reads: Dataset[String]) = {
+  def countKmers(reads: Dataset[String]) = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -38,7 +38,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     countedWithStrings(counts)
   }
 
-  def statisticsOnly[H](reads: Dataset[String], raw: Boolean): Unit = {
+  def statisticsOnly(reads: Dataset[String], raw: Boolean): Unit = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -48,7 +48,16 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)]
 
-  def writeCountedKmers[H](reads: Dataset[String], withKmers: Boolean, histogram: Boolean, output: String) {
+  def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket]
+
+  def writeBuckets(reads: Dataset[String], output: String): Unit = {
+    val bcSplit = this.bcSplit
+    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
+    val buckets = segmentsToBuckets(segments)
+    buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
+  }
+
+  def writeCountedKmers(reads: Dataset[String], withKmers: Boolean, histogram: Boolean, output: String) {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val counts = segmentsToCounts(segments)
@@ -62,7 +71,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     }
   }
 
-  def countedWithStrings[H](counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+  def countedWithStrings(counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
     val k = spl.k
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible
@@ -107,6 +116,10 @@ final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
       spl.k)
   }
 
+  def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket] = {
+    ???
+  }
+
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
     ???
   }
@@ -126,10 +139,22 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
     } }
   }
 
+  def uncountedToBuckets(segments: Dataset[(BucketId, Array[ZeroBPBuffer])]): Dataset[SimpleBucket] = {
+    val k = spl.k
+    segments.map { case (hash, segments) => {
+      SimpleBucket.fromCountedSequences(hash, countsFromSequences(segments, k).toArray)
+    } }
+  }
+
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
     uncountedToCounts(
       routines.segmentsByHash(segments, addReverseComplements))
   }
+
+  def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket] = {
+    uncountedToBuckets(routines.segmentsByHash(segments, addReverseComplements))
+  }
+
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
     val k = spl.k
