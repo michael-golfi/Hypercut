@@ -1,7 +1,7 @@
 package hypercut.spark
 
 import org.apache.spark.SparkConf
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, SparkSession}
 import org.rogach.scallop.Subcommand
 import hypercut._
 import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
@@ -34,17 +34,22 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
 
-  def getSpace(input: String): MotifSpace = {
+  def getSpace(inFiles: String): MotifSpace = {
+    val input = getInputSequences(inFiles, long(), sample.toOption)
     sample.toOption match {
       case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace)
       case None => preferredSpace
     }
   }
 
-  def getSplitter(input: String): ReadSplitter[_] = {
+  def getInputSequences(input: String, longSequences: Boolean, sample: Option[Double] = None): Dataset[String] = {
+    routines.getReadsFromFiles(input, addRC(), k(), sample, longSequences)
+  }
+
+  def getSplitter(inFiles: String): ReadSplitter[_] = {
     hash() match {
       case "motifSet" =>
-        new MotifSetExtractor(getSpace(input), k(), distances())
+        new MotifSetExtractor(getSpace(inFiles), k(), distances())
       case "minimizer" =>
         //The final parameter (B) currently has no effect
         new MinimizerSplitter(k(), numMotifs(), 2000)
@@ -54,7 +59,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val kmers = new Subcommand("kmers") {
     val count = new RunnableCommand("count") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
-      val output = opt[String](descr = "Location where the kmer count table is written")
+      val output = opt[String](descr = "Location where outputs are written")
       val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
       val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers (for debugging)")
       val precount = toggle("precount", default = Some(false), descrYes = "Pre-group superkmers during shuffle before creating buckets")
@@ -64,21 +69,21 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val inData = inFiles().mkString(",")
+        val input = getInputSequences(inData, long())
         val spl = getSplitter(inData)
-        val reads = routines.getReadsFromFiles(inData, false)
         val counting: Counting[_] = if (precount()) new GroupedCounting(spark, spl, addRC())
           else new SimpleCounting(spark, spl, addRC())
 
         output.toOption match {
           case Some(o) =>
             if (buckets()) {
-              counting.writeBuckets(reads, o)
+              counting.writeBuckets(input, o)
             } else {
-              counting.writeCountedKmers(reads, sequence(), histogram(), o)
+              counting.writeCountedKmers(input, sequence(), histogram(), o)
             }
           case _ =>
             if (stats() || rawStats()) {
-              counting.statisticsOnly(reads, rawStats())
+              counting.statisticsOnly(input, rawStats())
             } else {
               ???
             }
@@ -98,12 +103,13 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
       def run() {
         val inFiles = input().mkString(",")
+        val reads = getInputSequences(inFiles, false, None)
         val ext = new MotifSetExtractor(getSpace(inFiles), k())
         val minAbundance = None
         if (edges()) {
-          bgraph.graphFromReads(inFiles, ext, location.toOption)
+          bgraph.graphFromReads(reads, ext, addRC(), location.toOption)
         } else {
-          bgraph.bucketsOnly(inFiles, ext, location.toOption, addRC())
+          bgraph.bucketsOnly(reads, ext, location.toOption, addRC())
         }
       }
     }

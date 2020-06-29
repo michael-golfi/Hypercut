@@ -61,9 +61,8 @@ class BucketGraph(routines: Routines) {
    * Convenience function to compute buckets directly from an input specification
    * and optionally write them to the output location.
    */
-  def bucketsOnly[H](input: String, spl: ReadSplitter[H], output: Option[String],
+  def bucketsOnly[H](reads: Dataset[String], spl: ReadSplitter[H], output: Option[String],
                      addReverseComplements: Boolean): Dataset[(BucketId, SimpleCountingBucket)] = {
-    val reads = routines.getReadsFromFiles(input, addReverseComplements)
     val bkts = bucketsOnly(reads, spl, addReverseComplements)
     for (o <- output) {
       writeBuckets(bkts, o)
@@ -96,14 +95,11 @@ class BucketGraph(routines: Routines) {
    * adjacent segments.
    * Optionally save it in parquet format to a specified location.
    */
-  def bucketGraph(reads: String, ext: MotifSetExtractor,
-                  writeLocation: Option[String] = None,
-                  addReverseComplements: Boolean = true): GraphFrame = {
-    //NB this assumes we can get all significant edges without looking at reverse complements
-    val edges = splitReadsToEdges(
-      routines.getReadsFromFiles(reads, false), ext).distinct
-    val verts = bucketsOnly(
-      routines.getReadsFromFiles(reads, false), ext, addReverseComplements)
+  def bucketGraph(reads: Dataset[String], ext: MotifSetExtractor, addReverseComplements: Boolean,
+                  writeLocation: Option[String] = None): GraphFrame = {
+
+    val edges = splitReadsToEdges(reads, ext).distinct
+    val verts = bucketsOnly(reads, ext, addReverseComplements)
 
     edges.cache
     verts.cache
@@ -208,10 +204,11 @@ class BucketGraph(routines: Routines) {
    * loading from saved data.
    * The generated data can optionally be saved in the specified location.
    */
-  def graphFromReads(input: String, ext: MotifSetExtractor,
+  def graphFromReads(reads: Dataset[String], ext: MotifSetExtractor,
+                     addReverseComplements: Boolean,
                      outputLocation: Option[String] = None) = {
 
-    bucketGraph(input, ext, outputLocation)
+    bucketGraph(reads, ext, addReverseComplements, outputLocation)
   }
 
   def showBuckets(buckets: Dataset[SimpleCountingBucket], n: Int, amount: Int) {

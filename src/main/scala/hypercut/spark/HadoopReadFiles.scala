@@ -1,6 +1,6 @@
 package hypercut.spark
 
-import fastdoop.{FASTAshortInputFileFormat, FASTQInputFileFormat, FASTQReadsRecordReader, PartialSequence}
+import fastdoop._
 import org.apache.hadoop.io.Text
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -13,17 +13,28 @@ object HadoopReadFiles {
    * @param file
    * @return
    */
-  def getShortReads(sc: SparkContext, file: String): RDD[String] = {
+  def getShortReads(sc: SparkContext, file: String, k: Int): RDD[String] = {
+    val conf = sc.hadoopConfiguration
+    conf.set("k", k.toString)
+    conf.set("look_ahead_buffer_size", (1024 * 1024).toString)
+
     if (file.toLowerCase.endsWith("fq") || file.toLowerCase.endsWith("fastq")) {
       println(s"Assuming fastq format for $file")
-      val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[fastdoop.QRecord],
+      val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[QRecord],
         sc.hadoopConfiguration)
-      ss.map(_._2.getValue)
+      ss.map(_._2.getValue.replaceAll("\n", ""))
     } else {
       println(s"Assuming fasta format for $file")
-      val ss = sc.newAPIHadoopFile(file, classOf[FASTAshortInputFileFormat], classOf[Text], classOf[fastdoop.Record],
+      val ss = sc.newAPIHadoopFile(file, classOf[FASTAshortInputFileFormat], classOf[Text], classOf[Record],
         sc.hadoopConfiguration)
-      ss.map(_._2.getValue)
+      ss.map(_._2.getValue.replaceAll("\n", ""))
     }
+  }
+
+  def getLongSequence(sc: SparkContext, file: String, k: Int): RDD[String] = {
+    println(s"Assuming fasta format (long sequences) for $file")
+    val ss = sc.newAPIHadoopFile(file, classOf[FASTAlongInputFileFormat], classOf[Text], classOf[PartialSequence],
+      sc.hadoopConfiguration)
+    ss.map(_._2.getValue.replaceAll("\n", ""))
   }
 }

@@ -32,20 +32,30 @@ class Routines(val spark: SparkSession) {
   /**
    * Load reads and optionally their reverse complements from DNA files.
    */
-  def getReadsFromFiles(fileSpec: String, withRC: Boolean, frac: Option[Double] = None): Dataset[String] = {
-    val raw = hypercut.spark.HadoopReadFiles.getShortReads(sc, fileSpec).toDS
-    val lines = frac match {
-      case Some(f) => raw.sample(f)
-      case None => raw
+  def getReadsFromFiles(fileSpec: String, withRC: Boolean, k:Int,
+                        sample: Option[Double] = None,
+                        longSequence: Boolean = false): Dataset[String] = {
+    val raw = if(longSequence)
+      HadoopReadFiles.getLongSequence(sc, fileSpec, k).toDS
+    else
+      HadoopReadFiles.getShortReads(sc, fileSpec, k).toDS
+
+    //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
+    val degenerate = "[RYMKSWHBVDN]+"
+
+    val sampled = sample match {
+      case Some(s) => raw.sample(s)
+      case _ => raw
     }
-    val filt = lines.filter(r => r.indexOf('N') == -1)
+
+    val valid = sampled.flatMap(r => r.split(degenerate))
 
     if (withRC) {
-      filt.flatMap(r => {
+      valid.flatMap(r => {
           Seq(r, DNAHelpers.reverseComplement(r))
       })
     } else {
-      filt
+      valid
     }
   }
 
@@ -64,9 +74,8 @@ class Routines(val spark: SparkSession) {
     }).reduce(_ + _)
   }
 
-  def createSampledSpace(input: String, fraction: Double, space: MotifSpace): MotifSpace = {
-    val in = getReadsFromFiles(input, false, Some(fraction))
-    val counter = countFeatures(in, space)
+  def createSampledSpace(input: Dataset[String], fraction: Double, space: MotifSpace): MotifSpace = {
+    val counter = countFeatures(input, space)
     counter.print(space, s"Discovered frequencies in fraction $fraction")
     counter.toSpaceByFrequency(space, s"sampled$fraction")
   }

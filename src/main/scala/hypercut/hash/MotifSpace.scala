@@ -34,7 +34,7 @@ object MotifSpace {
     if (length == 1) {
       bases
     } else if (length > 1) {
-      motifsOfLength(length - 1).flatMap(x => bases.iterator.map(y => x + y))
+      motifsOfLength(length - 1, rna).flatMap(x => bases.iterator.map(y => x + y))
     } else {
       throw new Exception(s"Unsupported motif length $length")
     }

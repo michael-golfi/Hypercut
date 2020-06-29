@@ -93,6 +93,10 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
       println(s"$readCount reads seen")
     }
 
+    if (read.length < k) {
+      return (ArrayBuffer.empty, ArrayBuffer.empty)
+    }
+
     val perPosition = new ArrayBuffer[MotifSet](read.length)
     val perBucket = new ArrayBuffer[(MotifSet, Int)](read.length)
 
