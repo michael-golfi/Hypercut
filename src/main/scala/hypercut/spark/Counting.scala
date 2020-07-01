@@ -3,7 +3,7 @@ package hypercut.spark
 import java.nio.ByteBuffer
 
 import hypercut._
-import hypercut.bucket.{BucketStats, SimpleBucket}
+import hypercut.bucket.{BucketStats, ParentMap, SimpleBucket, TaxonBucket}
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.SerialRoutines.createHashSegments
 import miniasm.genome.bpbuffer.BPBuffer
@@ -178,6 +178,70 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
   }
 }
 
+final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
+                                  taxonomyNodes: String,
+                                  addReverseComplements: Boolean = false) {
+  val sc: org.apache.spark.SparkContext = spark.sparkContext
+  val routines = new Routines(spark)
+
+  import org.apache.spark.sql._
+  import spark.sqlContext.implicits._
+  import Counting._
+
+  //Broadcasting the splitter mainly because it contains a reference to the MotifSpace,
+  //which can be large
+  val bcSplit = sc.broadcast(spl)
+  val parentMap = getParentMap(taxonomyNodes)
+  val bcPar = sc.broadcast(parentMap)
+
+
+  /**
+   * Read a taxon label file (TSV format)
+   * This file is expected to be small.
+   * @param file
+   * @return
+   */
+  def getTaxonLabels(file: String): Dataset[(String, Int)] = {
+    spark.read.option("sep", "\t").csv(file).
+      map(x => (x.getString(0), x.getString(1).toInt))
+  }
+
+  /**
+   * Read an ancestor map from an NCBI nodes.dmp style file.
+   * This file is expected to be small.
+   * @param file
+   * @return
+   */
+  def getParentMap(file: String): ParentMap = {
+    val raw = spark.read.option("sep", "\t").csv(file).
+      map(x => (x.getString(0).trim.toInt, x.getString(1).toInt)).collect()
+    val maxTaxon = raw.map(_._1).max
+    val asMap = raw.toMap
+    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, ParentMap.NONE))
+    new ParentMap(asArray.toArray)
+  }
+
+  def taggedToBuckets(segments: Dataset[(BucketId, Array[(ZeroBPBuffer, Int)])]): Dataset[TaxonBucket] = {
+    val k = spl.k
+    val bcPar = this.bcPar
+    segments.map { case (hash, segments) => {
+      TaxonBucket.fromTaggedSequences(hash, bcPar.value.taxonTaggedFromSequences(segments, k).toArray)
+    } }
+  }
+
+  def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[TaxonBucket] = {
+//    taggedToBuckets(routines.segmentsByHash(segments, addReverseComplements))
+    ???
+  }
+
+  def writeBuckets(reads: Dataset[String], labelFile: String, output: String): Unit = {
+    val bcSplit = this.bcSplit
+    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
+    val buckets = segmentsToBuckets(segments)
+    buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_taxidx")
+  }
+}
+
 /**
  * Serialization-safe methods for counting
  */
@@ -233,12 +297,12 @@ object Counting {
   /**
    * From a series of sequences (where k-mers may be repeated),
    * produce an iterator with counted abundances where each k-mer appears only once.
-   * @param segmentsAbundances
+   * @param segments
    * @param k
    * @return
    */
-  def countsFromSequences(segmentsAbundances: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
-    val byKmer = segmentsAbundances.iterator.flatMap(s =>
+  def countsFromSequences(segments: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
+    val byKmer = segments.iterator.flatMap(s =>
       s.kmersAsArrays(k.toShort)
     ).toArray
     Sorting.quickSort(byKmer)

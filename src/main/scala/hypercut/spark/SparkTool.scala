@@ -94,6 +94,24 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   }
   addSubcommand(kmers)
 
+  val taxonIndex = new Subcommand("taxonIndex") {
+    val location = opt[String](required = true, descr = "Path to location where index is stored")
+    val build = new RunnableCommand("build") {
+      val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
+      val labels = opt[String](descr = "Path to sequence taxonomic label file", required = true)
+      val nodes = opt[String](descr = "Path to taxonomy nodes file", required = true)
+      def run(): Unit = {
+        val inData = inFiles().mkString(",")
+        val input = getInputSequences(inData, long())
+        val spl = getSplitter(inData)
+        val builder = new TaxonBucketBuilder(spark, spl, nodes(), addRC())
+        builder.writeBuckets(input, labels(), location())
+      }
+    }
+    addSubcommand(build)
+  }
+  addSubcommand(taxonIndex)
+
   val buckets = new Subcommand("buckets") {
     val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
 

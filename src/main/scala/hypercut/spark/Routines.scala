@@ -28,36 +28,11 @@ class Routines(val spark: SparkSession) {
   import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
 
-
-  /**
-   * Load reads and optionally their reverse complements from DNA files.
-   */
   def getReadsFromFiles(fileSpec: String, withRC: Boolean, k:Int,
                         sample: Option[Double] = None,
-                        longSequence: Boolean = false): Dataset[String] = {
-    val raw = if(longSequence)
-      HadoopReadFiles.getLongSequence(sc, fileSpec, k).toDS
-    else
-      HadoopReadFiles.getShortReads(sc, fileSpec, k).toDS
-
-    //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
-    val degenerate = "[RYMKSWHBVDN]+"
-
-    val sampled = sample match {
-      case Some(s) => raw.sample(s)
-      case _ => raw
-    }
-
-    val valid = sampled.flatMap(r => r.split(degenerate))
-
-    if (withRC) {
-      valid.flatMap(r => {
-          Seq(r, DNAHelpers.reverseComplement(r))
-      })
-    } else {
-      valid
-    }
-  }
+                        longSequence: Boolean = false): Dataset[String] =
+    new HadoopReadFiles(spark, k).getReadsFromFiles(fileSpec, withRC,
+      sample, longSequence)
 
   /**
    * Count motifs such as AC, AT, TTT in a set of reads.
