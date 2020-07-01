@@ -55,14 +55,20 @@ final case class ParentMap(parents: Array[Int]) {
     var path1 = mutable.Set.empty[Int]
     while (a != NONE) {
       path1 += a
-      a = parents(a)
+      if (parents(a) == a)
+        a = NONE
+      else
+        a = parents(a)
     }
     var b = tax2
     while (b != NONE) {
       if (path1.contains(b)) {
         return b
       }
-      b = parents(b)
+      if (parents(b) == b)
+        b = NONE
+      else
+        b = parents(b)
     }
     return NONE
   }

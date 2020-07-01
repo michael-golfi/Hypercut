@@ -42,12 +42,12 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
       println(s"Assuming fastq format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[QRecord],
         sc.hadoopConfiguration)
-      ss.map(r => (r._2.getKey, r._2.getValue.replaceAll("\n", "")))
+      ss.map(r => (r._2.getKey.split("\\s+")(0), r._2.getValue.replaceAll("\n", "")))
     } else {
       println(s"Assuming fasta format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTAshortInputFileFormat], classOf[Text], classOf[Record],
         sc.hadoopConfiguration)
-      ss.map(r => (r._2.getKey, r._2.getValue.replaceAll("\n", "")))
+      ss.map(r => (r._2.getKey.split("\\s+")(0), r._2.getValue.replaceAll("\n", "")))
     }
   }
 

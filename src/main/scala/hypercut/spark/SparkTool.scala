@@ -102,7 +102,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       val nodes = opt[String](descr = "Path to taxonomy nodes file", required = true)
       def run(): Unit = {
         val inData = inFiles().mkString(",")
-        val input = getInputSequences(inData, long())
+        val hrf = new HadoopReadFiles(spark, k())
+        val input = hrf.getReadsFromFilesWithID(inData)
         val spl = getSplitter(inData)
         val builder = new TaxonBucketBuilder(spark, spl, nodes(), addRC())
         builder.writeBuckets(input, labels(), location())

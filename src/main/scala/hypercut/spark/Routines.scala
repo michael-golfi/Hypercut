@@ -114,6 +114,8 @@ class Routines(val spark: SparkSession) {
  * Serialization-safe routines.
  */
 object SerialRoutines {
+  //TODO N handling is now redundant here - removed at input stage
+
   def removeN(segment: String, k: Int): Iterator[String] = {
     segment.split("N", -1).iterator.filter(s => s.length() >= k)
   }
@@ -134,5 +136,13 @@ object SerialRoutines {
       ss <- removeN(s, splitter.k)
       r = HashSegment(splitter.compact(h), BPBuffer.wrap(ss))
     } yield r
+  }
+
+  def createHashSegments[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(HashSegment, T)] = {
+    for {
+      (h, s) <- splitter.split(r)
+      ss <- removeN(s, splitter.k)
+      r = HashSegment(splitter.compact(h), BPBuffer.wrap(ss))
+    } yield (r, tag)
   }
 }

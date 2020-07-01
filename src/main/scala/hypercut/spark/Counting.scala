@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import hypercut._
 import hypercut.bucket.{BucketStats, ParentMap, SimpleBucket, TaxonBucket}
 import hypercut.hash.{BucketId, ReadSplitter}
-import hypercut.spark.SerialRoutines.createHashSegments
+import hypercut.spark.SerialRoutines._
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.broadcast.Broadcast
@@ -186,6 +186,7 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
+  import org.apache.spark.sql.functions._
   import Counting._
 
   //Broadcasting the splitter mainly because it contains a reference to the MotifSpace,
@@ -213,8 +214,8 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
    * @return
    */
   def getParentMap(file: String): ParentMap = {
-    val raw = spark.read.option("sep", "\t").csv(file).
-      map(x => (x.getString(0).trim.toInt, x.getString(1).toInt)).collect()
+    val raw = spark.read.option("sep", "|").csv(file).
+      map(x => (x.getString(0).trim.toInt, x.getString(1).trim.toInt)).collect()
     val maxTaxon = raw.map(_._1).max
     val asMap = raw.toMap
     val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, ParentMap.NONE))
@@ -229,14 +230,22 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
     } }
   }
 
-  def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[TaxonBucket] = {
-//    taggedToBuckets(routines.segmentsByHash(segments, addReverseComplements))
-    ???
+  def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
+    val grouped = segments.groupBy($"_1.hash")
+    val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
+      as[(BucketId, Array[(ZeroBPBuffer, Int)])]
+    taggedToBuckets(byHash)
   }
 
-  def writeBuckets(reads: Dataset[String], labelFile: String, output: String): Unit = {
+
+  def writeBuckets(idsSequences: Dataset[(String, String)], labelFile: String, output: String): Unit = {
     val bcSplit = this.bcSplit
-    val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
+    val idSeqDF = idsSequences.toDF("id", "seq")
+    val labels = getTaxonLabels(labelFile).toDF("id", "taxon")
+    val joined = idSeqDF.join(broadcast(labels), idSeqDF("id") === labels("id")).
+      select("seq", "taxon").as[(String, Int)]
+
+    val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
     val buckets = segmentsToBuckets(segments)
     buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_taxidx")
   }
