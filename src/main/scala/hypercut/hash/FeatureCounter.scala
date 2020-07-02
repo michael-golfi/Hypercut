@@ -4,6 +4,10 @@ import scala.collection.mutable.Map
 
 object FeatureCounter {
   def apply(space: MotifSpace) = new FeatureCounter(space.byPriority.length)
+
+  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Long)], id: String) = {
+    new MotifSpace(counts.sortBy(_._2).map(_._1), oldSpace.n, id)
+  }
 }
 
 /**
@@ -74,7 +78,7 @@ final case class FeatureCounter(numMotifs: Int) {
    */
   def toSpaceByFrequency(oldSpace: MotifSpace, id: String) = {
     val pairs = motifsWithCounts(oldSpace)
-    new MotifSpace(pairs.sortBy(_._2).map(_._1), oldSpace.n, id)
+    FeatureCounter.toSpaceByFrequency(oldSpace, pairs, id)
   }
 
 }

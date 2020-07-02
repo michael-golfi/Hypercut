@@ -49,10 +49,29 @@ class Routines(val spark: SparkSession) {
     }).reduce(_ + _)
   }
 
-  def createSampledSpace(input: Dataset[String], fraction: Double, space: MotifSpace): MotifSpace = {
-    val counter = countFeatures(input, space)
-    counter.print(space, s"Discovered frequencies in fraction $fraction")
-    counter.toSpaceByFrequency(space, s"sampled$fraction")
+  def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
+                         persistLocation: Option[String] = None): MotifSpace = {
+    val counter = countFeatures(input, template)
+    counter.print(template, s"Discovered frequencies in fraction $fraction")
+
+    //Optionally persist the counter for later reuse in a different run
+    for (loc <- persistLocation) {
+      val data = sc.parallelize(counter.motifsWithCounts(template), 100).toDS()
+      data.write.mode(SaveMode.Overwrite).csv(s"${loc}_hash")
+    }
+    counter.toSpaceByFrequency(template, s"sampled$fraction")
+  }
+
+
+  /**
+   * Restore persisted motif priorities. The template space must contain the same motifs,
+   * but potentially in a different order.
+   */
+  def restoreSpace(location: String, template: MotifSpace): MotifSpace = {
+    val raw = spark.read.csv(s"${location}_hash").map(x =>
+      (x.getString(0), x.getString(1).toLong)).collect
+    println(s"Restored previously saved hash parameters with ${raw.size} motifs")
+    FeatureCounter.toSpaceByFrequency(template, raw, "restored")
   }
 
   /**

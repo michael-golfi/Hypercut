@@ -193,7 +193,7 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
   //which can be large
   val bcSplit = sc.broadcast(spl)
   val parentMap = getParentMap(taxonomyNodes)
-  val bcPar = sc.broadcast(parentMap)
+  val bcParentMap = sc.broadcast(parentMap)
 
 
   /**
@@ -218,13 +218,14 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
       map(x => (x.getString(0).trim.toInt, x.getString(1).trim.toInt)).collect()
     val maxTaxon = raw.map(_._1).max
     val asMap = raw.toMap
-    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, ParentMap.NONE))
-    new ParentMap(asArray.toArray)
+    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, 1)).toArray
+    asArray(1) = ParentMap.NONE //1 is root of tree
+    new ParentMap(asArray)
   }
 
   def taggedToBuckets(segments: Dataset[(BucketId, Array[(ZeroBPBuffer, Int)])]): Dataset[TaxonBucket] = {
     val k = spl.k
-    val bcPar = this.bcPar
+    val bcPar = this.bcParentMap
     segments.map { case (hash, segments) => {
       TaxonBucket.fromTaggedSequences(hash, bcPar.value.taxonTaggedFromSequences(segments, k).toArray)
     } }
@@ -237,7 +238,6 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
     taggedToBuckets(byHash)
   }
 
-
   def writeBuckets(idsSequences: Dataset[(String, String)], labelFile: String, output: String): Unit = {
     val bcSplit = this.bcSplit
     val idSeqDF = idsSequences.toDF("id", "seq")
@@ -248,6 +248,32 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
     val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
     val buckets = segmentsToBuckets(segments)
     buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_taxidx")
+  }
+
+  def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, outputLocation: String): Unit = {
+    val bcSplit = this.bcSplit
+    val tbuckets = spark.read.parquet(s"${indexLocation}_taxidx").as[TaxonBucket]
+    val idSeqDF = idsSequences.toDF("id", "seq").as[(String, String)]
+
+    //Segments will be tagged with sequence ID
+    val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value))
+    val grouped = taggedSegments.groupBy($"_1.hash")
+    val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
+      toDF("id", "data").
+      as[(BucketId, Array[(ZeroBPBuffer, String)])]
+
+    val indexWithInput = tbuckets.joinWith(byHash, tbuckets("id") === byHash("id"))
+    val classified = indexWithInput.flatMap(x => x._1.classifyKmers(x._2._2, k))
+    classified.write.mode(SaveMode.Overwrite).option("sep", "\t").
+      csv(s"${outputLocation}_classifiedPre")
+
+    val bcPar = this.bcParentMap
+    val tagLCA = classified.groupBy("_1").agg(collect_list($"_2")).
+      as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
+
+    //TODO resolve_tree style algorithm
+    tagLCA.write.mode(SaveMode.Overwrite).option("sep", "\t").
+      csv(s"${outputLocation}_classified")
   }
 }
 
@@ -267,6 +293,11 @@ object Counting {
         i += 1
       }
       0
+    }
+  }
+  def tagOrdering[T]: Ordering[(Array[Int], T)] = new Ordering[(Array[Int], T)] {
+    override def compare(x: (Array[Int], T), y: (Array[Int], T)): Int = {
+      KmerOrdering.compare(x._1, y._1)
     }
   }
 

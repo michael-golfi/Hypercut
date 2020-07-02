@@ -34,10 +34,10 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
 
-  def getSpace(inFiles: String): MotifSpace = {
+  def getSpace(inFiles: String, persistHashLocation: Option[String] = None): MotifSpace = {
     val input = getInputSequences(inFiles, long(), sample.toOption)
     sample.toOption match {
-      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace)
+      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace, persistHashLocation)
       case None => preferredSpace
     }
   }
@@ -46,10 +46,19 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     routines.getReadsFromFiles(input, addRC(), k(), sample, longSequences)
   }
 
-  def getSplitter(inFiles: String): ReadSplitter[_] = {
+  def restoreSplitter(location: String): ReadSplitter[_] = {
     hash() match {
       case "motifSet" =>
-        new MotifSetExtractor(getSpace(inFiles), k(), distances())
+        val space = routines.restoreSpace(location, preferredSpace)
+        new MotifSetExtractor(space, k(), distances())
+      case _ => ???
+    }
+  }
+
+  def getSplitter(inFiles: String, persistHash: Option[String] = None): ReadSplitter[_] = {
+    hash() match {
+      case "motifSet" =>
+        new MotifSetExtractor(getSpace(inFiles, persistHash), k(), distances())
       case "minimizer" =>
         //The final parameter (B) currently has no effect
         new MinimizerSplitter(k(), numMotifs(), 2000)
@@ -96,20 +105,37 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
   val taxonIndex = new Subcommand("taxonIndex") {
     val location = opt[String](required = true, descr = "Path to location where index is stored")
+    val nodes = opt[String](descr = "Path to taxonomy nodes file", required = true)
+
     val build = new RunnableCommand("build") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
       val labels = opt[String](descr = "Path to sequence taxonomic label file", required = true)
-      val nodes = opt[String](descr = "Path to taxonomy nodes file", required = true)
       def run(): Unit = {
         val inData = inFiles().mkString(",")
         val hrf = new HadoopReadFiles(spark, k())
         val input = hrf.getReadsFromFilesWithID(inData)
-        val spl = getSplitter(inData)
+        val spl = getSplitter(inData, Some(location()))
         val builder = new TaxonBucketBuilder(spark, spl, nodes(), addRC())
         builder.writeBuckets(input, labels(), location())
       }
     }
     addSubcommand(build)
+
+    val classify = new RunnableCommand("classify") {
+      val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
+      val output = opt[String](descr = "Output location", required = true)
+      def run(): Unit = {
+        val inData = inFiles().mkString(",")
+        val hrf = new HadoopReadFiles(spark, k())
+        val input = hrf.getReadsFromFilesWithID(inData)
+        val spl = restoreSplitter(location())
+        val builder = new TaxonBucketBuilder(spark, spl, nodes())
+        builder.classify(location(), input, k(), output())
+
+      }
+    }
+    addSubcommand(classify)
+
   }
   addSubcommand(taxonIndex)
 
