@@ -192,27 +192,33 @@ final case class TaxonBucket(id: BucketId,
       s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
+//
+//    println(s"Bucket $id ${kmers.size} kmers taxa:")
+//    println(taxa.toList)
 
     //Rely on both arrays being sorted
     val bucketIt = kmers.indices.iterator
     val subjectIt = byKmer.iterator
-    if (bucketIt.isEmpty || byKmer.isEmpty) {
+    if (bucketIt.isEmpty || subjectIt.isEmpty) {
       return Iterator.empty
     }
     var bi = bucketIt.next
     var subj = subjectIt.next
     while (subjectIt.hasNext && KmerOrdering.compare(subj._1, kmers(bi)) < 0) {
-      subjectIt.next
+      subj = subjectIt.next
     }
 
     //The same k-mer may occur multiple times in subjects for different tags (but not in the bucket)
-    subjectIt.flatMap(x => {
-      while (bucketIt.hasNext && KmerOrdering.compare(x._1, kmers(bi)) > 0) {
+    //Need to consider subj again here
+    (Iterator(subj) ++ subjectIt).flatMap(s => {
+      while (bucketIt.hasNext && KmerOrdering.compare(s._1, kmers(bi)) > 0) {
         bi = bucketIt.next
       }
-      if (KmerOrdering.compare(x._1, kmers(bi)) == 0) {
-        Some((x._2, taxa(bi)))
+      if (KmerOrdering.compare(s._1, kmers(bi)) == 0) {
+//        println(s"Found " + BPBuffer.wrap(s._1, 0.toShort, k.toShort) + " set to " + taxa(bi))
+        Some((s._2, taxa(bi)))
       } else {
+//        println(s"Didn't find " + BPBuffer.wrap(s._1, 0.toShort, k.toShort))
         None
       }
     })
