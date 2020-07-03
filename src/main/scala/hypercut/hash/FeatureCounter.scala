@@ -6,7 +6,10 @@ object FeatureCounter {
   def apply(space: MotifSpace) = new FeatureCounter(space.byPriority.length)
 
   def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Long)], id: String) = {
-    new MotifSpace(counts.sortBy(_._2).map(_._1), oldSpace.n, id)
+    //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
+    new MotifSpace(
+      counts.sortBy(x => (x._2, x._1)).map(_._1), oldSpace.n, id
+    )
   }
 }
 
