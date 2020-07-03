@@ -96,7 +96,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @param longSequence
    * @return
    */
-  def getReadsFromFilesWithID(fileSpec: String,
+  def getReadsFromFilesWithID(fileSpec: String, withRC: Boolean,
                         longSequence: Boolean = false): Dataset[(String, String)] = {
     val raw = if(longSequence)
       ???
@@ -106,7 +106,15 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
     val degenerate = "[RYMKSWHBVDN]+"
 
-    raw.flatMap(r => r._2.split(degenerate).map(s => (r._1, s)))
+    val valid = raw.flatMap(r => r._2.split(degenerate).map(s => (r._1, s)))
+
+    if (withRC) {
+      valid.flatMap(r => {
+        Seq(r, (r._1, DNAHelpers.reverseComplement(r._2)))
+      })
+    } else {
+      valid
+    }
   }
 
 }

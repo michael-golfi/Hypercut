@@ -15,7 +15,7 @@ class CountingTest extends FunSuite with Matchers with SparkSessionTestWrapper {
   }
 
   def testSplitter[H](spl: ReadSplitter[H]): Unit = {
-    val counting = new SimpleCounting(spark, spl, false)
+    val counting = new SimpleCounting(spark, spl)
     val gCounting = new GroupedCounting(spark, spl, false)
 
     val data = Seq("ACTGGGTTG", "ACTGTTTTT").toDS()

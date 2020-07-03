@@ -81,7 +81,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val input = getInputSequences(inData, long())
         val spl = getSplitter(inData)
         val counting: Counting[_] = if (precount()) new GroupedCounting(spark, spl, addRC())
-          else new SimpleCounting(spark, spl, addRC())
+          else new SimpleCounting(spark, spl)
 
         output.toOption match {
           case Some(o) =>
@@ -113,9 +113,9 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       def run(): Unit = {
         val inData = inFiles().mkString(",")
         val hrf = new HadoopReadFiles(spark, k())
-        val input = hrf.getReadsFromFilesWithID(inData)
+        val input = hrf.getReadsFromFilesWithID(inData, addRC())
         val spl = getSplitter(inData, Some(location()))
-        val builder = new TaxonBucketBuilder(spark, spl, nodes(), addRC())
+        val builder = new TaxonBucketBuilder(spark, spl, nodes())
         builder.writeBuckets(input, labels(), location())
       }
     }
@@ -127,7 +127,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       def run(): Unit = {
         val inData = inFiles().mkString(",")
         val hrf = new HadoopReadFiles(spark, k())
-        val input = hrf.getReadsFromFilesWithID(inData)
+        val input = hrf.getReadsFromFilesWithID(inData, addRC())
         val spl = restoreSplitter(location())
         val builder = new TaxonBucketBuilder(spark, spl, nodes())
         builder.classify(location(), input, k(), output())

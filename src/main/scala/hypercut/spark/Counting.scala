@@ -125,8 +125,7 @@ final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
   }
 }
 
-final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
-                        addReverseComplements: Boolean) extends Counting(s, spl) {
+final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Counting(s, spl) {
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
@@ -148,17 +147,17 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
 
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
     uncountedToCounts(
-      routines.segmentsByHash(segments, addReverseComplements))
+      routines.segmentsByHash(segments, false))
   }
 
   def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket] = {
-    uncountedToBuckets(routines.segmentsByHash(segments, addReverseComplements))
+    uncountedToBuckets(routines.segmentsByHash(segments, false))
   }
 
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats] = {
     val k = spl.k
-    val byHash = routines.segmentsByHash(segments, addReverseComplements)
+    val byHash = routines.segmentsByHash(segments, false)
     if (raw) {
       byHash.map { case (hash, segments) => {
         //Simply count number of k-mers as a whole (including duplicates)
@@ -179,8 +178,7 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H],
 }
 
 final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
-                                  taxonomyNodes: String,
-                                  addReverseComplements: Boolean = false) {
+                                  taxonomyNodes: String) {
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
 
@@ -218,7 +216,7 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
       map(x => (x.getString(0).trim.toInt, x.getString(1).trim.toInt)).collect()
     val maxTaxon = raw.map(_._1).max
     val asMap = raw.toMap
-    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, 1)).toArray
+    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, ParentMap.NONE)).toArray
     asArray(1) = ParentMap.NONE //1 is root of tree
     new ParentMap(asArray)
   }
@@ -240,9 +238,9 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
 
   def writeBuckets(idsSequences: Dataset[(String, String)], labelFile: String, output: String): Unit = {
     val bcSplit = this.bcSplit
-    val idSeqDF = idsSequences.toDF("id", "seq")
-    val labels = getTaxonLabels(labelFile).toDF("id", "taxon")
-    val joined = idSeqDF.join(broadcast(labels), idSeqDF("id") === labels("id")).
+    val idSeqDF = idsSequences.toDF("seqId", "seq")
+    val labels = getTaxonLabels(labelFile).toDF("seqId", "taxon")
+    val joined = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
       select("seq", "taxon").as[(String, Int)]
 
     val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
@@ -253,21 +251,22 @@ final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
   def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, outputLocation: String): Unit = {
     val bcSplit = this.bcSplit
     val tbuckets = spark.read.parquet(s"${indexLocation}_taxidx").as[TaxonBucket]
-    val idSeqDF = idsSequences.toDF("id", "seq").as[(String, String)]
+    val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
     val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value))
     val grouped = taggedSegments.groupBy($"_1.hash")
     val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
-      toDF("id", "data").
+      toDF("hash", "sequences").
       as[(BucketId, Array[(ZeroBPBuffer, String)])]
 
-    val indexWithInput = tbuckets.joinWith(byHash, tbuckets("id") === byHash("id"))
+    val indexWithInput = tbuckets.joinWith(byHash, tbuckets("id") === byHash("hash"))
     val classified = indexWithInput.flatMap(x => x._1.classifyKmers(x._2._2, k))
-    classified.write.mode(SaveMode.Overwrite).option("sep", "\t").
-      csv(s"${outputLocation}_classifiedPre")
+//    classified.write.mode(SaveMode.Overwrite).option("sep", "\t").
+//      csv(s"${outputLocation}_classifiedPre")
 
     val bcPar = this.bcParentMap
+    //Group by sequence ID
     val tagLCA = classified.groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
 
