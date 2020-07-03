@@ -7,14 +7,15 @@
 package miniasm.genome.util
 
 import scala.util.Random
-import scala.annotation.tailrec
+import scala.annotation.{switch, tailrec}
 
 object DNAHelpers {
 
   /**
    * Obtain the complement of a single nucleotide.
    */
-  def charComplement(bp: Char): Char = bp match {
+  def charComplement(bp: Char): Char =
+    (bp: @switch) match {
     case 'A' => 'T'
     case 'C' => 'G'
     case 'T' => 'A'

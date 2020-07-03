@@ -58,6 +58,11 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     ss.map(_._2.getValue.replaceAll("\n", ""))
   }
 
+
+  //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
+//  val degenerate = "[RYMKSWHBVDN]+"
+  val degenerateAndUnknown = "[^ACTGU]+"
+
   /**
    * Load sequences from files, optionally adding reverse complements and/or sampling.
    */
@@ -69,15 +74,13 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     else
       getShortReads(fileSpec).toDS
 
-    //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
-    val degenerate = "[RYMKSWHBVDN]+"
-
     val sampled = sample match {
       case Some(s) => raw.sample(s)
       case _ => raw
     }
 
-    val valid = sampled.flatMap(r => r.split(degenerate))
+    val degen = this.degenerateAndUnknown
+    val valid = sampled.flatMap(r => r.split(degen))
 
     if (withRC) {
       valid.flatMap(r => {
@@ -92,7 +95,6 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * Load reads with their IDs from DNA files.
    * @param fileSpec
    * @param withRC
-   * @param sample
    * @param longSequence
    * @return
    */
@@ -103,10 +105,8 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     else
       getShortReadsWithID(fileSpec).toDS
 
-    //See https://sg.idtdna.com/pages/support/faqs/what-are-the-base-degeneracy-codes-that-you-use-(eg.-r-w-k-v-s)-
-    val degenerate = "[RYMKSWHBVDN]+"
-
-    val valid = raw.flatMap(r => r._2.split(degenerate).map(s => (r._1, s)))
+    val degen = this.degenerateAndUnknown
+    val valid = raw.flatMap(r => r._2.split(degen).map(s => (r._1, s)))
 
     if (withRC) {
       valid.flatMap(r => {

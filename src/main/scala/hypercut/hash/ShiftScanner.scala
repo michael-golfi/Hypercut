@@ -2,6 +2,7 @@ package hypercut.hash
 
 import scala.collection.mutable.ArrayBuffer
 import miniasm.genome.bpbuffer.BitRepresentation._
+import miniasm.genome.bpbuffer.InvalidNucleotideException
 
 
 trait Scanner {
@@ -41,21 +42,27 @@ final class ShiftScanner(val space: MotifSpace) extends Scanner {
   Returns an array with the matches in order.
  */
   def allMatches(data: String): ArrayBuffer[Motif] = {
-    val r = new ArrayBuffer[Motif](data.length)
-    var pos = 0
-    var window: Int = 0
-    while ((pos < width - 1) && pos < data.length) {
-      window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
-      pos += 1
-    }
+    try {
+      val r = new ArrayBuffer[Motif](data.length)
+      var pos = 0
+      var window: Int = 0
+      while ((pos < width - 1) && pos < data.length) {
+        window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
+        pos += 1
+      }
 
-    while (pos < data.length) {
-      window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
-      val priority = space.priorityLookup(window)
-      val motif = Motif(pos - (width - 1), featuresByPriority(priority))
-      r += motif
-      pos += 1
+      while (pos < data.length) {
+        window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
+        val priority = space.priorityLookup(window)
+        val motif = Motif(pos - (width - 1), featuresByPriority(priority))
+        r += motif
+        pos += 1
+      }
+      r
+    } catch {
+      case ine: InvalidNucleotideException =>
+        Console.err.println(s"Unable to parse sequence: '$data' because of character '${ine.invalidChar}' ${ine.invalidChar.toInt}")
+        throw ine
     }
-    r
   }
 }

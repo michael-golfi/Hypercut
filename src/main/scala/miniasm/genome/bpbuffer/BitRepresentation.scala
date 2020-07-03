@@ -9,6 +9,8 @@ import scala.collection.immutable._
 import annotation.switch
 import miniasm.genome._
 
+class InvalidNucleotideException(val invalidChar: Char) extends Exception
+
 /**
  * Helper functions for working with a low level bit representation of nucleotide sequences.
  * (Companion object)
@@ -45,6 +47,7 @@ object BitRepresentation {
       case 'G' => G
       case 'T' => T
       case 'U' => U
+      case _ => throw new InvalidNucleotideException(char)
     }
   }
 
