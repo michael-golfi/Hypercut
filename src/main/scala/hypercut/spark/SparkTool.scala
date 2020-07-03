@@ -7,6 +7,7 @@ import hypercut._
 import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
 import hypercut.bucket.AbundanceBucket._
 import hypercut.hash.skc.MinimizerSplitter
+import hypercut.taxonomic.TaxonomicIndex
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
@@ -115,8 +116,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val hrf = new HadoopReadFiles(spark, k())
         val input = hrf.getReadsFromFilesWithID(inData, addRC())
         val spl = getSplitter(inData, Some(location()))
-        val builder = new TaxonBucketBuilder(spark, spl, nodes())
-        builder.writeBuckets(input, labels(), location())
+        val index = new TaxonomicIndex(spark, spl, nodes())
+        index.writeBuckets(input, labels(), location())
       }
     }
     addSubcommand(build)
@@ -129,8 +130,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val hrf = new HadoopReadFiles(spark, k())
         val input = hrf.getReadsFromFilesWithID(inData, addRC())
         val spl = restoreSplitter(location())
-        val builder = new TaxonBucketBuilder(spark, spl, nodes())
-        builder.classify(location(), input, k(), output())
+        val index = new TaxonomicIndex(spark, spl, nodes())
+        index.classify(location(), input, k(), output())
 
       }
     }

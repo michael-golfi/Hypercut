@@ -3,7 +3,7 @@ package hypercut.spark
 import java.nio.ByteBuffer
 
 import hypercut._
-import hypercut.bucket.{BucketStats, ParentMap, SimpleBucket, TaxonBucket}
+import hypercut.bucket.{BucketStats, SimpleBucket}
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.SerialRoutines._
 import miniasm.genome.bpbuffer.BPBuffer
@@ -174,105 +174,6 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
         BucketStats(segments.length, totalAbundance, numDistinct)
       } }
     }
-  }
-}
-
-final class TaxonBucketBuilder[H](val spark: SparkSession, spl: ReadSplitter[H],
-                                  taxonomyNodes: String) {
-  val sc: org.apache.spark.SparkContext = spark.sparkContext
-  val routines = new Routines(spark)
-
-  import org.apache.spark.sql._
-  import spark.sqlContext.implicits._
-  import org.apache.spark.sql.functions._
-  import Counting._
-
-  //Broadcasting the splitter mainly because it contains a reference to the MotifSpace,
-  //which can be large
-  val bcSplit = sc.broadcast(spl)
-  val parentMap = getParentMap(taxonomyNodes)
-  val bcParentMap = sc.broadcast(parentMap)
-
-
-  /**
-   * Read a taxon label file (TSV format)
-   * This file is expected to be small.
-   * @param file
-   * @return
-   */
-  def getTaxonLabels(file: String): Dataset[(String, Int)] = {
-    spark.read.option("sep", "\t").csv(file).
-      map(x => (x.getString(0), x.getString(1).toInt))
-  }
-
-  /**
-   * Read an ancestor map from an NCBI nodes.dmp style file.
-   * This file is expected to be small.
-   * @param file
-   * @return
-   */
-  def getParentMap(file: String): ParentMap = {
-    val raw = spark.read.option("sep", "|").csv(file).
-      map(x => (x.getString(0).trim.toInt, x.getString(1).trim.toInt)).collect()
-    val maxTaxon = raw.map(_._1).max
-    val asMap = raw.toMap
-    val asArray = (0 to maxTaxon).map(x => asMap.getOrElse(x, ParentMap.NONE)).toArray
-    asArray(1) = ParentMap.NONE //1 is root of tree
-    new ParentMap(asArray)
-  }
-
-  def taggedToBuckets(segments: Dataset[(BucketId, Array[(ZeroBPBuffer, Int)])]): Dataset[TaxonBucket] = {
-    val k = spl.k
-    val bcPar = this.bcParentMap
-    segments.map { case (hash, segments) => {
-      TaxonBucket.fromTaggedSequences(hash, bcPar.value.taxonTaggedFromSequences(segments, k).toArray)
-    } }
-  }
-
-  def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
-    val grouped = segments.groupBy($"_1.hash")
-    val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
-      as[(BucketId, Array[(ZeroBPBuffer, Int)])]
-    taggedToBuckets(byHash)
-  }
-
-  def writeBuckets(idsSequences: Dataset[(String, String)], labelFile: String, output: String): Unit = {
-    val bcSplit = this.bcSplit
-    val idSeqDF = idsSequences.toDF("seqId", "seq")
-    val labels = getTaxonLabels(labelFile).toDF("seqId", "taxon")
-    val joined = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
-      select("seq", "taxon").as[(String, Int)]
-
-    val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
-    val buckets = segmentsToBuckets(segments)
-    buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_taxidx")
-  }
-
-  def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, outputLocation: String): Unit = {
-    val bcSplit = this.bcSplit
-    val tbuckets = spark.read.parquet(s"${indexLocation}_taxidx").as[TaxonBucket]
-    val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
-
-    //Segments will be tagged with sequence ID
-    val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value))
-    val grouped = taggedSegments.groupBy($"_1.hash")
-    val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
-      toDF("hash", "sequences").
-      as[(BucketId, Array[(ZeroBPBuffer, String)])]
-
-    val indexWithInput = tbuckets.joinWith(byHash, tbuckets("id") === byHash("hash"))
-    val classified = indexWithInput.flatMap(x => x._1.classifyKmers(x._2._2, k))
-//    classified.write.mode(SaveMode.Overwrite).option("sep", "\t").
-//      csv(s"${outputLocation}_classifiedPre")
-
-    val bcPar = this.bcParentMap
-    //Group by sequence ID
-    val tagLCA = classified.groupBy("_1").agg(collect_list($"_2")).
-      as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
-
-    //TODO resolve_tree style algorithm
-    tagLCA.write.mode(SaveMode.Overwrite).option("sep", "\t").
-      csv(s"${outputLocation}_classified")
   }
 }
 
