@@ -14,7 +14,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
 
   val conf = sc.hadoopConfiguration
   conf.set("k", k.toString)
-  conf.set("look_ahead_buffer_size", (1024 * 1024).toString)
+  conf.set("look_ahead_buffer_size", (50 * 1024 * 1024).toString)
 
   /**
    * Using the fastdoop library, read short read sequence data only from the input file.
