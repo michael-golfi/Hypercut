@@ -46,7 +46,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
    * @return
    */
   def getParentMap(file: String): ParentMap = {
-    val raw = spark.read.option("sep", "|").csv(file).
+    val raw = spark.read.option("sep", "|").csv(file).repartition(100).
       map(x => (x.getString(0).trim.toInt, x.getString(1).trim.toInt)).collect()
     val maxTaxon = raw.map(_._1).max
     val asMap = raw.toMap
