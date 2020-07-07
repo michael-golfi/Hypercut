@@ -41,7 +41,14 @@ object DNAHelpers {
    * Obtain the reverse complement of a string of nucleotides.
    */
   def reverseComplement(data: String): String = {
-    complement(data.reverse)
+    val b = new StringBuilder()
+    b.sizeHint(data.length)
+    var i = data.length
+    while (0 < i) {
+      i -= 1
+      b += charComplement(data.charAt(i))
+    }
+    b.toString()
   }
 
   /**
