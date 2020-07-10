@@ -2,7 +2,7 @@ package hypercut.taxonomic
 
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.{Counting, HashSegment, Routines}
-import hypercut.spark.SerialRoutines.createHashSegments
+import hypercut.spark.SerialRoutines._
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
@@ -15,6 +15,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
                               taxonomyNodes: String) {
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
+
+  val indexBuckets = 400
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
@@ -31,6 +33,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   /**
    * Read a taxon label file (TSV format)
    * This file is expected to be small.
+   *
    * @param file
    * @return
    */
@@ -42,6 +45,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   /**
    * Read an ancestor map from an NCBI nodes.dmp style file.
    * This file is expected to be small.
+   *
    * @param file
    * @return
    */
@@ -60,7 +64,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val bcPar = this.bcParentMap
     segments.map { case (hash, segments) => {
       TaxonBucket.fromTaggedSequences(hash, bcPar.value.taxonTaggedFromSequences(segments, k).toArray)
-    } }
+    }
+    }
   }
 
   def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
@@ -79,18 +84,39 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
     val buckets = segmentsToBuckets(segments)
-    buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_taxidx")
+
+    /*
+     * Use saveAsTable instead of ordinary parquet save to preserve buckets/partitioning
+     */
+    buckets.write.mode(SaveMode.Overwrite).
+      option("path", s"${output}_taxidx").
+      bucketBy(indexBuckets, "id").sortBy("id").
+      saveAsTable("taxidx")
   }
 
-  def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, outputLocation: String): Unit = {
+  def loadBucketedIndex(location: String): DataFrame = {
+    spark.sql("SELECT * FROM taxidx")
+  }
+
+  def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, output: String): Unit = {
     val bcSplit = this.bcSplit
-    val tbuckets = spark.read.parquet(s"${indexLocation}_taxidx").as[TaxonBucket]
+//    val tbuckets = spark.read.option("path", s"${indexLocation}_taxIdx").
+//      table("taxidx").as[TaxonBucket]
+    val tbuckets = loadBucketedIndex(s"${indexLocation}_taxidx").as[TaxonBucket]
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
-    val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value))
-    val grouped = taggedSegments.groupBy($"_1.hash")
-    val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
+    val taggedSegments = idSeqDF.flatMap(r => createHashSegmentsFlat(r._2, r._1, bcSplit.value))
+
+    taggedSegments.write.mode(SaveMode.Overwrite).
+      option("path", s"${output}_segments").
+      bucketBy(indexBuckets, "_1").sortBy("_1").
+      saveAsTable("segments")
+
+    val bucketedSegments = spark.sql("SELECT * FROM segments")
+
+    val grouped = bucketedSegments.groupBy($"_1")
+    val byHash = grouped.agg(collect_list(struct($"_2", $"_3"))).
       toDF("hash", "sequences").
       as[(BucketId, Array[(ZeroBPBuffer, String)])]
 
@@ -104,7 +130,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     //TODO resolve_tree style algorithm
     tagLCA.write.mode(SaveMode.Overwrite).option("sep", "\t").
-      csv(s"${outputLocation}_classified")
+      csv(s"${output}_classified")
   }
 }
 
@@ -120,6 +146,7 @@ object TaxonBucket {
 /**
  * A bucket where each k-mer is tagged with a taxon.
  * K-mers are sorted.
+ *
  * @param id
  * @param kmers
  * @param taxa
@@ -129,11 +156,13 @@ final case class TaxonBucket(id: BucketId,
                              taxa: Array[Int]) {
 
   implicit def ordering[T] = Counting.tagOrdering[T]
+
   import Counting.KmerOrdering
 
   /**
    * For tagged sequences that belong to this bucket, classify each one using
    * the LCA algorithm. Return a (tag, taxon) pair for each k-mer that has a hit.
+   *
    * @param data
    * @tparam T
    * @return
