@@ -83,7 +83,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
       select("seq", "taxon").as[(String, Int)]
 
     val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
-    val buckets = segmentsToBuckets(segments)
+    val buckets = segmentsToBuckets(segments).
+      repartition(indexBuckets, $"id")
 
     /*
      * Use saveAsTable instead of ordinary parquet save to preserve buckets/partitioning
@@ -94,34 +95,26 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
       saveAsTable("taxidx")
   }
 
-  def loadBucketedIndex(location: String): DataFrame = {
-    spark.sql("SELECT * FROM taxidx")
-  }
-
   def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, output: String): Unit = {
     val bcSplit = this.bcSplit
-//    val tbuckets = spark.read.option("path", s"${indexLocation}_taxIdx").
-//      table("taxidx").as[TaxonBucket]
-    val tbuckets = loadBucketedIndex(s"${indexLocation}_taxidx").as[TaxonBucket]
+    val tbuckets = spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
-    val taggedSegments = idSeqDF.flatMap(r => createHashSegmentsFlat(r._2, r._1, bcSplit.value))
+    val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
+      groupByKey(_._1.hash)
 
-    taggedSegments.write.mode(SaveMode.Overwrite).
-      option("path", s"${output}_segments").
-      bucketBy(indexBuckets, "_1").sortBy("_1").
-      saveAsTable("segments")
-
-    val bucketedSegments = spark.sql("SELECT * FROM segments")
-
-    val grouped = bucketedSegments.groupBy($"_1")
-    val byHash = grouped.agg(collect_list(struct($"_2", $"_3"))).
-      toDF("hash", "sequences").
-      as[(BucketId, Array[(ZeroBPBuffer, String)])]
-
-    val indexWithInput = tbuckets.joinWith(byHash, tbuckets("id") === byHash("hash"))
-    val classified = indexWithInput.flatMap(x => x._1.classifyKmers(x._2._2, k))
+    val classified = taggedSegments.cogroup(tbuckets.groupByKey(_.id))((bucketId, segmentsIt, idxBucketIt) => {
+      if (idxBucketIt.isEmpty || segmentsIt.isEmpty) {
+        Iterator.empty
+      } else {
+        //only one bucket per key
+        val idxBkt = idxBucketIt.next
+        val bkt = TaxonBucket(bucketId, idxBkt.kmers, idxBkt.taxa)
+        //TODO exploit sort order of segmentsIt if possible
+        bkt.classifyKmers(segmentsIt.map(x => (x._1.segment, x._2)).toList, k)
+      }
+    })
 
     val bcPar = this.bcParentMap
     //Group by sequence ID

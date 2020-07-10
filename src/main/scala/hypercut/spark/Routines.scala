@@ -156,11 +156,4 @@ object SerialRoutines {
       r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
     } yield (r, tag)
   }
-
-  def createHashSegmentsFlat[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(BucketId, ZeroBPBuffer, T)] = {
-    for {
-      (h, s) <- splitter.split(r)
-      r = (splitter.compact(h), BPBuffer.wrap(s), tag)
-    } yield r
-  }
 }
