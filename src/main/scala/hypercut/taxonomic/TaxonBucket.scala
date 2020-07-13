@@ -16,12 +16,12 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
 
-  val indexBuckets = 400
+  val indexBuckets = spark.conf.get("spark.sql.shuffle.partitions").toInt
+  println(s"Taxonomic index set to $indexBuckets buckets")
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
   import org.apache.spark.sql.functions._
-  import Counting._
 
   //Broadcasting the splitter mainly because it contains a reference to the MotifSpace,
   //which can be large
@@ -69,6 +69,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   }
 
   def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
+    //TODO possible to avoid a shuffle here, e.g. by partitioning preserving transformation?
     val grouped = segments.groupBy($"_1.hash")
     val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
       as[(BucketId, Array[(ZeroBPBuffer, Int)])]
@@ -95,33 +96,46 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
       saveAsTable("taxidx")
   }
 
+  def loadIndexBuckets(location: String): Dataset[TaxonBucket] = {
+    //Does not delete the table itself, only removes it from the hive catalog
+    //This is to ensure that we get the one in the expected location
+    spark.sql("DROP TABLE IF EXISTS taxidx")
+    spark.sql(s"""|CREATE TABLE taxidx(id long, kmers array<array<int>>, taxa array<int>)
+      |USING PARQUET CLUSTERED BY (id) INTO ${indexBuckets} BUCKETS
+      |LOCATION '${location}_taxidx'
+      |""".stripMargin)
+    spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
+  }
+
   def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, output: String): Unit = {
     val bcSplit = this.bcSplit
-    val tbuckets = spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
+
+    loadIndexBuckets(indexLocation)
+    val tbuckets = loadIndexBuckets(indexLocation)
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
     val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
       groupByKey(_._1.hash)
 
-    val classified = taggedSegments.cogroup(tbuckets.groupByKey(_.id))((bucketId, segmentsIt, idxBucketIt) => {
+    //Produce every possible (tag, LCA) combination
+    //Avoid shuffle by jointly traversing index and tagged segments for each bucketId/hash
+    val tagsWithLCAs = taggedSegments.cogroup(tbuckets.groupByKey(_.id))((bucketId, segmentsIt, idxBucketIt) => {
       if (idxBucketIt.isEmpty || segmentsIt.isEmpty) {
         Iterator.empty
       } else {
         //only one bucket per key
         val idxBkt = idxBucketIt.next
         val bkt = TaxonBucket(bucketId, idxBkt.kmers, idxBkt.taxa)
-        //TODO exploit sort order of segmentsIt if possible
         bkt.classifyKmers(segmentsIt.map(x => (x._1.segment, x._2)).toList, k)
       }
     })
 
     val bcPar = this.bcParentMap
     //Group by sequence ID
-    val tagLCA = classified.groupBy("_1").agg(collect_list($"_2")).
+    val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
 
-    //TODO resolve_tree style algorithm
     tagLCA.write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
   }

@@ -15,7 +15,12 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
   val conf = sc.hadoopConfiguration
   conf.set("k", k.toString)
   conf.set("look_ahead_buffer_size", (50 * 1024 * 1024).toString)
-  conf.set("mapred.max.split.size", (16 * 1024 * 1024).toString)
+
+  /* Constrain the split sizes for input files (increasing the number of splits).
+   * For longer sequences in "short read files", such as the NCBI bacterial sequences refseq library,
+   * large splits will cause a lot of memory pressure. This helps control the effect.
+   */
+  conf.set("mapred.max.split.size", (4 * 1024 * 1024).toString)
 
   /**
    * Using the fastdoop library, read short read sequence data only from the input file.
