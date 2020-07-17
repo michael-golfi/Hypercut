@@ -133,12 +133,15 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     })
 
     val bcPar = this.bcParentMap
+
     //Group by sequence ID
-    val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
+    //Coalesce for performance
+    val tagLCA = tagsWithLCAs.coalesce(indexBuckets / 10).
+      groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
 
-    //This table will be relatively small and we repartition mainly to avoid generating a lot of small files
-    tagLCA.repartition(64).write.mode(SaveMode.Overwrite).option("sep", "\t").
+    //This table will be relatively small and we coalesce mainly to avoid generating a lot of small files
+    tagLCA.coalesce(64).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
   }
 }
