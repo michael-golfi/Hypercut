@@ -110,25 +110,26 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, output: String): Unit = {
     val bcSplit = this.bcSplit
 
-    loadIndexBuckets(indexLocation)
+    //indexBuckets can potentially be very large, but they are pre-partitioned on disk.
+    //Important to avoid shuffling this.
+    //Shuffling the subject (idsSequences) being classified should be much easier.
     val tbuckets = loadIndexBuckets(indexLocation)
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
+    //TODO collect_list seems to cause one unnecessary shuffle on the subject.
     val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
-      groupByKey(_._1.hash)
+      groupBy("_1.hash").agg(collect_list(struct("_1.segment", "_2"))).
+      toDF("id", "segments")
 
-    //Produce every possible (tag, LCA) combination
-    //Avoid shuffle by jointly traversing index and tagged segments for each bucketId/hash
-    val tagsWithLCAs = taggedSegments.cogroup(tbuckets.groupByKey(_.id))((bucketId, segmentsIt, idxBucketIt) => {
-      if (idxBucketIt.isEmpty || segmentsIt.isEmpty) {
-        Iterator.empty
-      } else {
-        //only one bucket per key
-        val idxBkt = idxBucketIt.next
-        val bkt = TaxonBucket(bucketId, idxBkt.kmers, idxBkt.taxa)
-        bkt.classifyKmers(segmentsIt.map(x => (x._1.segment, x._2)).toList, k)
-      }
+    //Shuffling of the index (tbuckets) in this join can be avoided when the partitioning column
+    //and number of partitions is the same in both tables
+    val joined = taggedSegments.join(tbuckets, List("id")).
+      as[(Long, Array[(ZeroBPBuffer, String)], Array[Array[Int]], Array[Int])]
+
+    val tagsWithLCAs = joined.flatMap(data => {
+      val tbkt = TaxonBucket(data._1, data._3, data._4)
+      tbkt.classifyKmers(data._2, k)
     })
 
     val bcPar = this.bcParentMap
@@ -136,7 +137,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
 
-    tagLCA.write.mode(SaveMode.Overwrite).option("sep", "\t").
+    //This table will be relatively small and we repartition mainly to avoid generating a lot of small files
+    tagLCA.repartition(64).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
   }
 }
