@@ -7,7 +7,6 @@ import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
 
-import scala.collection.mutable
 import scala.util.Sorting
 
 
@@ -64,8 +63,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val bcPar = this.bcParentMap
     segments.map { case (hash, segments) => {
       TaxonBucket.fromTaggedSequences(hash, bcPar.value.taxonTaggedFromSequences(segments, k).toArray)
-    }
-    }
+    } }
   }
 
   def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
@@ -80,15 +78,16 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val bcSplit = this.bcSplit
     val idSeqDF = idsSequences.toDF("seqId", "seq")
     val labels = getTaxonLabels(labelFile).toDF("seqId", "taxon")
-    val joined = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
+    val idSeqLabels = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
       select("seq", "taxon").as[(String, Int)]
 
-    val segments = joined.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
+    val segments = idSeqLabels.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
     val buckets = segmentsToBuckets(segments).
       repartition(indexBuckets, $"id")
 
     /*
-     * Use saveAsTable instead of ordinary parquet save to preserve buckets/partitioning
+     * Use saveAsTable instead of ordinary parquet save to preserve buckets/partitioning.
+     * We will reuse the partitioning later when we query the index in the classify operation
      */
     buckets.write.mode(SaveMode.Overwrite).
       option("path", s"${output}_taxidx").
@@ -113,7 +112,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //indexBuckets can potentially be very large, but they are pre-partitioned on disk.
     //Important to avoid shuffling this.
     //Shuffling the subject (idsSequences) being classified should be much easier.
-    val tbuckets = loadIndexBuckets(indexLocation)
+    val indexBuckets = loadIndexBuckets(indexLocation)
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
@@ -122,12 +121,12 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
       groupBy("_1.hash").agg(collect_list(struct("_1.segment", "_2"))).
       toDF("id", "segments")
 
-    //Shuffling of the index (tbuckets) in this join can be avoided when the partitioning column
+    //Shuffling of the index in this join can be avoided when the partitioning column
     //and number of partitions is the same in both tables
-    val joined = taggedSegments.join(tbuckets, List("id")).
+    val subjectWithIndex = taggedSegments.join(indexBuckets, List("id")).
       as[(Long, Array[(ZeroBPBuffer, String)], Array[Array[Int]], Array[Int])]
 
-    val tagsWithLCAs = joined.flatMap(data => {
+    val tagsWithLCAs = subjectWithIndex.flatMap(data => {
       val tbkt = TaxonBucket(data._1, data._3, data._4)
       tbkt.classifyKmers(data._2, k)
     })
@@ -209,9 +208,5 @@ final case class TaxonBucket(id: BucketId,
         None
       }
     })
-  }
-
-  def merge(other: TaxonBucket, ancestors: ParentMap): TaxonBucket = {
-    ???
   }
 }

@@ -3,10 +3,14 @@ package hypercut.spark
 import fastdoop._
 import miniasm.genome.util.DNAHelpers
 import org.apache.hadoop.io.Text
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, SparkSession}
 
+/**
+ * Routines for reading input data using fastdoop.
+ * @param spark
+ * @param k
+ */
 class HadoopReadFiles(spark: SparkSession, k: Int) {
 
   val sc: org.apache.spark.SparkContext = spark.sparkContext
@@ -23,8 +27,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
   conf.set("mapred.max.split.size", (4 * 1024 * 1024).toString)
 
   /**
-   * Using the fastdoop library, read short read sequence data only from the input file.
-   * @param sc
+   * Read short read sequence data only from the input file.
    * @param file
    * @return
    */
@@ -42,7 +45,11 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     }
   }
 
-  // Returns (id, sequence)
+  /**
+   * Read short sequence data together with sequence IDs.
+   * @param file
+   * @return
+   */
   def getShortReadsWithID(file: String): RDD[(String, String)] = {
     if (file.toLowerCase.endsWith("fq") || file.toLowerCase.endsWith("fastq")) {
       println(s"Assuming fastq format for $file")
@@ -57,6 +64,11 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
     }
   }
 
+  /**
+   * Read a single long sequence.
+   * @param file
+   * @return
+   */
   def getLongSequence(file: String): RDD[String] = {
     println(s"Assuming fasta format (long sequences) for $file")
     val ss = sc.newAPIHadoopFile(file, classOf[FASTAlongInputFileFormat], classOf[Text], classOf[PartialSequence],

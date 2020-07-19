@@ -11,8 +11,8 @@ import hypercut.taxonomic.TaxonomicIndex
 
 abstract class SparkTool(appName: String) {
   def conf: SparkConf = {
-    val conf = new SparkConf
-    conf
+    //SparkConf can be customized here if needed
+    new SparkConf
   }
 
   lazy val spark =
@@ -133,7 +133,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val spl = restoreSplitter(location())
         val index = new TaxonomicIndex(spark, spl, nodes())
         index.classify(location(), input, k(), output())
-
       }
     }
     addSubcommand(classify)
