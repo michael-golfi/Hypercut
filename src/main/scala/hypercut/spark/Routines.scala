@@ -1,10 +1,7 @@
 package hypercut.spark
 
-import java.io.{File, PrintStream}
-
-import hypercut.hash.{FeatureScanner, _}
 import hypercut.bucket.BucketStats
-import hypercut.graph.Contig
+import hypercut.hash.{FeatureScanner, _}
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 import miniasm.genome.util.DNAHelpers
@@ -133,11 +130,6 @@ class Routines(val spark: SparkSession) {
  * Serialization-safe routines.
  */
 object SerialRoutines {
-  def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
-    case Some(ml) => if (c.length >= ml) Some(c) else None
-    case _ => Some(c)
-  }
-
   def createHashSegments[H](r: String, spl: Broadcast[ReadSplitter[H]]): Iterator[HashSegment] = {
     val splitter = spl.value
     createHashSegments(r, splitter)

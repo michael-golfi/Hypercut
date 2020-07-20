@@ -5,8 +5,6 @@ import org.apache.spark.sql.{Dataset, SparkSession}
 import org.rogach.scallop.Subcommand
 import hypercut._
 import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
-import hypercut.bucket.AbundanceBucket._
-import hypercut.hash.skc.MinimizerSplitter
 import hypercut.taxonomic.TaxonomicIndex
 
 abstract class SparkTool(appName: String) {
@@ -31,7 +29,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   footer("Also see the documentation (to be written).")
 
   def routines = new Routines(spark)
-  val bgraph = new BucketGraph(routines)
 
   val checkpoint = opt[String](required = false, default = Some("/tmp/spark/checkpoint"),
       descr = "Path to checkpoint directory")
@@ -61,9 +58,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     hash() match {
       case "motifSet" =>
         new MotifSetExtractor(getSpace(inFiles, persistHash), k(), distances())
-      case "minimizer" =>
-        //The final parameter (B) currently has no effect
-        new MinimizerSplitter(k(), numMotifs(), 2000)
     }
   }
 
@@ -139,67 +133,6 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
   }
   addSubcommand(taxonIndex)
-
-  val buckets = new Subcommand("buckets") {
-    val location = opt[String](required = true, descr = "Path to location where buckets and edges are stored (parquet)")
-
-    val build = new RunnableCommand("build") {
-      val input = trailArg[List[String]](required = true, descr = "Input sequence files")
-      val edges = toggle("edges", default = Some(true), descrNo = "Do not index edges")
-
-      def run() {
-        val inFiles = input().mkString(",")
-        val reads = getInputSequences(inFiles, false, None)
-        val ext = new MotifSetExtractor(getSpace(inFiles), k())
-        val minAbundance = None
-        if (edges()) {
-          bgraph.graphFromReads(reads, ext, addRC(), location.toOption)
-        } else {
-          bgraph.bucketsOnly(reads, ext, location.toOption, addRC())
-        }
-      }
-    }
-    addSubcommand(build)
-
-    val top = new RunnableCommand("top") {
-      val n = opt[Int](default = Some(10), descr = "Number of buckets to print")
-      val amount = opt[Int](default = Some(10), descr = "Amount of sequence to print")
-      //Note: could add a minAbundance flag here in the future if needed
-
-      def run() {
-       val buckets = bgraph.loadBuckets(location(), None)
-       bgraph.showBuckets(buckets.map(_._2),
-           n(), amount())
-      }
-    }
-    addSubcommand(top)
-
-    val merge = new RunnableCommand("merge") {
-      val minAbundance = opt[Int](default = Some(1), descr = "Minimum k-mer abundance")
-      val minLength = opt[Int](descr = "Minimum unitig length for output")
-      val showStats = opt[Boolean](descr = "Show statistics for each merge iteration")
-      val stopAtKmers = opt[Long](default = Some(1000000), descr = "Stop iterating at k-mer count")
-
-      def run() {
-        val loc = location()
-        val graph = bgraph.loadBucketGraph(loc, minAbundance.toOption.map(clipAbundance), None)
-        val it = new IterativeMerge(spark, showStats(), minLength.toOption, k(), loc)
-        it.iterate(graph, stopAtKmers())
-      }
-    }
-    addSubcommand(merge)
-
-    val stats = new RunnableCommand("stats") {
-      val minAbundance = opt[Int](default = Some(1), descr = "Minimum k-mer abundance")
-      val stdout = opt[Boolean](default = Some(false), descr = "Print stats to stdout")
-      def run() {
-        bgraph.bucketStats(location(), minAbundance.toOption.map(clipAbundance), stdout())
-      }
-    }
-
-    addSubcommand(stats)
-  }
-  addSubcommand(buckets)
 
   verify()
   spark.sparkContext.setCheckpointDir(checkpoint())

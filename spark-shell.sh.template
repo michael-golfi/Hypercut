@@ -7,5 +7,5 @@ MASTER=spark://localhost:7077
 exec $SPARK/bin/spark-shell \
   --conf spark.driver.maxResultSize=2g \
   --jars target/scala-2.11/hypercut_2.11-0.1.0-SNAPSHOT.jar \
-  --packages org.vegas-viz:vegas_2.11:0.3.11,org.rogach:scallop_2.11:latest.integration,graphframes:graphframes:0.7.0-spark2.4-s_2.11 \
+  --packages org.rogach:scallop_2.11:latest.integration \
   --master $MASTER

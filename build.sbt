@@ -19,9 +19,3 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8"
 
 libraryDependencies += "org.apache.spark" %% "spark-sql" % "2.4.1"
 
-//implicitly needed by graphframes, otherwise not needed
-libraryDependencies += "org.apache.spark" %% "spark-graphx" % "2.4.1"
-
-libraryDependencies += "graphframes" % "graphframes" % "0.7.0-spark2.4-s_2.11"
-
-libraryDependencies += "org.vegas-viz" %% "vegas" % "0.3.11"
