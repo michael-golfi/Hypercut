@@ -128,7 +128,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     val tagsWithLCAs = subjectWithIndex.flatMap(data => {
       val tbkt = TaxonBucket(data._1, data._3, data._4)
-      tbkt.classifyKmers(data._2, k)
+      tbkt.classifyKmersByIteration(data._2, k)
     })
 
     val bcPar = this.bcParentMap
@@ -174,11 +174,14 @@ final case class TaxonBucket(id: BucketId,
    * For tagged sequences that belong to this bucket, classify each one using
    * the LCA algorithm. Return a (tag, taxon) pair for each k-mer that has a hit.
    *
+   * This version iterates through a potentially large number of subjects by first sorting them,
+   * and then iterating together with this bucket (which is already sorted by construction).
+   *
    * @param data
    * @tparam T
    * @return
    */
-  def classifyKmers[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Int)] = {
+  def classifyKmersByIteration[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Int)] = {
     val byKmer = subjects.iterator.flatMap(s =>
       s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
     ).toArray
@@ -208,5 +211,28 @@ final case class TaxonBucket(id: BucketId,
         None
       }
     })
+  }
+
+  /**
+   * For tagged sequences that belong to this bucket, classify each one using
+   * the LCA algorithm. Return a (tag, taxon) pair for each k-mer that has a hit.
+   *
+   * This version looks up a relatively small number of subjects by binary searching each.
+   *
+   * @param data
+   * @tparam T
+   * @return
+   */
+  def classifyKmersBySearch[T](subject: BPBuffer, tag: T, k: Int): Iterator[(T, Int)] = {
+    val byKmer = subject.kmersAsArrays(k.toShort)
+
+    import scala.collection.Searching._
+    byKmer.flatMap(subj => {
+      kmers.search(subj) match {
+        case Found(f) => Some((tag, taxa(f)))
+        case _ => None
+      }
+    })
+    //TODO return single LCA
   }
 }
