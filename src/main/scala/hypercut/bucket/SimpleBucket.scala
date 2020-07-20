@@ -30,3 +30,5 @@ final case class SimpleBucket(id: BucketId,
                         abundances: Array[Int]) {
 
 }
+
+final case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)

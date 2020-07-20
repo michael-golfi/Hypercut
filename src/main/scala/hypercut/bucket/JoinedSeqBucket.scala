@@ -28,8 +28,6 @@ object JoinedSeqBucket {
   var mergeCount = 0
 }
 
-final case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)
-
 /**
  * A bucket that counts the abundance of each k-mer and represents them as joined sequences.
  */

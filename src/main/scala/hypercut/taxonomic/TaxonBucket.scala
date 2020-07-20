@@ -15,8 +15,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   val routines = new Routines(spark)
 
-  val indexBuckets = spark.conf.get("spark.sql.shuffle.partitions").toInt
-  println(s"Taxonomic index set to $indexBuckets buckets")
+  val numIndexBuckets = spark.conf.get("spark.sql.shuffle.partitions").toInt
+  println(s"Taxonomic index set to $numIndexBuckets buckets")
 
   import org.apache.spark.sql._
   import spark.sqlContext.implicits._
@@ -83,7 +83,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     val segments = idSeqLabels.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
     val buckets = segmentsToBuckets(segments).
-      repartition(indexBuckets, $"id")
+      repartition(numIndexBuckets, $"id")
 
     /*
      * Use saveAsTable instead of ordinary parquet save to preserve buckets/partitioning.
@@ -91,7 +91,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
      */
     buckets.write.mode(SaveMode.Overwrite).
       option("path", s"${output}_taxidx").
-      bucketBy(indexBuckets, "id").sortBy("id").
+      bucketBy(numIndexBuckets, "id").sortBy("id").
       saveAsTable("taxidx")
   }
 
@@ -100,7 +100,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //This is to ensure that we get the one in the expected location
     spark.sql("DROP TABLE IF EXISTS taxidx")
     spark.sql(s"""|CREATE TABLE taxidx(id long, kmers array<array<int>>, taxa array<int>)
-      |USING PARQUET CLUSTERED BY (id) INTO ${indexBuckets} BUCKETS
+      |USING PARQUET CLUSTERED BY (id) INTO ${numIndexBuckets} BUCKETS
       |LOCATION '${location}_taxidx'
       |""".stripMargin)
     spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
@@ -135,7 +135,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     //Group by sequence ID
     //Coalesce for performance
-    val tagLCA = tagsWithLCAs.coalesce(indexBuckets / 10).
+    val tagLCA = tagsWithLCAs.coalesce(numIndexBuckets / 10).
       groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
 

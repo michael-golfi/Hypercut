@@ -3,18 +3,6 @@ package hypercut.spark
 import org.apache.spark.sql.{Row, SparkSession}
 import org.scalatest.{FunSuite, Matchers}
 
-trait SparkSessionTestWrapper {
-
-  lazy val spark: SparkSession = {
-    SparkSession
-      .builder()
-      .master("local")
-      .appName("spark test example")
-      .getOrCreate()
-  }
-
-}
-
 class IterativeMergeTest extends FunSuite with Matchers with SparkSessionTestWrapper {
   import spark.implicits._
 
