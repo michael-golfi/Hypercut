@@ -116,10 +116,11 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
 
     //Segments will be tagged with sequence ID
-    //TODO collect_list seems to cause one unnecessary shuffle on the subject.
     val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
-      groupBy("_1.hash").agg(collect_list(struct("_1.segment", "_2"))).
-      toDF("id", "segments")
+      //aliasing the hash column before grouping (rather than after) avoids an unnecessary
+      // shuffle in the join with indexBuckets further down
+      select($"_1.hash".as("id"), $"_1.segment", $"_2").
+      groupBy("id").agg(collect_list(struct("segment", "_2")))
 
     //Shuffling of the index in this join can be avoided when the partitioning column
     //and number of partitions is the same in both tables
