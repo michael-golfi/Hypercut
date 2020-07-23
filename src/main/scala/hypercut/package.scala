@@ -7,6 +7,8 @@ package object hypercut {
    */
   type NTSeq = String
 
+  type SequenceID = String
+
   /**
    * Abundance counts for k-mers.
    */

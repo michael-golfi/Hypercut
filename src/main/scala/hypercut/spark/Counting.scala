@@ -30,7 +30,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats]
 
-  def countKmers(reads: Dataset[String]) = {
+  def countKmers(reads: Dataset[NTSeq]) = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -38,7 +38,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     countedWithStrings(counts)
   }
 
-  def statisticsOnly(reads: Dataset[String], raw: Boolean): Unit = {
+  def statisticsOnly(reads: Dataset[NTSeq], raw: Boolean): Unit = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -50,14 +50,14 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket]
 
-  def writeBuckets(reads: Dataset[String], output: String): Unit = {
+  def writeBuckets(reads: Dataset[NTSeq], output: String): Unit = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val buckets = segmentsToBuckets(segments)
     buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
   }
 
-  def writeCountedKmers(reads: Dataset[String], withKmers: Boolean, histogram: Boolean, output: String) {
+  def writeCountedKmers(reads: Dataset[NTSeq], withKmers: Boolean, histogram: Boolean, output: String) {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val counts = segmentsToCounts(segments)
@@ -71,7 +71,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     }
   }
 
-  def countedWithStrings(counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+  def countedWithStrings(counted: Dataset[(Array[Int], Long)]): Dataset[(NTSeq, Long)] = {
     val k = spl.k
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible

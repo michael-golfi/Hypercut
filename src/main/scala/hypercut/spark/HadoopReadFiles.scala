@@ -1,6 +1,7 @@
 package hypercut.spark
 
 import fastdoop._
+import hypercut.{NTSeq, SequenceID}
 import miniasm.genome.util.DNAHelpers
 import org.apache.hadoop.io.Text
 import org.apache.spark.rdd.RDD
@@ -12,7 +13,6 @@ import org.apache.spark.sql.{Dataset, SparkSession}
  * @param k
  */
 class HadoopReadFiles(spark: SparkSession, k: Int) {
-
   val sc: org.apache.spark.SparkContext = spark.sparkContext
   import spark.sqlContext.implicits._
 
@@ -31,7 +31,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @param file
    * @return
    */
-  def getShortReads(file: String): RDD[String] = {
+  def getShortReads(file: String): RDD[NTSeq] = {
     if (file.toLowerCase.endsWith("fq") || file.toLowerCase.endsWith("fastq")) {
       println(s"Assuming fastq format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[QRecord],
@@ -50,7 +50,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @param file
    * @return
    */
-  def getShortReadsWithID(file: String): RDD[(String, String)] = {
+  def getShortReadsWithID(file: String): RDD[(SequenceID, NTSeq)] = {
     if (file.toLowerCase.endsWith("fq") || file.toLowerCase.endsWith("fastq")) {
       println(s"Assuming fastq format for $file")
       val ss = sc.newAPIHadoopFile(file, classOf[FASTQInputFileFormat], classOf[Text], classOf[QRecord],
@@ -69,7 +69,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @param file
    * @return
    */
-  def getLongSequence(file: String): RDD[String] = {
+  def getLongSequence(file: String): RDD[NTSeq] = {
     println(s"Assuming fasta format (long sequences) for $file")
     val ss = sc.newAPIHadoopFile(file, classOf[FASTAlongInputFileFormat], classOf[Text], classOf[PartialSequence],
       sc.hadoopConfiguration)
@@ -86,7 +86,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    */
   def getReadsFromFiles(fileSpec: String, withRC: Boolean,
                         sample: Option[Double] = None,
-                        longSequence: Boolean = false): Dataset[String] = {
+                        longSequence: Boolean = false): Dataset[NTSeq] = {
     val raw = if(longSequence)
       getLongSequence(fileSpec).toDS
     else
@@ -117,7 +117,7 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @return
    */
   def getReadsFromFilesWithID(fileSpec: String, withRC: Boolean,
-                        longSequence: Boolean = false): Dataset[(String, String)] = {
+                        longSequence: Boolean = false): Dataset[(SequenceID, NTSeq)] = {
     val raw = if(longSequence)
       ???
     else

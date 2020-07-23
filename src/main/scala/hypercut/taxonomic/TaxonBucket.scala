@@ -1,5 +1,6 @@
 package hypercut.taxonomic
 
+import hypercut.{NTSeq, SequenceID}
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.{Counting, HashSegment, Routines}
 import hypercut.spark.SerialRoutines._
@@ -28,7 +29,6 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   val parentMap = getParentMap(taxonomyNodes)
   val bcParentMap = sc.broadcast(parentMap)
 
-
   /**
    * Read a taxon label file (TSV format)
    * This file is expected to be small.
@@ -36,7 +36,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
    * @param file
    * @return
    */
-  def getTaxonLabels(file: String): Dataset[(String, Int)] = {
+  def getTaxonLabels(file: String): Dataset[(String, Taxon)] = {
     spark.read.option("sep", "\t").csv(file).
       map(x => (x.getString(0), x.getString(1).toInt))
   }
@@ -58,7 +58,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     new ParentMap(asArray)
   }
 
-  def taggedToBuckets(segments: Dataset[(BucketId, Array[(ZeroBPBuffer, Int)])]): Dataset[TaxonBucket] = {
+  def taggedToBuckets(segments: Dataset[(BucketId, Array[(ZeroBPBuffer, Taxon)])]): Dataset[TaxonBucket] = {
     val k = spl.k
     val bcPar = this.bcParentMap
     segments.map { case (hash, segments) => {
@@ -66,15 +66,15 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     } }
   }
 
-  def segmentsToBuckets(segments: Dataset[(HashSegment, Int)]): Dataset[TaxonBucket] = {
+  def segmentsToBuckets(segments: Dataset[(HashSegment, Taxon)]): Dataset[TaxonBucket] = {
     //TODO possible to avoid a shuffle here, e.g. by partitioning preserving transformation?
     val grouped = segments.groupBy($"_1.hash")
     val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
-      as[(BucketId, Array[(ZeroBPBuffer, Int)])]
+      as[(BucketId, Array[(ZeroBPBuffer, Taxon)])]
     taggedToBuckets(byHash)
   }
 
-  def writeBuckets(idsSequences: Dataset[(String, String)], labelFile: String, output: String): Unit = {
+  def writeBuckets(idsSequences: Dataset[(SequenceID, NTSeq)], labelFile: String, output: String): Unit = {
     val bcSplit = this.bcSplit
     val idSeqDF = idsSequences.toDF("seqId", "seq")
     val labels = getTaxonLabels(labelFile).toDF("seqId", "taxon")
@@ -106,14 +106,14 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
   }
 
-  def classify(indexLocation: String, idsSequences: Dataset[(String, String)], k: Int, output: String): Unit = {
+  def classify(indexLocation: String, idsSequences: Dataset[(SequenceID, NTSeq)], k: Int, output: String): Unit = {
     val bcSplit = this.bcSplit
 
     //indexBuckets can potentially be very large, but they are pre-partitioned on disk.
     //Important to avoid shuffling this.
     //Shuffling the subject (idsSequences) being classified should be much easier.
     val indexBuckets = loadIndexBuckets(indexLocation)
-    val idSeqDF = idsSequences.toDF("seqId", "seq").as[(String, String)]
+    val idSeqDF = idsSequences.toDF("seqId", "seq").as[(SequenceID, NTSeq)]
 
     //Segments will be tagged with sequence ID
     val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
@@ -148,7 +148,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
 object TaxonBucket {
   def fromTaggedSequences(id: BucketId,
-                          data: Array[(Array[Int], Int)]): TaxonBucket = {
+                          data: Array[(Array[Taxon], Taxon)]): TaxonBucket = {
     val kmers = data.map(_._1)
     val taxa = data.map(_._2)
     TaxonBucket(id, kmers, taxa)
@@ -165,7 +165,7 @@ object TaxonBucket {
  */
 final case class TaxonBucket(id: BucketId,
                              kmers: Array[Array[Int]],
-                             taxa: Array[Int]) {
+                             taxa: Array[Taxon]) {
 
   implicit def ordering[T] = Counting.tagOrdering[T]
 
@@ -182,7 +182,7 @@ final case class TaxonBucket(id: BucketId,
    * @tparam T
    * @return
    */
-  def classifyKmersByIteration[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Int)] = {
+  def classifyKmersByIteration[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Taxon)] = {
     val byKmer = subjects.iterator.flatMap(s =>
       s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
     ).toArray
@@ -224,7 +224,7 @@ final case class TaxonBucket(id: BucketId,
    * @tparam T
    * @return
    */
-  def classifyKmersBySearch[T](subject: BPBuffer, tag: T, k: Int): Iterator[(T, Int)] = {
+  def classifyKmersBySearch[T](subject: BPBuffer, tag: T, k: Int): Iterator[(T, Taxon)] = {
     val byKmer = subject.kmersAsArrays(k.toShort)
 
     import scala.collection.Searching._

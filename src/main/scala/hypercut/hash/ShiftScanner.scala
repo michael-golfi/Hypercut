@@ -1,12 +1,14 @@
 package hypercut.hash
 
+import hypercut.NTSeq
+
 import scala.collection.mutable.ArrayBuffer
 import miniasm.genome.bpbuffer.BitRepresentation._
 import miniasm.genome.bpbuffer.InvalidNucleotideException
 
 
 trait Scanner {
-  def allMatches(data: String): ArrayBuffer[Motif]
+  def allMatches(data: NTSeq): ArrayBuffer[Motif]
 }
 
 /**
@@ -41,7 +43,7 @@ final class ShiftScanner(val space: MotifSpace) extends Scanner {
   Find all matches in the string.
   Returns an array with the matches in order.
  */
-  def allMatches(data: String): ArrayBuffer[Motif] = {
+  def allMatches(data: NTSeq): ArrayBuffer[Motif] = {
     try {
       val r = new ArrayBuffer[Motif](data.length)
       var pos = 0

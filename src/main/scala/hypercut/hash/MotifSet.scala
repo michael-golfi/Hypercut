@@ -3,6 +3,8 @@ package hypercut.hash
 import java.nio.ByteBuffer
 import java.util.Arrays
 
+import hypercut.NTSeq
+
 import scala.annotation.tailrec
 import scala.collection.Seq
 import scala.language.postfixOps
@@ -20,7 +22,7 @@ object Motif {
 /**
  * The attributes of a motif, except its position.
  */
-final case class Features(val tag: String, val tagRank: Int) {
+final case class Features(val tag: NTSeq, val tagRank: Int) {
 
   def equivalent(other: Features) = {
     //tagRank is sufficient to identify tag
@@ -123,7 +125,7 @@ object MotifSet {
   /**
    * Mainly for testing
    */
-  def apply(space: MotifSpace, tags: Seq[String], positions: Seq[Int]) = {
+  def apply(space: MotifSpace, tags: Seq[NTSeq], positions: Seq[Int]) = {
     val ms = (tags zip positions).map(x => space.get(x._1, x._2))
     new MotifSet(space, ms.toList)
   }

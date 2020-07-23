@@ -1,5 +1,7 @@
 package hypercut.hash
 
+import hypercut.NTSeq
+
 /**
  * A scheme for splitting a DNA sequence into superkmers which can be bucketed by hash values.
  *
@@ -13,7 +15,7 @@ trait ReadSplitter[H] {
    * @param read
    * @return
    */
-  def split(read: String): Iterator[(H, String)]
+  def split(read: NTSeq): Iterator[(H, NTSeq)]
 
   /**
    * Convert a hashcode into a compact representation.

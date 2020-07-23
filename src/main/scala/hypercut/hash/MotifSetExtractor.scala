@@ -21,7 +21,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
    * Scans a single read, using mutable state to track the current motif set
    * in a window.
    */
-  final class MotifExtractor(read: String) {
+  final class MotifExtractor(read: NTSeq) {
     val matches = scanner.allMatches(read)
     var matchIndex = 0
     var scannedToPos: Int = space.maxMotifLength - 2
@@ -87,7 +87,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
    * 1. The MotifSet of every k-mer (in order),
    * 2. The positions where each contiguous MotifSet region is first detected
    */
-  def motifSetsInRead(read: String): (ArrayBuffer[MotifSet], ArrayBuffer[(MotifSet, Int)]) = {
+  def motifSetsInRead(read: NTSeq): (ArrayBuffer[MotifSet], ArrayBuffer[(MotifSet, Int)]) = {
     readCount += 1
     if (readCount % 100000 == 0) {
       println(s"$readCount reads seen")
@@ -125,7 +125,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
     (perPosition, perBucket)
   }
 
-  def split(read: String): Iterator[(MotifSet, String)] = {
+  def split(read: NTSeq): Iterator[(MotifSet, NTSeq)] = {
     val bkts = motifSetsInRead(read)._2.toList
     splitRead(read, bkts).iterator
   }
@@ -136,12 +136,12 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
    * Designed to operate on the second list produced by the motifSetsInRead function.
    */
 
-  def splitRead(read: String, buckets: List[(MotifSet, Int)]): List[(MotifSet, String)] =
+  def splitRead(read: NTSeq, buckets: List[(MotifSet, Int)]): List[(MotifSet, NTSeq)] =
     splitRead(read, buckets, Nil).reverse
 
   @tailrec
-  def splitRead(read: String, buckets: List[(MotifSet, Int)],
-                acc: List[(MotifSet, String)]): List[(MotifSet, String)] = {
+  def splitRead(read: NTSeq, buckets: List[(MotifSet, Int)],
+                acc: List[(MotifSet, NTSeq)]): List[(MotifSet, NTSeq)] = {
     buckets match {
       case b1 :: b2 :: bs =>
         splitRead(read, b2 :: bs, (b1._1, read.substring(b1._2 - (k - 1), b2._2)) :: acc)
@@ -155,7 +155,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
    * Returns the sequence of discovered buckets, as well as the k-mers in the read.
    * k-mers and buckets at the same position will correspond to each other.
    */
-  def motifs(read: String): (List[MotifSet], Iterator[String]) = {
+  def motifs(read: NTSeq): (List[MotifSet], Iterator[NTSeq]) = {
     val kmers = Read.kmers(read, k)
     val mss = motifSetsInRead(read)
     (mss._1.toList, kmers)
@@ -165,13 +165,13 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
    * Ingest a read, returning pairs of discovered buckets (in compact form)
    * and corresponding k-mers.
    */
-  def compactMotifs(read: String): List[(CompactNode, String)] = {
+  def compactMotifs(read: NTSeq): List[(CompactNode, NTSeq)] = {
     val kmers = Read.kmers(read, k).toList
     val mss = motifSetsInRead(read)._1.map(_.compact).toList
     mss zip kmers
   }
 
-  def prettyPrintMotifs(input: String) = {
+  def prettyPrintMotifs(input: NTSeq) = {
     val data = ReadFiles.iterator(input)
     for (read <- data) {
       print(s"Read: $read")
