@@ -3,7 +3,9 @@ package hypercut.hash
 import scala.collection.mutable.Map
 
 object FeatureCounter {
-  def apply(space: MotifSpace) = new FeatureCounter(space.byPriority.length)
+  def apply(space: MotifSpace): FeatureCounter = apply(space.byPriority.length)
+
+  def apply(n: Int) = new FeatureCounter(new Array[Long](n))
 
   def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Long)], id: String) = {
     //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
@@ -17,8 +19,9 @@ object FeatureCounter {
  * Counts motif occurrences (independently) in a dataset
  * to establish relative frequencies.
  */
-final case class FeatureCounter(numMotifs: Int) {
-  val counter = new Array[Long](numMotifs)
+final case class FeatureCounter(counter: Array[Long]) {
+
+  def numMotifs: Int = counter.length
 
   def motifsWithCounts(space: MotifSpace) = space.byPriority zip counter
 
@@ -41,10 +44,8 @@ final case class FeatureCounter(numMotifs: Int) {
    * @param other
    */
   def += (other: FeatureCounter) {
-    var i = 0
-    while (i < counter.length) {
+    for (i <- counter.indices) {
       counter(i) += other.counter(i)
-      i += 1
     }
   }
 
@@ -53,8 +54,8 @@ final case class FeatureCounter(numMotifs: Int) {
    * @param other
    * @return
    */
-  def + (other: FeatureCounter) = {
-    val r = FeatureCounter(numMotifs)
+  def + (other: FeatureCounter): FeatureCounter = {
+    val r = FeatureCounter.apply(numMotifs)
     r += this
     r += other
     r
@@ -67,7 +68,7 @@ final case class FeatureCounter(numMotifs: Int) {
     def perc(x: Long) = "%.2f%%".format(x.toDouble/s * 100)
 
     println(heading)
-    val first = (motifsWithCounts(space)).take(20)
+    val first = (motifsWithCounts(space)).filter(_._2 > 0).take(20)
     println(s"Showing max 20/${counter.size} motifs")
     println(first.map(_._1).mkString("\t"))
     println(first.map(_._2).mkString("\t"))
@@ -79,7 +80,7 @@ final case class FeatureCounter(numMotifs: Int) {
    * have the highest priority.
    * Other parameters (e.g. n) will be shared with the old space that this is based on.
    */
-  def toSpaceByFrequency(oldSpace: MotifSpace, id: String) = {
+  def toSpaceByFrequency(oldSpace: MotifSpace, id: String): MotifSpace = {
     val pairs = motifsWithCounts(oldSpace)
     FeatureCounter.toSpaceByFrequency(oldSpace, pairs, id)
   }

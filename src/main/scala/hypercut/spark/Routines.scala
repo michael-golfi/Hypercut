@@ -36,14 +36,18 @@ class Routines(val spark: SparkSession) {
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
     val brScanner = sc.broadcast(new FeatureScanner(space))
-    //Repartition since for large data, too many partitions causes a lot of counters to be generated
-    //and collected to the driver
-    reads.repartition(100).mapPartitions(rs => {
-      val s = brScanner.value
-      val c = FeatureCounter(s.space)
-      s.scanGroup(c, rs)
-      Iterator(c)
-    }).reduce(_ + _)
+
+    val r = reads.mapPartitions(rs => {
+      if (rs.isEmpty) {
+        Iterator.empty
+      } else {
+        val s = brScanner.value
+        val c = FeatureCounter(s.space)
+        s.scanGroup(c, rs)
+        Iterator(c)
+      }
+    })
+    r.coalesce(10).reduce(_ + _)
   }
 
   def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
