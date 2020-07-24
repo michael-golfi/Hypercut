@@ -131,6 +131,15 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     }
     addSubcommand(classify)
 
+    val stats = new RunnableCommand("stats") {
+      def run(): Unit = {
+        val spl = restoreSplitter(location())
+        val index = new TaxonomicIndex(spark, spl, nodes())
+        index.showIndexStats(location())
+      }
+    }
+    addSubcommand(stats)
+
   }
   addSubcommand(taxonIndex)
 

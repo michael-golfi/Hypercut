@@ -1,5 +1,6 @@
 package hypercut.taxonomic
 
+import hypercut.bucket.BucketStats
 import hypercut.{NTSeq, SequenceID}
 import hypercut.hash.{BucketId, ReadSplitter}
 import hypercut.spark.{Counting, HashSegment, Routines}
@@ -144,6 +145,23 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     tagLCA.coalesce(64).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
   }
+
+  def showIndexStats(location: String): Unit = {
+    val idx = loadIndexBuckets(location)
+    val stats = idx.map(_.stats)
+
+    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
+
+    if(stats.isEmpty) {
+      println("No data in taxonomic index")
+    } else {
+      stats.cache
+      println("Kmer count in buckets: sum " + sumLongs(stats.map(_.numKmers)))
+      println("Bucket stats:")
+      stats.describe().show()
+      stats.unpersist
+    }
+  }
 }
 
 object TaxonBucket {
@@ -166,6 +184,8 @@ object TaxonBucket {
 final case class TaxonBucket(id: BucketId,
                              kmers: Array[Array[Int]],
                              taxa: Array[Taxon]) {
+
+  def stats = TaxonBucketStats(kmers.size, taxa.distinct.size)
 
   implicit def ordering[T] = Counting.tagOrdering[T]
 
@@ -237,3 +257,5 @@ final case class TaxonBucket(id: BucketId,
     //TODO return single LCA
   }
 }
+
+final case class TaxonBucketStats(numKmers: Long, distinctTaxa: Long)

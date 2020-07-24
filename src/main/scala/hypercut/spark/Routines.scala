@@ -119,7 +119,7 @@ class Routines(val spark: SparkSession) {
     stats.cache
     println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences)))
     println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers)))
-    println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
+    println("kmer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist
