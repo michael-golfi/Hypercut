@@ -150,23 +150,17 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val idx = loadIndexBuckets(location)
     val stats = idx.map(_.stats)
 
-    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
-
-    if(stats.isEmpty) {
-      println("No data in taxonomic index")
-    } else {
-      stats.cache
-      println("Kmer count in buckets: sum " + sumLongs(stats.map(_.numKmers)))
-      println("Bucket stats:")
-      stats.describe().show()
-      stats.unpersist
-    }
+    stats.cache
+    println("Kmer count in buckets: sum " + stats.agg(sum("numKmers")).take(1))
+    println("Bucket stats:")
+    stats.describe().show()
+    stats.unpersist
   }
 }
 
 object TaxonBucket {
   def fromTaggedSequences(id: BucketId,
-                          data: Array[(Array[Taxon], Taxon)]): TaxonBucket = {
+                          data: Array[(Array[Int], Taxon)]): TaxonBucket = {
     val kmers = data.map(_._1)
     val taxa = data.map(_._2)
     TaxonBucket(id, kmers, taxa)
