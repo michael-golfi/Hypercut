@@ -151,7 +151,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val stats = idx.map(_.stats)
 
     stats.cache
-    println("Kmer count in buckets: sum " + stats.agg(sum("numKmers")).take(1))
+    println("Kmer count in buckets: sum " +
+      stats.agg(sum("numKmers")).take(1)(0).getLong(0))
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist

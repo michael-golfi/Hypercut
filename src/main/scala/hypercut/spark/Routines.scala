@@ -38,14 +38,10 @@ class Routines(val spark: SparkSession) {
     val brScanner = sc.broadcast(new FeatureScanner(space))
 
     val r = reads.mapPartitions(rs => {
-      if (rs.isEmpty) {
-        Iterator.empty
-      } else {
-        val s = brScanner.value
-        val c = FeatureCounter(s.space)
-        s.scanGroup(c, rs)
-        Iterator(c)
-      }
+      val s = brScanner.value
+      val c = FeatureCounter(s.space)
+      s.scanGroup(c, rs)
+      Iterator(c)
     })
     r.coalesce(10).reduce(_ + _)
   }
