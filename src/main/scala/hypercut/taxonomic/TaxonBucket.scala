@@ -32,6 +32,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
   /**
    * Read a taxon label file (TSV format)
+   * Maps sequence id to taxon id.
    * This file is expected to be small.
    *
    * @param file
@@ -75,10 +76,10 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     taggedToBuckets(byHash)
   }
 
-  def writeBuckets(idsSequences: Dataset[(SequenceID, NTSeq)], labelFile: String, output: String): Unit = {
+  def writeBuckets(idsSequences: Dataset[(SequenceID, NTSeq)], seqid2taxidFile: String, output: String): Unit = {
     val bcSplit = this.bcSplit
     val idSeqDF = idsSequences.toDF("seqId", "seq")
-    val labels = getTaxonLabels(labelFile).toDF("seqId", "taxon")
+    val labels = getTaxonLabels(seqid2taxidFile).toDF("seqId", "taxon")
     val idSeqLabels = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
       select("seq", "taxon").as[(String, Int)]
 
@@ -136,13 +137,19 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val bcPar = this.bcParentMap
 
     //Group by sequence ID
-    //Coalesce for performance
-    val tagLCA = tagsWithLCAs.coalesce(numIndexBuckets / 10).
-      groupBy("_1").agg(collect_list($"_2")).
-      as[(String, Array[Int])].map(x => (x._1, bcPar.value.classifySequence(x._2)))
+    val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
+      as[(String, Array[Int])].map(x => {
+
+      val (taxon, mappingSummaries, seqLength) = bcPar.value.classifySequence(x._2, k)
+      //Imitate the Kraken output format
+      val classifyFlag = "C"
+      val seqId = x._1
+      (classifyFlag, seqId, taxon, seqLength, mappingSummaries)
+    })
 
     //This table will be relatively small and we coalesce mainly to avoid generating a lot of small files
-    tagLCA.coalesce(64).write.mode(SaveMode.Overwrite).option("sep", "\t").
+    //in the case of a fine grained index with many buckets
+    tagLCA.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
   }
 

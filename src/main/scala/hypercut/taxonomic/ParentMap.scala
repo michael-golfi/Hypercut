@@ -82,9 +82,12 @@ final case class ParentMap(parents: Array[Taxon]) {
     }
   }
 
-  def classifySequence(taxa: Iterable[Taxon]): Taxon = {
+  def classifySequence(taxa: Iterable[Taxon], k: Int): (Taxon, String, Int) = {
     val countedTaxa = taxa.groupBy(x => x).map(x => (x._1, x._2.size))
-    resolveTree(countedTaxa)
+    val mappingSummaries = countedTaxa.toSeq.map(x => s"${x._1}:${x._2}").mkString(" ")
+    //Assuming each counted taxon corresponds to a k-mer from a sequence
+    val seqLength = countedTaxa.values.sum + (k-1)
+    (resolveTree(countedTaxa), mappingSummaries, seqLength)
   }
 
   import hypercut.spark.Counting._
