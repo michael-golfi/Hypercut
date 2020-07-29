@@ -142,7 +142,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
       val (taxon, mappingSummaries, seqLength) = bcPar.value.classifySequence(x._2, k)
       //Imitate the Kraken output format
-      val classifyFlag = "C"
+      val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
       val seqId = x._1
       (classifyFlag, seqId, taxon, seqLength, mappingSummaries)
     })
@@ -214,24 +214,24 @@ final case class TaxonBucket(id: BucketId,
     val bucketIt = kmers.indices.iterator
     val subjectIt = byKmer.iterator
     if (bucketIt.isEmpty || subjectIt.isEmpty) {
-      return Iterator.empty
+      return subjectIt.map(s => (s._2, ParentMap.NONE))
     }
+
     var bi = bucketIt.next
-    var subj = subjectIt.next
-    while (subjectIt.hasNext && KmerOrdering.compare(subj._1, kmers(bi)) < 0) {
-      subj = subjectIt.next
-    }
+
+    val (prePart, remPart) = subjectIt.partition(s =>
+      KmerOrdering.compare(s._1, kmers(bi)) < 0)
 
     //The same k-mer may occur multiple times in subjects for different tags (but not in the bucket)
     //Need to consider subj again here
-    (Iterator(subj) ++ subjectIt).flatMap(s => {
+    prePart.map(s => (s._2, ParentMap.NONE)) ++ remPart.map(s => {
       while (bucketIt.hasNext && KmerOrdering.compare(s._1, kmers(bi)) > 0) {
         bi = bucketIt.next
       }
       if (KmerOrdering.compare(s._1, kmers(bi)) == 0) {
-        Some((s._2, taxa(bi)))
+        (s._2, taxa(bi))
       } else {
-        None
+        (s._2, ParentMap.NONE)
       }
     })
   }
