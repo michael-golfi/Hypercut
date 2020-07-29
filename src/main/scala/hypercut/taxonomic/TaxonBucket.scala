@@ -115,10 +115,9 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //Important to avoid shuffling this.
     //Shuffling the subject (idsSequences) being classified should be much easier.
     val indexBuckets = loadIndexBuckets(indexLocation)
-    val idSeqDF = idsSequences.toDF("seqId", "seq").as[(SequenceID, NTSeq)]
 
     //Segments will be tagged with sequence ID
-    val taggedSegments = idSeqDF.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
+    val taggedSegments = idsSequences.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
       //aliasing the hash column before grouping (rather than after) avoids an unnecessary
       // shuffle in the join with indexBuckets further down
       select($"_1.hash".as("id"), $"_1.segment", $"_2").
