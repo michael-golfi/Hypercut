@@ -108,7 +108,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     spark.sql("SELECT * FROM taxidx").as[TaxonBucket]
   }
 
-  def classify(indexLocation: String, idsSequences: Dataset[(SequenceID, NTSeq)], k: Int, output: String): Unit = {
+  def classify(indexLocation: String, idsSequences: Dataset[(SequenceID, NTSeq)], k: Int, output: String,
+               withUnclassified: Boolean): Unit = {
     val bcSplit = this.bcSplit
 
     //indexBuckets can potentially be very large, but they are pre-partitioned on disk.
@@ -137,13 +138,16 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     //Group by sequence ID
     val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
-      as[(String, Array[Int])].map(x => {
-
+      as[(String, Array[Int])].flatMap(x => {
       val (taxon, mappingSummaries, seqLength) = bcPar.value.classifySequence(x._2, k)
-      //Imitate the Kraken output format
-      val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
-      val seqId = x._1
-      (classifyFlag, seqId, taxon, seqLength, mappingSummaries)
+      if (taxon == ParentMap.NONE && !withUnclassified) {
+        None
+      } else {
+        //Imitate the Kraken output format
+        val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
+        val seqId = x._1
+        Some((classifyFlag, seqId, taxon, seqLength, mappingSummaries))
+      }
     })
 
     //This table will be relatively small and we coalesce mainly to avoid generating a lot of small files
@@ -162,6 +166,27 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist
+  }
+
+  /**
+   * Emulate the bracken-build process. Break up a library of genomes into short reads and classify each one.
+   * @param indexLocation Location where the library has previously been indexed
+   * @param idsSequences Library sequences (not broken up)
+   * @param k
+   */
+  def classifyLibraryReads(indexLocation: String, seqid2taxidFile: String,
+                           idsSequences: Dataset[(SequenceID, NTSeq)],
+                           readLength: Int, k: Int): Unit = {
+    val labels = getTaxonLabels(seqid2taxidFile).toDF("seqId", "taxon")
+
+    val splitSequences = idsSequences.flatMap(r => {
+      r._2.sliding(readLength).zipWithIndex.map(read => (r._1 + "." + read._2, read._1))
+    })
+
+    val classifiedReads = ???
+
+//    classifiedReads.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
+//      csv(s"${indexLocation}_database${readLength}mers")
   }
 }
 
