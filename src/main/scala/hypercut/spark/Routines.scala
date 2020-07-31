@@ -142,10 +142,13 @@ object SerialRoutines {
     } yield r
   }
 
-  def createHashSegments[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(HashSegment, T)] = {
+  /*
+   * Includes an index, so that the ordering of the hashSegments can be reconstructed later.
+   */
+  def createHashSegmentsWithIndex[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(HashSegment, Int, T)] = {
     for {
-      (h, s) <- splitter.split(r)
+      ((h, s), i) <- splitter.split(r).zipWithIndex
       r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
-    } yield (r, tag)
+    } yield (r, i, tag)
   }
 }

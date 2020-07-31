@@ -49,7 +49,7 @@ final case class ParentMap(parents: Array[Taxon]) {
    * Algorithm from Kraken's krakenutil.cpp.
    * @param hitCounts
    */
-  def resolveTree(hitCounts: Map[Taxon, Taxon]): Taxon = {
+  def resolveTree(hitCounts: collection.Map[Taxon, Int]): Taxon = {
     val maxTaxa = mutable.Set.empty[Taxon]
     var maxTaxon = 0
     var maxScore = 0

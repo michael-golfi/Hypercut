@@ -83,7 +83,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val idSeqLabels = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
       select("seq", "taxon").as[(String, Int)]
 
-    val segments = idSeqLabels.flatMap(r => createHashSegments(r._1, r._2, bcSplit.value))
+    val segments = idSeqLabels.flatMap(r => createHashSegments(r._1, bcSplit.value).map(s => (s, r._2)))
     val buckets = segmentsToBuckets(segments).
       repartition(numIndexBuckets, $"id")
 
@@ -118,35 +118,43 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val indexBuckets = loadIndexBuckets(indexLocation)
 
     //Segments will be tagged with sequence ID
-    val taggedSegments = idsSequences.flatMap(r => createHashSegments(r._2, r._1, bcSplit.value)).
+    val taggedSegments = idsSequences.flatMap(r => createHashSegmentsWithIndex(r._2, r._1, bcSplit.value)).
       //aliasing the hash column before grouping (rather than after) avoids an unnecessary
       // shuffle in the join with indexBuckets further down
-      select($"_1.hash".as("id"), $"_1.segment", $"_2").
-      groupBy("id").agg(collect_list(struct("segment", "_2")))
+      select($"_1.hash".as("id"), $"_1.segment", $"_2", $"_3").
+      groupBy("id").agg(collect_list(struct("segment", "_2", "_3")))
 
     //Shuffling of the index in this join can be avoided when the partitioning column
     //and number of partitions is the same in both tables
-    val subjectWithIndex = taggedSegments.join(indexBuckets, List("id")).
-      as[(Long, Array[(ZeroBPBuffer, String)], Array[Array[Int]], Array[Int])]
+    val subjectWithIndex = taggedSegments.join(indexBuckets, List("id"), "left").
+      as[(Long, Array[(ZeroBPBuffer, Int, String)], Array[Array[Int]], Array[Int])]
 
     val tagsWithLCAs = subjectWithIndex.flatMap(data => {
-      val tbkt = TaxonBucket(data._1, data._3, data._4)
-      tbkt.classifyKmersByIteration(data._2, k)
+      val tbkt = if (data._3 != null) TaxonBucket(data._1, data._3, data._4)
+        else TaxonBucket(data._1, Array(), Array())
+
+      data._2.map(segment => {
+        tbkt.classifyKmersBySearch(segment._1, segment._2, segment._3, k)
+      })
     })
 
     val bcPar = this.bcParentMap
 
     //Group by sequence ID
     val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
-      as[(String, Array[Int])].flatMap(x => {
-      val (taxon, mappingSummaries, seqLength) = bcPar.value.classifySequence(x._2, k)
+      as[(String, Array[TaxonSummary])].flatMap(x => {
+      val allHits = TaxonSummary.mergeHitCounts(x._2)
+      val taxon = bcPar.value.resolveTree(allHits)
+      val seqLength = allHits.values.sum + (k - 1)
+      val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order)).toString
+
       if (taxon == ParentMap.NONE && !withUnclassified) {
         None
       } else {
         //Imitate the Kraken output format
         val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
         val seqId = x._1
-        Some((classifyFlag, seqId, taxon, seqLength, mappingSummaries))
+        Some((classifyFlag, seqId, taxon, seqLength, summariesInOrder))
       }
     })
 
@@ -166,27 +174,6 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist
-  }
-
-  /**
-   * Emulate the bracken-build process. Break up a library of genomes into short reads and classify each one.
-   * @param indexLocation Location where the library has previously been indexed
-   * @param idsSequences Library sequences (not broken up)
-   * @param k
-   */
-  def classifyLibraryReads(indexLocation: String, seqid2taxidFile: String,
-                           idsSequences: Dataset[(SequenceID, NTSeq)],
-                           readLength: Int, k: Int): Unit = {
-    val labels = getTaxonLabels(seqid2taxidFile).toDF("seqId", "taxon")
-
-    val splitSequences = idsSequences.flatMap(r => {
-      r._2.sliding(readLength).zipWithIndex.map(read => (r._1 + "." + read._2, read._1))
-    })
-
-    val classifiedReads = ???
-
-//    classifiedReads.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
-//      csv(s"${indexLocation}_database${readLength}mers")
   }
 }
 
@@ -224,7 +211,7 @@ final case class TaxonBucket(id: BucketId,
    * This version iterates through a potentially large number of subjects by first sorting them,
    * and then iterating together with this bucket (which is already sorted by construction).
    *
-   * @param data
+   * @param subjects
    * @tparam T
    * @return
    */
@@ -266,21 +253,22 @@ final case class TaxonBucket(id: BucketId,
    *
    * This version looks up a relatively small number of subjects by binary searching each.
    *
-   * @param data
+   * @param subject
+   * @param order
    * @tparam T
    * @return
    */
-  def classifyKmersBySearch[T](subject: BPBuffer, tag: T, k: Int): Iterator[(T, Taxon)] = {
+  def classifyKmersBySearch[T](subject: BPBuffer, order: Int, tag: T, k: Int): (T, TaxonSummary) = {
     val byKmer = subject.kmersAsArrays(k.toShort)
 
     import scala.collection.Searching._
-    byKmer.flatMap(subj => {
+    val raw = byKmer.map(subj => {
       kmers.search(subj) match {
-        case Found(f) => Some((tag, taxa(f)))
-        case _ => None
+        case Found(f) => taxa(f)
+        case _ => ParentMap.NONE
       }
-    })
-    //TODO return single LCA
+    }).toList
+    (tag, TaxonSummary.fromClassifiedKmers(raw, order))
   }
 }
 
