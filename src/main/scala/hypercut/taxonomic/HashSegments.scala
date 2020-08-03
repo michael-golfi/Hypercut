@@ -32,8 +32,14 @@ object HashSegments {
   def createSegments[H, T](r: String, ambiguous: Boolean, splitter: ReadSplitter[H]) = {
     if (ambiguous) {
       val numKmers = r.length - (splitter.k - 1)
-      assert(numKmers < Short.MaxValue)
-      Iterator(HashSegment(0, ZeroBPBuffer(null, numKmers.toShort)))
+
+      //can only represent lengths up to Short.MaxValue
+      val lengths = (0 until (numKmers / Short.MaxValue)).toSeq.map(i => Short.MaxValue) :+
+        ((numKmers % Short.MaxValue).toShort)
+
+      lengths.iterator.map(l =>
+        HashSegment(0, ZeroBPBuffer(null, l))
+      )
     } else {
       for {
         (h, s) <- splitter.split(r)

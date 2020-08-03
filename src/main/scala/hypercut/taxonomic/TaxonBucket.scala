@@ -161,12 +161,16 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
         val seqId = x._1
         Some((classifyFlag, seqId, taxon, seqLength, summariesInOrder))
       }
-    })
+    }).cache
+
+    //materialize to ensure that we compute the table before coalescing it below, or partitions would be too big
+    tagLCA.count
 
     //This table will be relatively small and we coalesce mainly to avoid generating a lot of small files
     //in the case of a fine grained index with many buckets
     tagLCA.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
+    tagLCA.unpersist
   }
 
   def showIndexStats(location: String): Unit = {

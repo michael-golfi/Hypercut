@@ -136,6 +136,7 @@ object BPBuffer {
    * Creates a new bpbuffer from an ACTG string.
    */
   def wrap(str: String): ZeroBPBuffer = {
+    assert(str.length <= Short.MaxValue)
     new ZeroBPBuffer(stringToBytes(str), str.length)
   }
 
