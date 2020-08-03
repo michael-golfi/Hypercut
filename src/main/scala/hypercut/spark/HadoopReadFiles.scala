@@ -117,16 +117,24 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * @return
    */
   def getReadsFromFilesWithID(fileSpec: String, withRC: Boolean,
-                        longSequence: Boolean = false): Dataset[(SequenceID, NTSeq)] = {
+                              keepDegenerate: Boolean = false,
+                              longSequence: Boolean = false): Dataset[(SequenceID, NTSeq)] = {
     val raw = if(longSequence)
       ???
     else
       getShortReadsWithID(fileSpec).toDS
 
     val degen = this.degenerateAndUnknown
-    val valid = raw.flatMap(r => r._2.split(degen).map(s => (r._1, s)))
+    val valid = if (keepDegenerate) {
+      raw
+    } else {
+      raw.flatMap(r => r._2.split(degen).map(s => (r._1, s)))
+    }
 
     if (withRC) {
+      if (keepDegenerate) {
+        throw new Exception("Not supported")
+      }
       valid.flatMap(r => {
         Seq(r, (r._1, DNAHelpers.reverseComplement(r._2)))
       })

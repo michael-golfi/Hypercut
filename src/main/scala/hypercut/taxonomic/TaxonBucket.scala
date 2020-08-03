@@ -1,10 +1,8 @@
 package hypercut.taxonomic
 
-import hypercut.bucket.BucketStats
 import hypercut.{NTSeq, SequenceID}
 import hypercut.hash.{BucketId, ReadSplitter}
-import hypercut.spark.{Counting, HashSegment, Routines}
-import hypercut.spark.SerialRoutines._
+import hypercut.spark.{Counting, HashSegment, Routines, SerialRoutines}
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
@@ -15,7 +13,7 @@ import scala.util.Sorting
 final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
                               taxonomyNodes: String) {
   val sc: org.apache.spark.SparkContext = spark.sparkContext
-  val routines = new Routines(spark)
+  import HashSegments._
 
   val numIndexBuckets = spark.conf.get("spark.sql.shuffle.partitions").toInt
   println(s"Taxonomic index set to $numIndexBuckets buckets")
@@ -83,7 +81,8 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val idSeqLabels = idSeqDF.join(broadcast(labels), idSeqDF("seqId") === labels("seqId")).
       select("seq", "taxon").as[(String, Int)]
 
-    val segments = idSeqLabels.flatMap(r => createHashSegments(r._1, bcSplit.value).map(s => (s, r._2)))
+    val segments = idSeqLabels.flatMap(r => SerialRoutines.
+      createHashSegments(r._1, bcSplit.value).map(s => (s, r._2)))
     val buckets = segmentsToBuckets(segments).
       repartition(numIndexBuckets, $"id")
 
@@ -134,7 +133,13 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
         else TaxonBucket(data._1, Array(), Array())
 
       data._2.map(segment => {
-        tbkt.classifyKmersBySearch(segment._1, segment._2, segment._3, k)
+        val ambiguous = (segment._1.data == null)
+        if (ambiguous) {
+          //hack: segment.size is not BPBuffer length but number of k-mers
+          (segment._3, TaxonSummary.ambiguous(segment._2, segment._1.size))
+        } else {
+          tbkt.classifyKmersBySearch(segment._1, segment._2, segment._3, k)
+        }
       })
     })
 
@@ -144,7 +149,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[TaxonSummary])].flatMap(x => {
       val allHits = TaxonSummary.mergeHitCounts(x._2)
-      val taxon = bcPar.value.resolveTree(allHits)
+      val taxon = bcPar.value.resolveTree(allHits.filter(_._1 != AMBIGUOUS))
       val seqLength = allHits.values.sum + (k - 1)
       val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order)).toString
 

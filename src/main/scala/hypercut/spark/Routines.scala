@@ -12,6 +12,7 @@ final case class HashSegment(hash: BucketId, segment: ZeroBPBuffer)
 
 final case class CountedHashSegment(hash: BucketId, segment: ZeroBPBuffer, count: Long)
 
+
 /**
  * Core routines for executing Hypercut from Apache Spark.
  */
@@ -140,15 +141,5 @@ object SerialRoutines {
       (h, s) <- splitter.split(r)
       r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
     } yield r
-  }
-
-  /*
-   * Includes an index, so that the ordering of the hashSegments can be reconstructed later.
-   */
-  def createHashSegmentsWithIndex[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(HashSegment, Int, T)] = {
-    for {
-      ((h, s), i) <- splitter.split(r).zipWithIndex
-      r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
-    } yield (r, i, tag)
   }
 }

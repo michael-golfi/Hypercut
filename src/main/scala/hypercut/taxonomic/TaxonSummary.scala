@@ -28,8 +28,6 @@ object TaxonSummary {
         case _ => m(t) = c
       }
     }
-
-    assert (m.values.sum == summaries.map(_.counts.sum).sum)
     m
   }
 
@@ -39,6 +37,9 @@ object TaxonSummary {
       summaries.tail.foldLeft(summaries.head)(_ append _)
     }
   }
+
+  def ambiguous(order: Int, kmers: Int) =
+    TaxonSummary(order, Array(AMBIGUOUS), Array(kmers))
 }
 
 /**
@@ -51,8 +52,12 @@ object TaxonSummary {
  *
  */
 final case class TaxonSummary(order: Int, taxa: mutable.Seq[Taxon], counts: mutable.Seq[Int]) {
-  override def toString: String =
-    (taxa zip counts).map(hit => s"${hit._1}:${hit._2}").mkString(" ")
+  def taxonRepr(t: Taxon) =
+    if (t == AMBIGUOUS) "A" else s"$t"
+
+  override def toString: String = {
+    (taxa zip counts).map(hit => s"${taxonRepr(hit._1)}:${hit._2}").mkString(" ")
+  }
 
   /**
    * Append another taxon summary adjacent to this one, simplifying representation if possible.

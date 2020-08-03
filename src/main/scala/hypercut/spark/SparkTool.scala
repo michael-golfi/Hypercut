@@ -124,7 +124,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
       def run(): Unit = {
         val inData = inFiles().mkString(",")
         val hrf = new HadoopReadFiles(spark, k())
-        val input = hrf.getReadsFromFilesWithID(inData, addRC())
+        val input = hrf.getReadsFromFilesWithID(inData, addRC(), true)
         val spl = restoreSplitter(location())
         val index = new TaxonomicIndex(spark, spl, nodes())
         index.classify(location(), input, k(), output(), unclassified())
