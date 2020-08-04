@@ -148,10 +148,12 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //Group by sequence ID
     val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
       as[(String, Array[TaxonSummary])].flatMap(x => {
-      val allHits = TaxonSummary.mergeHitCounts(x._2)
+      val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order))
+
+      //Potentially less data to traverse and merge after the order concatenation has been done
+      val allHits = TaxonSummary.mergeHitCounts(Seq(summariesInOrder))
       val taxon = bcPar.value.resolveTree(allHits.filter(_._1 != AMBIGUOUS))
       val seqLength = allHits.values.sum + (k - 1)
-      val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order)).toString
 
       if (taxon == ParentMap.NONE && !withUnclassified) {
         None
@@ -159,7 +161,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
         //Imitate the Kraken output format
         val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
         val seqId = x._1
-        Some((classifyFlag, seqId, taxon, seqLength, summariesInOrder))
+        Some((classifyFlag, seqId, taxon, seqLength, summariesInOrder.toString))
       }
     }).cache
 

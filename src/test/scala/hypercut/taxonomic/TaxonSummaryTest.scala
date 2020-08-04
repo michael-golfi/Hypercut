@@ -12,16 +12,20 @@ class TaxonSummaryTest extends FunSuite with Matchers {
     )
   }
 
-  test("append") {
-    (TaxonSummary(1, Seq(1, 3), Seq(2, 1)) append
+  def append(t1: TaxonSummary, t2: TaxonSummary) = {
+    TaxonSummary.concatenate(Seq(t1, t2))
+  }
+
+  test("concatenate") {
+    append(TaxonSummary(1, Seq(1, 3), Seq(2, 1)),
       TaxonSummary(2, Seq(3, 2), Seq(1, 1))) should equal(
         TaxonSummary(1,  Seq(1, 3, 2), Seq(2, 2, 1)))
 
-    (TaxonSummary(1, Seq(1, 3), Seq(2, 1)) append
+    append(TaxonSummary(1, Seq(1, 3), Seq(2, 1)),
       TaxonSummary(2, Seq(4, 2), Seq(1, 1))) should equal(
       TaxonSummary(1,  Seq(1, 3, 4, 2), Seq(2, 1, 1, 1)))
 
-    (TaxonSummary(1, Seq(1), Seq(1)) append
+    append(TaxonSummary(1, Seq(1), Seq(1)),
       TaxonSummary(2, Seq(1), Seq(1))) should equal(
       TaxonSummary(1,  Seq(1), Seq(2)))
   }

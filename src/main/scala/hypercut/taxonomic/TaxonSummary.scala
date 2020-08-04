@@ -1,9 +1,11 @@
 package hypercut.taxonomic
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 object TaxonSummary {
 
+  //TODO try to come up with a version that doesn't build so many lists
   def split[T](list: List[T]) : List[(T, Int)] = list match {
     case Nil => Nil
     case h::t =>
@@ -17,6 +19,7 @@ object TaxonSummary {
     TaxonSummary(order, taxa.toArray, counts.toArray)
   }
 
+  //TODO find a way to do this without using a map
   def mergeHitCounts(summaries: Iterable[TaxonSummary]): mutable.Map[Taxon, Int] = {
     val m = mutable.Map.empty[Taxon, Int]
     for {
@@ -32,10 +35,25 @@ object TaxonSummary {
   }
 
   def concatenate(summaries: Iterable[TaxonSummary]): TaxonSummary = {
-    if (summaries.size == 1) summaries.head
-    else {
-      summaries.tail.foldLeft(summaries.head)(_ append _)
+    val maxSize = summaries.map(_.counts.size)
+    val taxonRet = new ArrayBuffer[Taxon]()
+    taxonRet.sizeHint(maxSize)
+    val countRet = new ArrayBuffer[Int]()
+    countRet.sizeHint(maxSize)
+
+    for (s <- summaries) {
+      if (taxonRet.size > 0 && taxonRet(taxonRet.size - 1) == s.taxa(0)) {
+        countRet(countRet.size - 1) += s.counts(0)
+      } else {
+        taxonRet += s.taxa(0)
+        countRet += s.counts(0)
+      }
+      for (i <- 1 until s.taxa.length) {
+        taxonRet += s.taxa(i)
+        countRet += s.counts(i)
+      }
     }
+    new TaxonSummary(summaries.head.order, taxonRet, countRet)
   }
 
   def ambiguous(order: Int, kmers: Int) =
@@ -57,20 +75,5 @@ final case class TaxonSummary(order: Int, taxa: mutable.Seq[Taxon], counts: muta
 
   override def toString: String = {
     (taxa zip counts).map(hit => s"${taxonRepr(hit._1)}:${hit._2}").mkString(" ")
-  }
-
-  /**
-   * Append another taxon summary adjacent to this one, simplifying representation if possible.
-   * @param other
-   * @return
-   */
-  def append(other: TaxonSummary): TaxonSummary = {
-    if (taxa.last == other.taxa.head) {
-      val newCounts = counts ++ other.counts.tail
-      newCounts(counts.length - 1) += other.counts(0)
-      TaxonSummary(order, taxa ++ other.taxa.tail, newCounts)
-    } else {
-      TaxonSummary(order, taxa ++ other.taxa, counts ++ other.counts)
-    }
   }
 }
