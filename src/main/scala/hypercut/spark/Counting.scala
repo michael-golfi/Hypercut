@@ -181,11 +181,11 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
  * Serialization-safe methods for counting
  */
 object Counting {
-  implicit object KmerOrdering extends Ordering[Array[Int]] {
+  final class IntKmerOrdering(k: Int) extends Ordering[Array[Int]] {
+    val arrayLength = if (k % 16 == 0) { k / 16 } else { (k / 16) + 1 }
     override def compare(x: Array[Int], y: Array[Int]): Int = {
-      val l = x.length
       var i = 0
-      while (i < l) {
+      while (i < arrayLength) {
         val a = x(i)
         val b = y(i)
         if (a < b) return -1
@@ -195,9 +195,27 @@ object Counting {
       0
     }
   }
-  def tagOrdering[T]: Ordering[(Array[Int], T)] = new Ordering[(Array[Int], T)] {
-    override def compare(x: (Array[Int], T), y: (Array[Int], T)): Int = {
-      KmerOrdering.compare(x._1, y._1)
+
+  final class LongKmerOrdering(k: Int) extends Ordering[Array[Long]] {
+    val arrayLength = if (k % 32 == 0) { k / 32 } else { (k / 32) + 1 }
+    override def compare(x: Array[Long], y: Array[Long]): Int = {
+      var i = 0
+      while (i < arrayLength) {
+        val a = x(i)
+        val b = y(i)
+        if (a < b) return -1
+        else if (a > b) return 1
+        i += 1
+      }
+      0
+    }
+  }
+
+
+  def tagOrdering[T](k: Int): Ordering[(Array[Long], T)] = new Ordering[(Array[Long], T)] {
+    val lo = new LongKmerOrdering(k)
+    override def compare(x: (Array[Long], T), y: (Array[Long], T)): Int = {
+      lo.compare(x._1, y._1)
     }
   }
 
@@ -209,6 +227,8 @@ object Counting {
    * @return
    */
   def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
+    implicit val ordering = new IntKmerOrdering(k)
+
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
       s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
     ).toArray
@@ -242,6 +262,8 @@ object Counting {
    * @return
    */
   def countsFromSequences(segments: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
+    implicit val ordering = new IntKmerOrdering(k)
+
     val byKmer = segments.iterator.flatMap(s =>
       s.kmersAsArrays(k.toShort)
     ).toArray

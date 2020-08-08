@@ -100,7 +100,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //Does not delete the table itself, only removes it from the hive catalog
     //This is to ensure that we get the one in the expected location
     spark.sql("DROP TABLE IF EXISTS taxidx")
-    spark.sql(s"""|CREATE TABLE taxidx(id long, kmers array<array<int>>, taxa array<int>)
+    spark.sql(s"""|CREATE TABLE taxidx(id long, kmers array<array<long>>, taxa array<int>)
       |USING PARQUET CLUSTERED BY (id) INTO ${numIndexBuckets} BUCKETS
       |LOCATION '${location}_taxidx'
       |""".stripMargin)
@@ -126,7 +126,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
     //Shuffling of the index in this join can be avoided when the partitioning column
     //and number of partitions is the same in both tables
     val subjectWithIndex = taggedSegments.join(indexBuckets, List("id"), "left").
-      as[(Long, Array[(ZeroBPBuffer, Int, String)], Array[Array[Int]], Array[Int])]
+      as[(Long, Array[(ZeroBPBuffer, Int, String)], Array[Array[Long]], Array[Int])]
 
     val tagsWithLCAs = subjectWithIndex.flatMap(data => {
       val tbkt = if (data._3 != null) TaxonBucket(data._1, data._3, data._4)
@@ -190,7 +190,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
 object TaxonBucket {
   def fromTaggedSequences(id: BucketId,
-                          data: Array[(Array[Int], Taxon)]): TaxonBucket = {
+                          data: Array[(Array[Long], Taxon)]): TaxonBucket = {
     val kmers = data.map(_._1)
     val taxa = data.map(_._2)
     TaxonBucket(id, kmers, taxa)
@@ -206,14 +206,13 @@ object TaxonBucket {
  * @param taxa
  */
 final case class TaxonBucket(id: BucketId,
-                             kmers: Array[Array[Int]],
+                             kmers: Array[Array[Long]],
                              taxa: Array[Taxon]) {
 
   def stats = TaxonBucketStats(kmers.size, taxa.distinct.size)
 
-  implicit def ordering[T] = Counting.tagOrdering[T]
 
-  import Counting.KmerOrdering
+  import Counting.LongKmerOrdering
 
   /**
    * For tagged sequences that belong to this bucket, classify each one using
@@ -227,8 +226,11 @@ final case class TaxonBucket(id: BucketId,
    * @return
    */
   def classifyKmersByIteration[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Taxon)] = {
+    implicit val ord1 = Counting.tagOrdering[T](k)
+    val ord2 = new LongKmerOrdering(k)
+
     val byKmer = subjects.iterator.flatMap(s =>
-      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
@@ -242,15 +244,15 @@ final case class TaxonBucket(id: BucketId,
     var bi = bucketIt.next
 
     val (prePart, remPart) = subjectIt.partition(s =>
-      KmerOrdering.compare(s._1, kmers(bi)) < 0)
+      ord2.compare(s._1, kmers(bi)) < 0)
 
     //The same k-mer may occur multiple times in subjects for different tags (but not in the bucket)
     //Need to consider subj again here
     prePart.map(s => (s._2, ParentMap.NONE)) ++ remPart.map(s => {
-      while (bucketIt.hasNext && KmerOrdering.compare(s._1, kmers(bi)) > 0) {
+      while (bucketIt.hasNext && ord2.compare(s._1, kmers(bi)) > 0) {
         bi = bucketIt.next
       }
-      if (KmerOrdering.compare(s._1, kmers(bi)) == 0) {
+      if (ord2.compare(s._1, kmers(bi)) == 0) {
         (s._2, taxa(bi))
       } else {
         (s._2, ParentMap.NONE)
@@ -270,7 +272,8 @@ final case class TaxonBucket(id: BucketId,
    * @return
    */
   def classifyKmersBySearch[T](subject: BPBuffer, order: Int, tag: T, k: Int): (T, TaxonSummary) = {
-    val byKmer = subject.kmersAsArrays(k.toShort)
+    implicit val ordering = new LongKmerOrdering(k)
+    val byKmer = subject.kmersAsLongArrays(k.toShort)
 
     import scala.collection.Searching._
     val raw = byKmer.map(subj => {

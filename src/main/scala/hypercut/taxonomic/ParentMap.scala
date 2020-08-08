@@ -1,5 +1,6 @@
 package hypercut.taxonomic
 
+import hypercut.spark.Counting
 import miniasm.genome.bpbuffer.BPBuffer
 
 import scala.collection.mutable
@@ -100,13 +101,14 @@ final case class ParentMap(parents: Array[Taxon]) {
    * @param k
    * @return
    */
-  def taxonTaggedFromSequences(segmentsTaxa: Iterable[(BPBuffer, Taxon)], k: Taxon): Iterator[(Array[Int], Taxon)] = {
+  def taxonTaggedFromSequences(segmentsTaxa: Iterable[(BPBuffer, Taxon)], k: Int): Iterator[(Array[Long], Taxon)] = {
+    implicit val ordering = Counting.tagOrdering[Taxon](k)
     val byKmer = segmentsTaxa.iterator.flatMap(s =>
-      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(Array[Int], Int)] {
+    new Iterator[(Array[Long], Int)] {
       var i = 0
       val len = byKmer.length
 

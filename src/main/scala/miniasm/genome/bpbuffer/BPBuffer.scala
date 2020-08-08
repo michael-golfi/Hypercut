@@ -93,6 +93,9 @@ trait BPBuffer {
   def kmersAsArrays(k: Short): Iterator[Array[Int]] =
     (0 until (size - k + 1)).iterator.map(i => rebuildAsArray(i.toShort, k))
 
+  def kmersAsLongArrays(k: Short): Iterator[Array[Long]] =
+    (0 until (size - k + 1)).iterator.map(i => rebuildAsLongArray(i.toShort, k))
+
   /**
    * Copy the raw data representing this sequence into a new integer array.
    */
@@ -102,6 +105,8 @@ trait BPBuffer {
    * Copy the raw data representing part of this sequence into a new integer array.
    */
   def rebuildAsArray(offset: Short, size: Short): Array[Int]
+
+  def rebuildAsLongArray(offset: Short, size: Short): Array[Long]
 
   /**
    * Print detailed information about this object, including internal
@@ -319,11 +324,13 @@ object BPBuffer {
       directApply(pos)
     }
 
-    final def rebuildAsArray: Array[Int] = computeIntArray()
+    final def rebuildAsArray: Array[Int] = computeIntArray
 
     final def rebuildAsArray(offset: Short, size: Short): Array[Int] = computeIntArray(offset, size)
 
-    def numIntsInArray = if (size % 16 == 0) { size / 16 } else { size / 16 + 1 }
+    final def numInts = if (size % 16 == 0) { size >> 4 } else { (size >> 4) + 1 }
+
+    final def numLongs = if (size % 32 == 0) { size >> 5 } else { (size >> 5) + 1 }
 
     /**
      * Create a new int array that contains the data in this bpbuffer, starting from offset 0.
@@ -332,9 +339,9 @@ object BPBuffer {
      * and starting from different offsets, so the backing buffers cannot easily be compared
      * directly for equality testing)
      */
-    final def computeIntArray() = {
+    final def computeIntArray: Array[Int] = {
       var i = 0
-      val ns = numIntsInArray
+      val ns = numInts
       val newData = new Array[Int](ns)
       while (i < ns) {
         newData(i) = computeIntArrayElement(i)
@@ -346,7 +353,7 @@ object BPBuffer {
     /**
      * Create an int array representing a subsequence of this bpbuffer.
      */
-    def computeIntArray(offset: Short, size: Short) = {
+    def computeIntArray(offset: Short, size: Short): Array[Int] = {
       var i = 0
       val ns = (size / 16 + 1) //safely going slightly over in some cases
       val newData = new Array[Int](ns)
@@ -359,6 +366,31 @@ object BPBuffer {
 
     protected def computeIntArrayElement(pos: Int): Int = {
       BPBuffer.computeIntArrayElement(data, offset, size, pos)
+    }
+
+    /**
+     * Create a long array representing a subsequence of this bpbuffer.
+     * @param offset
+     * @param size
+     * @return
+     */
+    final def rebuildAsLongArray(offset: Short, size: Short): Array[Long] = {
+      var write = 0
+      var read = 0
+      val nl = numLongs
+      val ni = numInts
+      val newData = new Array[Long](nl)
+      while (write < nl && read < ni) {
+        var x = BPBuffer.computeIntArrayElement(data, offset, size, read).toLong << 32
+        read += 1
+        if (read < ni) {
+          x = (x | BPBuffer.computeIntArrayElement(data, offset, size, read))
+          read += 1
+        }
+        newData(write) = x
+        write += 1
+      }
+      newData
     }
 
     def binbyte(byte: Byte) = byteToQuad(byte)
@@ -410,7 +442,7 @@ object BPBuffer {
      *
      */
     final def kmerHashCode: Int = {
-      val n = numIntsInArray
+      val n = numInts
       var r = 0
       var i = 0
 
@@ -508,7 +540,6 @@ object BPBuffer {
       print(" Ints ")
       rebuildAsArray.foreach(x => { print(x + " " + binint(x)) })
       println(" String " + toString)
-      computeIntArray()
     }
 
     /**
@@ -557,7 +588,7 @@ object BPBuffer {
     }
 
     override def computeIntArrayElement(i: Int) = {
-      val n = numIntsInArray
+      val n = numInts
       val paddingBPs = (16 - (size % 16)) % 16 //number of AAA... BPs at the end of the last int in the forward repr.
       val doSnd = (n > 1 && i < n - 1)
 
