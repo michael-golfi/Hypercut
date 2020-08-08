@@ -211,14 +211,6 @@ object Counting {
     }
   }
 
-
-  def tagOrdering[T](k: Int): Ordering[(Array[Long], T)] = new Ordering[(Array[Long], T)] {
-    val lo = new LongKmerOrdering(k)
-    override def compare(x: (Array[Long], T), y: (Array[Long], T)): Int = {
-      lo.compare(x._1, y._1)
-    }
-  }
-
   /**
    * From a series of sequences (where k-mers may be repeated) and abundances,
    * produce an iterator with counted abundances where each k-mer appears only once.

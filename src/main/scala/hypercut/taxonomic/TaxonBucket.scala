@@ -225,9 +225,8 @@ final case class TaxonBucket(id: BucketId,
    * @tparam T
    * @return
    */
-  def classifyKmersByIteration[T](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Taxon)] = {
-    implicit val ord1 = Counting.tagOrdering[T](k)
-    val ord2 = new LongKmerOrdering(k)
+  def classifyKmersByIteration[T : Ordering](subjects: Iterable[(BPBuffer, T)], k: Int): Iterator[(T, Taxon)] = {
+    implicit val ord = new LongKmerOrdering(k)
 
     val byKmer = subjects.iterator.flatMap(s =>
       s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
@@ -244,15 +243,15 @@ final case class TaxonBucket(id: BucketId,
     var bi = bucketIt.next
 
     val (prePart, remPart) = subjectIt.partition(s =>
-      ord2.compare(s._1, kmers(bi)) < 0)
+      ord.compare(s._1, kmers(bi)) < 0)
 
     //The same k-mer may occur multiple times in subjects for different tags (but not in the bucket)
     //Need to consider subj again here
     prePart.map(s => (s._2, ParentMap.NONE)) ++ remPart.map(s => {
-      while (bucketIt.hasNext && ord2.compare(s._1, kmers(bi)) > 0) {
+      while (bucketIt.hasNext && ord.compare(s._1, kmers(bi)) > 0) {
         bi = bucketIt.next
       }
-      if (ord2.compare(s._1, kmers(bi)) == 0) {
+      if (ord.compare(s._1, kmers(bi)) == 0) {
         (s._2, taxa(bi))
       } else {
         (s._2, ParentMap.NONE)

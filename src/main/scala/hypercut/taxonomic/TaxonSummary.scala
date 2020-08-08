@@ -1,5 +1,6 @@
 package hypercut.taxonomic
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -19,23 +20,28 @@ object TaxonSummary {
     TaxonSummary(order, taxa.toArray, counts.toArray)
   }
 
+  @tailrec
+  def mergeHitCounts(rem: List[(Taxon, Int)], acc: List[(Taxon, Int)] = Nil): List[(Taxon, Int)] = {
+    rem match {
+      case (x, xc) :: (y, yc) :: ys =>
+        if (x == y) {
+          mergeHitCounts((y, yc + xc) :: ys, acc)
+        }  else {
+          mergeHitCounts((y, yc) :: ys, (x, xc) :: acc)
+        }
+      case x :: xs => x :: acc
+      case Nil => acc
+    }
+  }
+
   //TODO find a way to do this without using a map
   def mergeHitCounts(summaries: Iterable[TaxonSummary]): mutable.Map[Taxon, Int] = {
-    val m = mutable.Map.empty[Taxon, Int]
-    for {
-      s <- summaries
-      (t, c) <- s.taxa zip s.counts
-    } {
-      m.get(t) match {
-        case Some(oc) => m(t) = (oc + c)
-        case _ => m(t) = c
-      }
-    }
-    m
+    val all = summaries.toList.flatMap(_.asPairs).sorted
+    mutable.Map.empty ++ mergeHitCounts(all)
   }
 
   def concatenate(summaries: Iterable[TaxonSummary]): TaxonSummary = {
-    val maxSize = summaries.map(_.counts.size)
+    val maxSize = summaries.map(_.counts.size).sum
     val taxonRet = new ArrayBuffer[Taxon]()
     taxonRet.sizeHint(maxSize)
     val countRet = new ArrayBuffer[Int]()
@@ -73,7 +79,8 @@ final case class TaxonSummary(order: Int, taxa: mutable.Seq[Taxon], counts: muta
   def taxonRepr(t: Taxon) =
     if (t == AMBIGUOUS) "A" else s"$t"
 
-  override def toString: String = {
+  override def toString: String =
     (taxa zip counts).map(hit => s"${taxonRepr(hit._1)}:${hit._2}").mkString(" ")
-  }
+
+  def asPairs: Iterator[(Taxon, Int)] = (taxa.iterator zip counts.iterator)
 }

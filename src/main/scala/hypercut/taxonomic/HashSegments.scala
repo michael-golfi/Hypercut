@@ -38,6 +38,7 @@ object HashSegments {
         ((numKmers % Short.MaxValue).toShort)
 
       lengths.iterator.map(l =>
+        //special value null to indicate ambiguous segment
         HashSegment(0, ZeroBPBuffer(null, l))
       )
     } else {
