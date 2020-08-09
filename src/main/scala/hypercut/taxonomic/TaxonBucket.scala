@@ -67,7 +67,6 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   }
 
   def segmentsToBuckets(segments: Dataset[(HashSegment, Taxon)]): Dataset[TaxonBucket] = {
-    //TODO possible to avoid a shuffle here, e.g. by partitioning preserving transformation?
     val grouped = segments.groupBy($"_1.hash")
     val byHash = grouped.agg(collect_list(struct($"_1.segment", $"_2"))).
       as[(BucketId, Array[(ZeroBPBuffer, Taxon)])]

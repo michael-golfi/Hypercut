@@ -10,7 +10,7 @@ import scala.util.Sorting
 
 object SimpleBucket {
   def fromCountedSequences(id: BucketId,
-                           data: Array[(Array[Int], Long)]): SimpleBucket = {
+                           data: Array[(Array[Long], Long)]): SimpleBucket = {
     val kmers = data.map(_._1)
     val abunds = data.map(x => {
       x._2.min(Integer.MAX_VALUE).toInt
@@ -26,7 +26,7 @@ object SimpleBucket {
  * @param abundances
  */
 final case class SimpleBucket(id: BucketId,
-                        kmers: Array[Array[Int]],
+                        kmers: Array[Array[Long]],
                         abundances: Array[Int]) {
 
 }

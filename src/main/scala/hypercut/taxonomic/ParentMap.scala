@@ -117,7 +117,7 @@ final case class ParentMap(parents: Array[Taxon]) {
       def next = {
         val lastKmer = byKmer(i)._1
         var kmersLca = ParentMap.NONE
-        while (i < len && java.util.Arrays.equals(byKmer(i)._1, lastKmer)) {
+        while (i < len && ord1.compare(byKmer(i)._1, lastKmer) == 0) {
           kmersLca = lca(kmersLca, byKmer(i)._2)
           i += 1
         }

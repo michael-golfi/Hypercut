@@ -90,23 +90,18 @@ trait BPBuffer {
   def kmers(k: Short): Iterator[BPBuffer] =
     (0 until (size - k + 1)).iterator.map(i => slice(i.toShort, k))
 
-  def kmersAsArrays(k: Short): Iterator[Array[Int]] =
-    (0 until (size - k + 1)).iterator.map(i => rebuildAsArray(i.toShort, k))
-
   def kmersAsLongArrays(k: Short): Iterator[Array[Long]] =
-    (0 until (size - k + 1)).iterator.map(i => rebuildAsLongArray(i.toShort, k))
+    (0 until (size - k + 1)).iterator.map(i => partAsLongArray(i.toShort, k))
 
   /**
    * Copy the raw data representing this sequence into a new integer array.
    */
-  def rebuildAsArray: Array[Int]
+  def asIntArray: Array[Int]
 
   /**
-   * Copy the raw data representing part of this sequence into a new integer array.
+   * Copy the raw data representing part of this sequence into a new long array.
    */
-  def rebuildAsArray(offset: Short, size: Short): Array[Int]
-
-  def rebuildAsLongArray(offset: Short, size: Short): Array[Long]
+  def partAsLongArray(offset: Short, size: Short): Array[Long]
 
   /**
    * Print detailed information about this object, including internal
@@ -151,17 +146,6 @@ object BPBuffer {
    */
   def wrap(str: String, offset: Short, size: Short): ForwardBPBuffer = {
     new ForwardBPBuffer(stringToBytes(str), offset, size)
-  }
-
-  def splitRead(read: String, k: Short): Seq[BPBuffer] = {
-    val rb = BPBuffer.wrap(read)
-    var kmers = Vector[BPBuffer]()
-    var i = 0
-    while (i <= read.size - k) {
-      kmers :+= rb.slice(i, k)
-      i += 1
-    }
-    kmers
   }
 
   /**
@@ -219,21 +203,15 @@ object BPBuffer {
   }
 
   //Optimised version for repeated calls - avoids allocating a new buffer each time
-  def intsToString(buffer: ByteBuffer, builder: StringBuilder, data: Array[Int], offset: Short, size: Short): String = {
+  def longsToString(buffer: ByteBuffer, builder: StringBuilder, data: Array[Long], offset: Short, size: Short): String = {
     buffer.clear()
     builder.clear()
     var i = 0
     while (i < data.length) {
-      buffer.putInt(data(i))
+      buffer.putLong(data(i))
       i += 1
     }
     BitRepresentation.bytesToString(buffer.array(), builder, offset, size)
-  }
-
-  def intsToString(data: Array[Int], offset: Short, size: Short): String = {
-    val bb = ByteBuffer.allocate(data.length * 4)
-    val builder = new StringBuilder(data.length * 16)
-    intsToString(bb, builder, data, offset, size)
   }
 
   /**
@@ -324,13 +302,11 @@ object BPBuffer {
       directApply(pos)
     }
 
-    final def rebuildAsArray: Array[Int] = computeIntArray
+    final def asIntArray: Array[Int] = computeIntArray
 
-    final def rebuildAsArray(offset: Short, size: Short): Array[Int] = computeIntArray(offset, size)
+    final def partAsIntArray(offset: Short, size: Short): Array[Int] = computeIntArray(offset, size)
 
     final def numInts = if (size % 16 == 0) { size >> 4 } else { (size >> 4) + 1 }
-
-    final def numLongs = if (size % 32 == 0) { size >> 5 } else { (size >> 5) + 1 }
 
     /**
      * Create a new int array that contains the data in this bpbuffer, starting from offset 0.
@@ -355,7 +331,7 @@ object BPBuffer {
      */
     def computeIntArray(offset: Short, size: Short): Array[Int] = {
       var i = 0
-      val ns = (size / 16 + 1) //safely going slightly over in some cases
+      val ns = ((size >> 4) + 1) //safely (?) going slightly over in some cases
       val newData = new Array[Int](ns)
       while (i < ns) {
         newData(i) = BPBuffer.computeIntArrayElement(data, offset, size, i)
@@ -374,17 +350,20 @@ object BPBuffer {
      * @param size
      * @return
      */
-    final def rebuildAsLongArray(offset: Short, size: Short): Array[Long] = {
+    final def partAsLongArray(offset: Short, size: Short): Array[Long] = {
       var write = 0
       var read = 0
-      val nl = numLongs
-      val ni = numInts
-      val newData = new Array[Long](nl)
-      while (write < nl && read < ni) {
+      val numLongs = ((size >> 5) + 1) //safely (?) going slightly over in some cases
+      val numInts = ((size >> 4) + 1)
+
+      val newData = new Array[Long](numLongs)
+      while (write < numLongs && read < numInts) {
         var x = BPBuffer.computeIntArrayElement(data, offset, size, read).toLong << 32
         read += 1
-        if (read < ni) {
-          x = (x | BPBuffer.computeIntArrayElement(data, offset, size, read))
+        if (read < numInts) {
+          //Because this ends up as the second part of the long, we have to preserve the sign bit in its place.
+          //Integer.toUnsignedLong will do the trick.
+          x = (x | Integer.toUnsignedLong(BPBuffer.computeIntArrayElement(data, offset, size, read)))
           read += 1
         }
         newData(write) = x
@@ -414,8 +393,8 @@ object BPBuffer {
     }
 
     final def deepCompareSameSize(obfr: BPBuffer): Int = {
-      val a1 = rebuildAsArray
-      val a2 = obfr.rebuildAsArray
+      val a1 = asIntArray
+      val a2 = obfr.asIntArray
       val n = a1.length //must be same for both if they have same size
       var i = 0
       while (i < n) {
@@ -538,7 +517,7 @@ object BPBuffer {
       print("Data ")
       data.foreach(x => { print(x + " ") })
       print(" Ints ")
-      rebuildAsArray.foreach(x => { print(x + " " + binint(x)) })
+      asIntArray.foreach(x => { print(x + " " + binint(x)) })
       println(" String " + toString)
     }
 
