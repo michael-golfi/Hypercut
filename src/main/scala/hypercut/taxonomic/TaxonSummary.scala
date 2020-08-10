@@ -6,18 +6,24 @@ import scala.collection.mutable.ArrayBuffer
 
 object TaxonSummary {
 
-  //TODO try to come up with a version that doesn't build so many lists
-  def split[T](list: List[T]) : List[(T, Int)] = list match {
-    case Nil => Nil
-    case h::t =>
-      val segment = list takeWhile { h == _ }
-      val l = segment.length
-      (h, l) :: split(list drop l)
-  }
-
-  def fromClassifiedKmers(kmerClassifications: List[Taxon], order: Int): TaxonSummary = {
-    val (taxa, counts) = split[Taxon](kmerClassifications).unzip
-    TaxonSummary(order, taxa.toArray, counts.toArray)
+  def fromClassifiedKmers(kmerClassifications: Iterator[Taxon], order: Int): TaxonSummary = {
+    var count = 1
+    var last = kmerClassifications.next
+    var taxBuffer = new ArrayBuffer[Taxon](200)
+    var countBuffer = new ArrayBuffer[Taxon](200)
+    for (tax <- kmerClassifications) {
+      if (tax == last) {
+        count += 1
+      } else {
+        taxBuffer += last
+        countBuffer += count
+        last = tax
+        count = 1
+      }
+    }
+    taxBuffer += last
+    countBuffer += count
+    TaxonSummary(order, taxBuffer, countBuffer)
   }
 
   @tailrec
@@ -79,8 +85,19 @@ final case class TaxonSummary(order: Int, taxa: mutable.Seq[Taxon], counts: muta
   def taxonRepr(t: Taxon) =
     if (t == AMBIGUOUS) "A" else s"$t"
 
-  override def toString: String =
-    (taxa zip counts).map(hit => s"${taxonRepr(hit._1)}:${hit._2}").mkString(" ")
+  override def toString: String = {
+    val sb = new StringBuilder
+    val taxIt = taxa.iterator
+    for ((t, c) <- taxIt zip counts.iterator) {
+      sb.append(taxonRepr(t))
+      sb.append(":")
+      sb.append(c)
+      if (taxIt.hasNext) {
+        sb.append(" ")
+      }
+    }
+    sb.toString()
+  }
 
   def asPairs: Iterator[(Taxon, Int)] = (taxa.iterator zip counts.iterator)
 }

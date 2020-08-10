@@ -99,9 +99,20 @@ trait BPBuffer {
   def asIntArray: Array[Int]
 
   /**
-   * Copy the raw data representing part of this sequence into a new long array.
+   * Create a long array representing a subsequence of this bpbuffer.
+   * @param offset
+   * @param size
+   * @return
    */
-  def partAsLongArray(offset: Short, size: Short): Array[Long]
+  final def partAsLongArray(offset: Short, size: Short): Array[Long] = {
+    val buf = longBuffer(size)
+    copyPartAsLongArray(buf, offset, size)
+    buf
+  }
+
+  def longBuffer(size: Int): Array[Long]
+
+  def copyPartAsLongArray(writeTo: Array[Long], offset: Short, size: Short)
 
   /**
    * Print detailed information about this object, including internal
@@ -344,19 +355,17 @@ object BPBuffer {
       BPBuffer.computeIntArrayElement(data, offset, size, pos)
     }
 
-    /**
-     * Create a long array representing a subsequence of this bpbuffer.
-     * @param offset
-     * @param size
-     * @return
-     */
-    final def partAsLongArray(offset: Short, size: Short): Array[Long] = {
+    def longBuffer(size: Int): Array[Long] = {
+      val numLongs = ((size >> 5) + 1)
+      new Array[Long](numLongs)
+    }
+
+    final def copyPartAsLongArray(writeTo: Array[Long], offset: Short, size: Short) {
       var write = 0
       var read = 0
-      val numLongs = ((size >> 5) + 1) //safely (?) going slightly over in some cases
+      val numLongs = writeTo.size
       val numInts = ((size >> 4) + 1)
 
-      val newData = new Array[Long](numLongs)
       while (write < numLongs && read < numInts) {
         var x = BPBuffer.computeIntArrayElement(data, offset, size, read).toLong << 32
         read += 1
@@ -366,10 +375,9 @@ object BPBuffer {
           x = (x | Integer.toUnsignedLong(BPBuffer.computeIntArrayElement(data, offset, size, read)))
           read += 1
         }
-        newData(write) = x
+        writeTo(write) = x
         write += 1
       }
-      newData
     }
 
     def binbyte(byte: Byte) = byteToQuad(byte)

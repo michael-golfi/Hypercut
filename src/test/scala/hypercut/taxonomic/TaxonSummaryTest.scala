@@ -7,7 +7,7 @@ import scala.collection.mutable.Map
 class TaxonSummaryTest extends FunSuite with Matchers {
 
   test("basic") {
-    TaxonSummary.fromClassifiedKmers(List(1,1,3,1,1,5), 1) should equal(
+    TaxonSummary.fromClassifiedKmers(Iterator(1,1,3,1,1,5), 1) should equal(
       TaxonSummary(1, Seq(1, 3, 1, 5), Seq(2, 1, 2, 1))
     )
   }

@@ -271,15 +271,17 @@ final case class TaxonBucket(id: BucketId,
    */
   def classifyKmersBySearch[T](subject: BPBuffer, order: Int, tag: T, k: Int): (T, TaxonSummary) = {
     implicit val ordering = new LongKmerOrdering(k)
-    val byKmer = subject.kmersAsLongArrays(k.toShort)
+    val offsets = (0 until (subject.size - k + 1)).iterator
+    val kmerBuffer = subject.longBuffer(k)
 
     import scala.collection.Searching._
-    val raw = byKmer.map(subj => {
-      kmers.search(subj) match {
+    val raw = offsets.map(kmerOffset => {
+      subject.copyPartAsLongArray(kmerBuffer, kmerOffset.toShort, k.toShort)
+      kmers.search(kmerBuffer) match {
         case Found(f) => taxa(f)
         case _ => ParentMap.NONE
       }
-    }).toList
+    })
     (tag, TaxonSummary.fromClassifiedKmers(raw, order))
   }
 }
