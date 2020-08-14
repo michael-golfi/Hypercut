@@ -148,7 +148,6 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
       //In quick mode (only summary) we do not sort the segments and generate in-order information
       //about each k-mer's classification, but only provide the classification distribution for each sequence.
 
-      //tag, taxon, count
       tagsWithLCAs.flatMap(x => x._2.asPairs.map(p => (x._1, p._1, p._2))).toDF("seqId", "taxon", "count").
         groupBy("seqId", "taxon").agg(sum("count").cast("int").as("count")).
         groupBy("seqId").agg(collect_list(struct("taxon", "count"))).
@@ -253,7 +252,7 @@ final case class TaxonBucket(id: BucketId,
     implicit val ord = new LongKmerOrdering(k)
 
     val byKmer = subjects.iterator.flatMap(s =>
-      s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
@@ -301,7 +300,7 @@ final case class TaxonBucket(id: BucketId,
 
     import scala.collection.Searching._
     val raw = offsets.map(kmerOffset => {
-      subject.copyPartAsLongArray(kmerBuffer, kmerOffset.toShort, k.toShort)
+      subject.copyPartAsLongArray(kmerBuffer, kmerOffset, k)
       kmers.search(kmerBuffer) match {
         case Found(f) => taxa(f)
         case _ => ParentMap.NONE

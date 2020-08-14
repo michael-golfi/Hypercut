@@ -104,7 +104,7 @@ final case class ParentMap(parents: Array[Taxon]) {
   def taxonTaggedFromSequences(segmentsTaxa: Iterable[(BPBuffer, Taxon)], k: Int): Iterator[(Array[Long], Taxon)] = {
     implicit val ord1 = new LongKmerOrdering(k)
     val byKmer = segmentsTaxa.iterator.flatMap(s =>
-      s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 

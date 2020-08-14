@@ -78,7 +78,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
       //The strings generated here are a big source of memory pressure.
       val buffer = ByteBuffer.allocate(k / 4 + 8) //space for up to 1 extra long
       val builder = new StringBuilder(k)
-      xs.map(x => (BPBuffer.longsToString(buffer, builder, x._1, 0.toShort, k.toShort), x._2))
+      xs.map(x => (BPBuffer.longsToString(buffer, builder, x._1, 0, k), x._2))
     })
   }
 
@@ -208,7 +208,7 @@ object Counting {
     implicit val ordering = new LongKmerOrdering(k)
 
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s._1.kmersAsLongArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
@@ -243,7 +243,7 @@ object Counting {
     implicit val ordering = new LongKmerOrdering(k)
 
     val byKmer = segments.iterator.flatMap(s =>
-      s.kmersAsLongArrays(k.toShort)
+      s.kmersAsLongArrays(k)
     ).toArray
     Sorting.quickSort(byKmer)
 

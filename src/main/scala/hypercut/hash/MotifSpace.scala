@@ -100,7 +100,7 @@ final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String
    */
   def motifToInt(m: NTSeq) = {
     val wrapped = BPBuffer.wrap(m)
-    BPBuffer.computeIntArrayElement(wrapped.data, 0, width.toShort, 0) >>> shift
+    BPBuffer.computeIntArrayElement(wrapped.data, 0, width, 0) >>> shift
   }
 
   val priorityLookup = new Array[Int](maxMotifs)

@@ -35,13 +35,13 @@ trait BPBuffer {
   /**
    * Number of BPs in this sequence.
    */
-  def size: Short
+  def size: Int
 
   /**
    * Offset into the raw data array where this sequence starts (number of BPs).
    * Multiply by two to get bit offset.
    */
-  def offset: Short
+  def offset: Int
 
   /**
    * The raw data that backs this BPBuffer. This can contain more data than the sequence
@@ -85,13 +85,13 @@ trait BPBuffer {
   /**
    * Construct a new bpbuffer from a subsequence of this one.
    */
-  def slice(from: Short, length: Short): BPBuffer = BPBuffer.wrap(this, from, length)
+  def slice(from: Int, length: Int): BPBuffer = BPBuffer.wrap(this, from, length)
 
-  def kmers(k: Short): Iterator[BPBuffer] =
-    (0 until (size - k + 1)).iterator.map(i => slice(i.toShort, k))
+  def kmers(k: Int): Iterator[BPBuffer] =
+    (0 until (size - k + 1)).iterator.map(i => slice(i, k))
 
-  def kmersAsLongArrays(k: Short): Iterator[Array[Long]] =
-    (0 until (size - k + 1)).iterator.map(i => partAsLongArray(i.toShort, k))
+  def kmersAsLongArrays(k: Int): Iterator[Array[Long]] =
+    (0 until (size - k + 1)).iterator.map(i => partAsLongArray(i, k))
 
   /**
    * Copy the raw data representing this sequence into a new integer array.
@@ -104,7 +104,7 @@ trait BPBuffer {
    * @param size
    * @return
    */
-  final def partAsLongArray(offset: Short, size: Short): Array[Long] = {
+  final def partAsLongArray(offset: Int, size: Int): Array[Long] = {
     val buf = longBuffer(size)
     copyPartAsLongArray(buf, offset, size)
     buf
@@ -112,7 +112,7 @@ trait BPBuffer {
 
   def longBuffer(size: Int): Array[Long]
 
-  def copyPartAsLongArray(writeTo: Array[Long], offset: Short, size: Short)
+  def copyPartAsLongArray(writeTo: Array[Long], offset: Int, size: Int)
 
   /**
    * Print detailed information about this object, including internal
@@ -141,13 +141,10 @@ object BPBuffer {
 
   import BitRepresentation._
 
-  implicit def toShort(i: Int) = i.toShort
-
   /**
    * Creates a new bpbuffer from an ACTG string.
    */
   def wrap(str: String): ZeroBPBuffer = {
-    assert(str.length <= Short.MaxValue)
     new ZeroBPBuffer(stringToBytes(str), str.length)
   }
 
@@ -155,7 +152,7 @@ object BPBuffer {
    * Creates a new bpbuffer from an ACTG string, with a given 0-based starting offset
    * and size.
    */
-  def wrap(str: String, offset: Short, size: Short): ForwardBPBuffer = {
+  def wrap(str: String, offset: Int, size: Int): ForwardBPBuffer = {
     new ForwardBPBuffer(stringToBytes(str), offset, size)
   }
 
@@ -167,7 +164,7 @@ object BPBuffer {
    * buffer.
    */
 
-  def wrap(buffer: BPBuffer, offset: Short, size: Short): BPBuffer = {
+  def wrap(buffer: BPBuffer, offset: Int, size: Int): BPBuffer = {
     if (size % 4 == 0) {
       assert(buffer.data.length >= size / 4)
     } else {
@@ -184,7 +181,7 @@ object BPBuffer {
     }
   }
 
-  def wrap(data: Int, offset: Short, size: Short): BPBuffer = {
+  def wrap(data: Int, offset: Int, size: Int): BPBuffer = {
     assert(offset + size <= 16)
 
     val bytes = Array[Byte](
@@ -195,7 +192,7 @@ object BPBuffer {
     new ForwardBPBuffer(bytes, offset, size)
   }
 
-  def wrap(data: Array[Int], offset: Short, size: Short): BPBuffer = {
+  def wrap(data: Array[Int], offset: Int, size: Int): BPBuffer = {
     val bb = ByteBuffer.allocate(data.length * 4)
     var i = 0
     while (i < data.length) {
@@ -214,7 +211,7 @@ object BPBuffer {
   }
 
   //Optimised version for repeated calls - avoids allocating a new buffer each time
-  def longsToString(buffer: ByteBuffer, builder: StringBuilder, data: Array[Long], offset: Short, size: Short): String = {
+  def longsToString(buffer: ByteBuffer, builder: StringBuilder, data: Array[Long], offset: Int, size: Int): String = {
     buffer.clear()
     builder.clear()
     var i = 0
@@ -230,7 +227,7 @@ object BPBuffer {
    * underlying backing buffer to achieve a simpler representation.
    * Main bottleneck in equality testing, hashing, ordering etc.
    */
-  def computeIntArrayElement(data: Array[Byte], offset: Short, size: Short, i: Int): Int = {
+  def computeIntArrayElement(data: Array[Byte], offset: Int, size: Int, i: Int): Int = {
     val os = offset
     val spo = size + os
     val shift = (os % 4) * 2
@@ -315,7 +312,7 @@ object BPBuffer {
 
     final def asIntArray: Array[Int] = computeIntArray
 
-    final def partAsIntArray(offset: Short, size: Short): Array[Int] = computeIntArray(offset, size)
+    final def partAsIntArray(offset: Int, size: Int): Array[Int] = computeIntArray(offset, size)
 
     final def numInts = if (size % 16 == 0) { size >> 4 } else { (size >> 4) + 1 }
 
@@ -340,7 +337,7 @@ object BPBuffer {
     /**
      * Create an int array representing a subsequence of this bpbuffer.
      */
-    def computeIntArray(offset: Short, size: Short): Array[Int] = {
+    def computeIntArray(offset: Int, size: Int): Array[Int] = {
       var i = 0
       val ns = ((size >> 4) + 1) //safely (?) going slightly over in some cases
       val newData = new Array[Int](ns)
@@ -360,7 +357,7 @@ object BPBuffer {
       new Array[Long](numLongs)
     }
 
-    final def copyPartAsLongArray(writeTo: Array[Long], offset: Short, size: Short) {
+    final def copyPartAsLongArray(writeTo: Array[Long], offset: Int, size: Int) {
       var write = 0
       var read = 0
       val numLongs = writeTo.size
@@ -609,7 +606,7 @@ object BPBuffer {
       r
     }
 
-    override def computeIntArray(offset: Short, size: Short) = {
+    override def computeIntArray(offset: Int, size: Int) = {
       //Subsequence computation not yet supported
       ???
     }
@@ -639,7 +636,7 @@ object BPBuffer {
    * Data will be read from right to left in the array, starting one step before the given offset,
    * and then complemented.
    */
-  final case class RCBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends RCBPBufferImpl {
+  final case class RCBPBuffer(val data: Array[Byte], val offset: Int, val size: Int) extends RCBPBufferImpl {
     override def hashCode: Int = kmerHashCode
     override def equals(other: Any): Boolean = other match {
       case bbi: BPBufferImpl => deepEquals(bbi)
@@ -648,7 +645,7 @@ object BPBuffer {
 
   }
 
-  final case class ForwardBPBuffer(val data: Array[Byte], val offset: Short, val size: Short) extends BPBufferImpl {
+  final case class ForwardBPBuffer(val data: Array[Byte], val offset: Int, val size: Int) extends BPBufferImpl {
     override def hashCode: Int = kmerHashCode
     override def equals(other: Any): Boolean = other match {
       case bbi: BPBufferImpl => deepEquals(bbi)
@@ -659,7 +656,7 @@ object BPBuffer {
   /**
    * A forward BPBuffer that has zero offset. Useful to save space in serialized encodings.
    */
-  final case class ZeroBPBuffer(val data: Array[Byte], val size: Short) extends BPBufferImpl {
+  final case class ZeroBPBuffer(val data: Array[Byte], val size: Int) extends BPBufferImpl {
     def offset = 0
 
     override def hashCode: Int = kmerHashCode
