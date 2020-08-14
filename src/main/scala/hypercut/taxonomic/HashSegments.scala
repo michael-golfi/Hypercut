@@ -8,6 +8,13 @@ import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import scala.annotation.{switch, tailrec}
 
 object HashSegments {
+  def ambiguous(seg: HashSegment) = {
+    seg.segment.data == null
+  }
+
+  def ambiguous(buf: ZeroBPBuffer) =
+    buf.data == null
+
     /*
     * Includes an index, so that the ordering of the hashSegments can be reconstructed later.
     * Also includes ambiguous segments at the correct location.
@@ -19,9 +26,9 @@ object HashSegments {
     //Put the ambiguous segments in some hash bucket to spread them out. They will not be processed
     //so location irrelevant.
     //TODO this scheme needs to be improved if we get a lot of ambiguous data
-    val unambigHash = allSegs.find(_.segment.data != null).map(_.hash).getOrElse(0L)
+    val unambigHash = allSegs.find(! ambiguous(_)).map(_.hash).getOrElse(0L)
     allSegs.iterator.zipWithIndex.map(s => {
-      if (s._1.segment.data == null) {
+      if (ambiguous(s._1)) {
         (s._1.copy(hash = unambigHash), s._2, tag)
       } else {
         (s._1, s._2, tag)

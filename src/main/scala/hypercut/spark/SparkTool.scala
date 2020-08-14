@@ -120,6 +120,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     val classify = new RunnableCommand("classify") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
       val unclassified = toggle("unclassified", descrYes = "Output unclassified reads", default = Some(true))
+      val detailed = toggle(name = "detailed", descrYes = "Detailed taxon output in position order", default = Some(true))
       val output = opt[String](descr = "Output location", required = true)
       def run(): Unit = {
         val inData = inFiles().mkString(",")
@@ -127,7 +128,7 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         val input = hrf.getReadsFromFilesWithID(inData, addRC(), true)
         val spl = restoreSplitter(location())
         val index = new TaxonomicIndex(spark, spl, nodes())
-        index.classify(location(), input, k(), output(), unclassified())
+        index.classify(location(), input, k(), output(), unclassified(), !detailed())
       }
     }
     addSubcommand(classify)

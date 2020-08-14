@@ -70,6 +70,22 @@ object TaxonSummary {
 
   def ambiguous(order: Int, kmers: Int) =
     TaxonSummary(order, Array(AMBIGUOUS), Array(kmers))
+
+  def taxonRepr(t: Taxon) =
+    if (t == AMBIGUOUS) "A" else s"$t"
+
+  def stringFromPairs(pairs: Iterator[(Taxon, Int)]): String = {
+    val sb = new StringBuilder
+    for ((t, c) <- pairs) {
+      sb.append(taxonRepr(t))
+      sb.append(":")
+      sb.append(c)
+      if (pairs.hasNext) {
+        sb.append(" ")
+      }
+    }
+    sb.toString()
+  }
 }
 
 /**
@@ -82,22 +98,9 @@ object TaxonSummary {
  *
  */
 final case class TaxonSummary(order: Int, taxa: mutable.Seq[Taxon], counts: mutable.Seq[Int]) {
-  def taxonRepr(t: Taxon) =
-    if (t == AMBIGUOUS) "A" else s"$t"
 
-  override def toString: String = {
-    val sb = new StringBuilder
-    val taxIt = taxa.iterator
-    for ((t, c) <- taxIt zip counts.iterator) {
-      sb.append(taxonRepr(t))
-      sb.append(":")
-      sb.append(c)
-      if (taxIt.hasNext) {
-        sb.append(" ")
-      }
-    }
-    sb.toString()
-  }
+  override def toString: String =
+    TaxonSummary.stringFromPairs((taxa.iterator zip counts.iterator))
 
   def asPairs: Iterator[(Taxon, Int)] = (taxa.iterator zip counts.iterator)
 }

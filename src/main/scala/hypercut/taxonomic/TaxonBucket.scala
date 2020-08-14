@@ -7,6 +7,7 @@ import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer.ZeroBPBuffer
 import org.apache.spark.sql.SparkSession
 
+import scala.collection.mutable
 import scala.util.Sorting
 
 
@@ -107,7 +108,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
   }
 
   def classify(indexLocation: String, idsSequences: Dataset[(SequenceID, NTSeq)], k: Int, output: String,
-               withUnclassified: Boolean): Unit = {
+               withUnclassified: Boolean, onlySummary: Boolean = false): Unit = {
     val bcSplit = this.bcSplit
 
     //indexBuckets can potentially be very large, but they are pre-partitioned on disk.
@@ -132,8 +133,7 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
         else TaxonBucket(data._1, Array(), Array())
 
       data._2.map(segment => {
-        val ambiguous = (segment._1.data == null)
-        if (ambiguous) {
+        if (HashSegments.ambiguous(segment._1)) {
           //hack: segment.size is not BPBuffer length but number of k-mers
           (segment._3, TaxonSummary.ambiguous(segment._2, segment._1.size))
         } else {
@@ -144,34 +144,42 @@ final class TaxonomicIndex[H](val spark: SparkSession, spl: ReadSplitter[H],
 
     val bcPar = this.bcParentMap
 
-    //Group by sequence ID
-    val tagLCA = tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
-      as[(String, Array[TaxonSummary])].flatMap(x => {
-      val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order))
+    val outputRows = (if (onlySummary) {
+      //In quick mode (only summary) we do not sort the segments and generate in-order information
+      //about each k-mer's classification, but only provide the classification distribution for each sequence.
 
-      //Potentially less data to traverse and merge after the order concatenation has been done
-      val allHits = TaxonSummary.mergeHitCounts(Seq(summariesInOrder))
-      val taxon = bcPar.value.resolveTree(allHits.filter(_._1 != AMBIGUOUS))
-      val seqLength = allHits.values.sum + (k - 1)
+      //tag, taxon, count
+      tagsWithLCAs.flatMap(x => x._2.asPairs.map(p => (x._1, p._1, p._2))).toDF("seqId", "taxon", "count").
+        groupBy("seqId", "taxon").agg(sum("count").cast("int").as("count")).
+        groupBy("seqId").agg(collect_list(struct("taxon", "count"))).
+        as[(String, Array[(Taxon, Int)])].flatMap(x => {
 
-      if (taxon == ParentMap.NONE && !withUnclassified) {
-        None
-      } else {
-        //Imitate the Kraken output format
-        val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
-        val seqId = x._1
-        Some((classifyFlag, seqId, taxon, seqLength, summariesInOrder.toString))
-      }
+        val hitMap = mutable.Map.empty ++ x._2
+        TaxonBucket.krakenOutputLine(bcPar.value, x._1, hitMap, TaxonSummary.stringFromPairs(x._2.iterator),
+          withUnclassified, k)
+      })
+    } else {
+      //In slow mode, we generate in-order information about each k-mer's classification.
+
+      //Group by sequence ID
+      tagsWithLCAs.groupBy("_1").agg(collect_list($"_2")).
+        as[(String, Array[TaxonSummary])].flatMap(x => {
+        val summariesInOrder = TaxonSummary.concatenate(x._2.sortBy(_.order))
+
+        //Potentially less data to traverse and merge after the order concatenation has been done
+        val allHits = TaxonSummary.mergeHitCounts(Seq(summariesInOrder))
+        TaxonBucket.krakenOutputLine(bcPar.value, x._1, allHits, summariesInOrder.toString, withUnclassified, k)
+      })
     }).cache
 
     //materialize to ensure that we compute the table before coalescing it below, or partitions would be too big
-    tagLCA.count
+    outputRows.count
 
     //This table will be relatively small and we coalesce mainly to avoid generating a lot of small files
     //in the case of a fine grained index with many buckets
-    tagLCA.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
+    outputRows.coalesce(200).write.mode(SaveMode.Overwrite).option("sep", "\t").
       csv(s"${output}_classified")
-    tagLCA.unpersist
+    outputRows.unpersist
   }
 
   def showIndexStats(location: String): Unit = {
@@ -194,6 +202,23 @@ object TaxonBucket {
     val taxa = data.map(_._2)
     TaxonBucket(id, kmers, taxa)
   }
+
+  def krakenOutputLine(pmap: ParentMap, seqId: String, hitMap: mutable.Map[Taxon, Int], hitDetails: String,
+                       withUnclassified: Boolean, k: Int): Option[(String, String, Taxon, Int, String)] = {
+
+    //mostly same from here
+    val taxon = pmap.resolveTree(hitMap.filter(_._1 != AMBIGUOUS))
+    val seqLength = hitMap.values.sum + (k - 1)
+
+    if (taxon == ParentMap.NONE && !withUnclassified) {
+      None
+    } else {
+      //Imitate the Kraken output format
+      val classifyFlag = if (taxon == ParentMap.NONE) "U" else "C"
+      Some((classifyFlag, seqId, taxon, seqLength, hitDetails))
+    }
+  }
+
 }
 
 /**
@@ -262,7 +287,7 @@ final case class TaxonBucket(id: BucketId,
    * For tagged sequences that belong to this bucket, classify each one using
    * the LCA algorithm. Return a (tag, taxon) pair for each k-mer that has a hit.
    *
-   * This version looks up a relatively small number of subjects by binary searching each.
+   * This version looks up subjects by binary search.
    *
    * @param subject
    * @param order
