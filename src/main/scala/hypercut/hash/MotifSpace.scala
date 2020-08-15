@@ -59,9 +59,6 @@ final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String
   def maxMotifLength = width
   val minMotifLength = byPriority.map(_.length()).min
 
-  def minPermittedStartOffset(motif: NTSeq) =
-    maxMotifLength - motif.length()
-
   @volatile
   private var lookup = Map.empty[NTSeq, Features]
 

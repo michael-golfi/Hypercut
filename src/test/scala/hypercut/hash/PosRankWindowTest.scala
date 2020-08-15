@@ -12,16 +12,16 @@ class PosRankWindowTest extends FunSuite with Matchers {
     val prl = PosRankWindow(test)
     prl should contain theSameElementsAs(test)
 
-    prl.dropUntilPosition(2, space)
+    prl.dropUntilPosition(2)
     prl should contain theSameElementsAs(test)
 
-    prl.dropUntilPosition(3, space)
+    prl.dropUntilPosition(3)
     prl should contain theSameElementsAs(test)
-    prl.dropUntilPosition(4, space)
+    prl.dropUntilPosition(4)
     prl should contain theSameElementsAs(test.drop(1))
-    prl.dropUntilPosition(6, space)
+    prl.dropUntilPosition(6)
     prl should contain theSameElementsAs(test.drop(2))
-    prl.dropUntilPosition(11, space)
+    prl.dropUntilPosition(11)
     prl should contain theSameElementsAs(Seq())
 
     assert(prl.end === End())

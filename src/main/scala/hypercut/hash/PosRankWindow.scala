@@ -42,7 +42,7 @@ object PosRankWindow {
 
   @tailrec
   def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace, top: PosRankWindow) {
-    if (from.pos < pos + space.minPermittedStartOffset(from.m.features.tag)) {
+    if (from.pos < pos) {
       from.remove(top)
       from.nextPos match {
         case m: MotifNode => dropUntilPositionRec(m, pos, space, top)
@@ -402,9 +402,9 @@ final case class MotifNode(pos: Int, m: Motif) extends PRNode {
 /**
  * Avoid recomputing takeByRank(n) by using a smart cache.
  */
-final class TopRankCache(list: PosRankWindow, n: Int) {
+final class TopRankCache(space: MotifSpace, list: PosRankWindow, n: Int) {
   var cache: Option[List[Motif]] = None
-  var firstByPos: Motif = _
+  var firstTopRankedByPos: Motif = _
   var lowestRank: Int = _
   var cacheLength: Int = 0
 
@@ -416,25 +416,31 @@ final class TopRankCache(list: PosRankWindow, n: Int) {
     }
   }
 
-  def dropUntilPosition(pos: Int, space: MotifSpace) {
+  def dropUntilPosition(pos: Int) {
     list.dropUntilPosition(pos, space)
-    if (firstByPos != null &&
-        pos + space.minPermittedStartOffset(firstByPos.tag) > firstByPos.pos) {
-      //Force recompute
+    if (firstTopRankedByPos != null && pos > firstTopRankedByPos.pos) {
+      //Force recompute, since we have dropped part of the result
       cache = None
     }
   }
 
-  def takeByRank() = {
+  /**
+   * Obtain the current top ranked motifs. Also alters the list by removing motifs
+   * deemed to be irrelevant at the current position.
+   */
+  def takeByRank: List[Motif] = {
     cache match {
       case Some(c) => c
       case _ =>
         val r = list.takeByRank(n)
         if (!r.isEmpty) {
           cache = Some(r)
-          firstByPos = r.head
+          firstTopRankedByPos = r.head
           cacheLength = 0
           lowestRank = 0
+          //At this point, we know that the preceding range cannot participate in any future
+          //top ranked sets
+          list.dropUntilPosition(firstTopRankedByPos.pos, space)
           inspectCache(r)
         }
         r
