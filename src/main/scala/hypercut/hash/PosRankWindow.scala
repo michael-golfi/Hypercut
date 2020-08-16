@@ -2,15 +2,25 @@ package hypercut.hash
 
 import scala.annotation.tailrec
 
-sealed trait PRNode {
-  var prevPos: PRNode = _  //PosRankList or MotifNode
-  var nextPos: PRNode = _  // End or MotifNode
+sealed trait PositionNode {
+  var prevPos: PositionNode = _  //PosRankList or MotifContainer
+  var nextPos: PositionNode = _  // End or MotifContainer
+  def remove(top: PosRankWindow) {}
+  def isEnd: Boolean = false
+}
+
+sealed trait MotifContainer extends PositionNode {
+  def remove(top: PosRankWindow)
+  def pos: Int
+  def motif: Motif
 }
 
 /**
  * End marker for both lists
  */
-final case class End() extends PRNode
+final case class End() extends PositionNode {
+  override def isEnd = true
+}
 
 object PosRankWindow {
 
@@ -18,13 +28,13 @@ object PosRankWindow {
    * Build a list from nodes with absolute positions.
    */
   def apply(nodes: Seq[Motif]) = {
-    fromNodes(nodes.map(m => MotifNode(m.pos, m)))
+    fromNodes(nodes.map(m => PositionRankNode(m.pos, m)))
   }
 
   /**
    * Build a list from position-sorted nodes.
    */
-  def fromNodes(nodes: Seq[MotifNode]) = {
+  def fromNodes(nodes: Seq[PositionRankNode]) = {
     val r = new PosRankWindow()
 
     for { n <- nodes } {
@@ -33,7 +43,7 @@ object PosRankWindow {
     r
   }
 
-  def linkPos(before: PRNode, middle: MotifNode, after: PRNode) {
+  def linkPos(before: PositionNode, middle: PositionNode, after: PositionNode) {
     before.nextPos = middle
     middle.prevPos = before
     middle.nextPos = after
@@ -41,18 +51,18 @@ object PosRankWindow {
   }
 
   @tailrec
-  def dropUntilPositionRec(from: MotifNode, pos: Int, space: MotifSpace, top: PosRankWindow) {
+  def dropUntilPositionRec(from: MotifContainer, pos: Int, top: PosRankWindow) {
     if (from.pos < pos) {
       from.remove(top)
       from.nextPos match {
-        case m: MotifNode => dropUntilPositionRec(m, pos, space, top)
+        case m: PositionRankNode => dropUntilPositionRec(m, pos, top)
         case _ =>
       }
     }
   }
 
   @tailrec
-  def treeInsert(root: MotifNode, value: MotifNode) {
+  def treeInsert(root: PositionRankNode, value: PositionRankNode) {
     if (value.rankSort < root.rankSort) {
       if (root.rankLeft != null) {
         treeInsert(root.rankLeft, value)
@@ -68,14 +78,14 @@ object PosRankWindow {
     }
   }
 
-  def treeSetLeft(parent: MotifNode, value: MotifNode): Unit = {
+  def treeSetLeft(parent: PositionRankNode, value: PositionRankNode): Unit = {
     parent.rankLeft = value
     if (value != null) {
       value.rankParent = parent
     }
   }
 
-  def treeSetRight(parent: MotifNode, value: MotifNode): Unit = {
+  def treeSetRight(parent: PositionRankNode, value: PositionRankNode): Unit = {
     parent.rankRight = value
     if (value != null) {
       value.rankParent = parent
@@ -86,7 +96,7 @@ object PosRankWindow {
   Seize the rightmost child, editing this node or one of its sub-nodes to preserve the ordering.
    */
   @tailrec
-  def seizeRightmost(root: MotifNode): MotifNode = {
+  def seizeRightmost(root: PositionRankNode): PositionRankNode = {
     val r = root.rankRight
     if (r == null) root else {
       if (r.rankRight != null) {
@@ -102,7 +112,7 @@ object PosRankWindow {
   Seize the leftmost child, editing this node or one of its sub-nodes to preserve the ordering.
    */
   @tailrec
-  def seizeLeftmost(root: MotifNode): MotifNode = {
+  def seizeLeftmost(root: PositionRankNode): PositionRankNode = {
     val l = root.rankLeft
     if (l == null) root else {
       if (l.rankLeft != null) {
@@ -117,7 +127,7 @@ object PosRankWindow {
   /*
    * Delete either the right or left child of a node
    */
-  def treeDelete(immParent: MotifNode, value: MotifNode) {
+  def treeDelete(immParent: PositionRankNode, value: PositionRankNode) {
 //    println(s"Delete $value root: $root")
     if (value eq immParent.rankLeft) {
       treeSetLeft(immParent, treeDeleteAt(immParent.rankLeft))
@@ -131,7 +141,7 @@ object PosRankWindow {
    * Delete a value that has been found in the tree.
    * Return the replacement for the node being deleted (possibly null).
    */
-  def treeDeleteAt(root: MotifNode): MotifNode = {
+  def treeDeleteAt(root: PositionRankNode): PositionRankNode = {
 //    println(s"Delete at root: $root")
     if (root.rankRight != null) {
       val r = seizeLeftmost(root.rankRight)
@@ -152,7 +162,7 @@ object PosRankWindow {
     }
   }
 
-  def printTree(root: MotifNode, indent: String = ""): Unit = {
+  def printTree(root: PositionRankNode, indent: String = ""): Unit = {
     println(s"$indent$root")
     for (l <- Option(root.rankLeft)) {
       printTree(l, indent + "L ")
@@ -162,7 +172,7 @@ object PosRankWindow {
     }
   }
 
-  def treeInOrder(root: MotifNode, acc: List[MotifNode] = Nil): List[MotifNode] = {
+  def treeInOrder(root: PositionRankNode, acc: List[PositionRankNode] = Nil): List[PositionRankNode] = {
     val right = Option(root.rankRight).map(r => treeInOrder(r, acc)).getOrElse(acc)
     if (root.rankLeft != null) {
       treeInOrder(root.rankLeft, root :: right)
@@ -173,11 +183,11 @@ object PosRankWindow {
   In-order traversal. Returns true while the traversal should continue.
   The supplied visitor receives values as they are seen and can interrupt the traversal.
    */
-  def traverse(root: MotifNode, visitor: RankListBuilder): Boolean = {
+  def traverse(root: PositionRankNode, visitor: RankListBuilder): Boolean = {
     if (root.rankLeft != null) {
       if (!traverse(root.rankLeft, visitor)) return false
     }
-    if (!visitor.treeVisitInOrder(root.m)) return false
+    if (!visitor.treeVisitInOrder(root.motif)) return false
     if (root.rankRight != null) {
       traverse(root.rankRight, visitor)
     } else true
@@ -191,21 +201,21 @@ object PosRankWindow {
  * This class is the start motif (highest (minimum) rank, lowest pos) for both lists,
  * and also the main public interface.
  */
-final case class PosRankWindow() extends PRNode with Iterable[Motif] {
+final case class PosRankWindow() extends PositionNode with Iterable[Motif] {
   import PosRankWindow._
 
   nextPos = End()
   nextPos.prevPos = this
 
-  var treeRoot: Option[MotifNode] = None
+  var treeRoot: Option[PositionRankNode] = None
 
   def iterator: Iterator[Motif] = new Iterator[Motif] {
     var current = nextPos
-    def hasNext = current.isInstanceOf[MotifNode]
+    def hasNext = current.isInstanceOf[MotifContainer]
     def next = {
       val r = current
       current = current.nextPos
-      r.asInstanceOf[MotifNode].m
+      r.asInstanceOf[MotifContainer].motif
     }
   }
 
@@ -213,7 +223,7 @@ final case class PosRankWindow() extends PRNode with Iterable[Motif] {
   def rankIterator: Iterator[Motif] = {
     treeRoot match {
       case None => Iterator.empty
-      case Some(r) => treeInOrder(r).iterator.map(_.m)
+      case Some(r) => treeInOrder(r).iterator.map(_.motif)
     }
   }
 
@@ -223,9 +233,9 @@ final case class PosRankWindow() extends PRNode with Iterable[Motif] {
    * Append at the final position,
    * inserting at the correct place in rank ordering.
    */
-  def :+= (mn: MotifNode) {
+  def :+= (mn: PositionRankNode) {
     end.prevPos match {
-      case last: MotifNode =>
+      case last: MotifContainer =>
         linkPos(last, mn, end)
       case _ =>
         linkPos(this, mn, end)
@@ -243,7 +253,7 @@ final case class PosRankWindow() extends PRNode with Iterable[Motif] {
    * Append a motif at the final position, and insert at the correct rank order.
    */
   def :+= (m: Motif) {
-    this :+= MotifNode(m.pos, m)
+    this :+= PositionRankNode(m.pos, m)
   }
 
   /**
@@ -259,9 +269,9 @@ final case class PosRankWindow() extends PRNode with Iterable[Motif] {
    * before the given sequence position, given the constraints
    * of the given MotifSpace (min permitted start offset, etc)
    */
-  def dropUntilPosition(pos: Int, space: MotifSpace) {
+  def dropUntilPosition(pos: Int) {
     nextPos match {
-      case mn: MotifNode => dropUntilPositionRec(mn, pos, space, this)
+      case mc: MotifContainer => dropUntilPositionRec(mc, pos, this)
       case _ =>
     }
   }
@@ -364,22 +374,22 @@ final class RankListBuilder(from: PosRankWindow, n: Int) {
  * A node that participates in the two sequences and contains a motif.
  * Pos is absolute position.
  */
-final case class MotifNode(pos: Int, m: Motif) extends PRNode {
+final case class PositionRankNode(pos: Int, motif: Motif) extends MotifContainer {
   import PosRankWindow._
 
   //Binary tree
   //Using null instead of Option for performance
-  var rankLeft: MotifNode = null
-  var rankRight: MotifNode = null
-  var rankParent: MotifNode = null
+  var rankLeft: PositionRankNode = null
+  var rankRight: PositionRankNode = null
+  var rankParent: PositionRankNode = null
 
   //NB this imposes a maximum length on analysed sequences for now
-  val rankSort = m.rankSort
+  val rankSort = motif.rankSort
 
   /**
    * Remove this node from both of the two sequences.
    */
-  def remove(top: PosRankWindow) {
+  override def remove(top: PosRankWindow) {
     prevPos.nextPos = nextPos
     nextPos.prevPos = prevPos
 
@@ -396,13 +406,36 @@ final case class MotifNode(pos: Int, m: Motif) extends PRNode {
 //    }
   }
 
-  override def toString = s"$m [ $rankSort ]"
+  override def toString = s"$motif [ $rankSort ]"
+}
+
+final case class SimpleNode(pos: Int, motif: Motif) extends MotifContainer {
+  override def remove(top: PosRankWindow): Unit = {
+    prevPos.nextPos = nextPos
+    nextPos.prevPos = prevPos
+  }
 }
 
 /**
- * Avoid recomputing takeByRank(n) by using a smart cache.
+ * Smart cache to support repeated computation of takeByRank(n).
  */
-final class TopRankCache(space: MotifSpace, list: PosRankWindow, n: Int) {
+trait TopRankCache {
+  def :+= (m: Motif): Unit
+  def dropUntilPosition(pos: Int): Unit
+  def takeByRank: List[Motif]
+}
+
+object TopRankCache {
+  def apply(n: Int): TopRankCache = {
+    if (n > 1) {
+      new FullTopRankCache(PosRankWindow(), n)
+    } else {
+      new FastTopRankCache
+    }
+  }
+}
+
+final class FullTopRankCache(list: PosRankWindow, n: Int) extends TopRankCache {
   var cache: Option[List[Motif]] = None
   var firstTopRankedByPos: Motif = _
   var lowestRank: Int = _
@@ -417,7 +450,7 @@ final class TopRankCache(space: MotifSpace, list: PosRankWindow, n: Int) {
   }
 
   def dropUntilPosition(pos: Int) {
-    list.dropUntilPosition(pos, space)
+    list.dropUntilPosition(pos)
     if (firstTopRankedByPos != null && pos > firstTopRankedByPos.pos) {
       //Force recompute, since we have dropped part of the result
       cache = None
@@ -440,7 +473,7 @@ final class TopRankCache(space: MotifSpace, list: PosRankWindow, n: Int) {
           lowestRank = 0
           //At this point, we know that the preceding range cannot participate in any future
           //top ranked sets
-          list.dropUntilPosition(firstTopRankedByPos.pos, space)
+          list.dropUntilPosition(firstTopRankedByPos.pos)
           inspectCache(r)
         }
         r
@@ -456,6 +489,96 @@ final class TopRankCache(space: MotifSpace, list: PosRankWindow, n: Int) {
         lowestRank = h.rankSort
       }
       inspectCache(data.tail)
+    }
+  }
+}
+
+/**
+ * Optimised version of TopRankCache for the case n = 1
+ */
+final class FastTopRankCache extends TopRankCache {
+  /*
+   * The cache here is used for the position dimension only, and the rank dimension is ignored.
+   *
+   * Invariants: head of cache is top ranked, and also leftmost position.
+   * Rank decreases (i.e. tagRank increases) monotonically going left to right.
+   * Motifs are sorted by position.
+   */
+  val cache = new PosRankWindow
+  var lastRes: List[Motif] = Nil
+  var lastResPos: Int = 0
+  var lastResRank: Int = Int.MaxValue
+
+  /**
+   * Walk the list from the end (lowest priority/high tagRank)
+   * ensuring monotonicity.
+   */
+  @tailrec
+  def ensureMonotonic(from: MotifContainer): Unit = {
+    from.prevPos match {
+      case mc: MotifContainer =>
+        if (from.motif.features.tagRank < mc.motif.features.tagRank) {
+          mc.remove(cache)
+          ensureMonotonic(from)
+        }
+      case _ =>
+    }
+  }
+
+  /**
+   * Search the list from the end, inserting a new element and possibly
+   * dropping a previously inserted suffix in the process.
+   * @param insert
+   * @param search
+   */
+  @tailrec
+  def appendMonotonic(insert: SimpleNode, search: PositionNode): Unit = {
+    search.prevPos match {
+      case mc: MotifContainer =>
+        val mcr = mc.motif.features.tagRank
+        if (insert.motif.features.tagRank < mcr) {
+          //Drop mc
+          appendMonotonic(insert, mc)
+        } else {
+          //found the right place, insert here and cause other elements to be dropped
+          PosRankWindow.linkPos(mc, insert, cache.end)
+        }
+      case x =>
+        PosRankWindow.linkPos(x, insert, cache.end)
+    }
+  }
+
+  def :+= (m: Motif): Unit = {
+    val insert = SimpleNode(m.pos, m)
+    if (m.features.tagRank < lastResRank) {
+      //new item is the highest priority one
+      lastRes = Nil
+      //wipe pre-existing elements from the cache
+      PosRankWindow.linkPos(cache, insert, cache.end)
+    } else {
+      appendMonotonic(insert, cache.end)
+    }
+  }
+
+  def dropUntilPosition(pos: Int): Unit = {
+    cache.dropUntilPosition(pos)
+    if (pos > lastResPos) {
+      lastRes = Nil
+    }
+  }
+
+  def takeByRank: List[Motif] = {
+    if (! (lastRes eq Nil)) {
+      lastRes
+    } else {
+      cache.nextPos match {
+        case mc: MotifContainer =>
+          lastRes = mc.motif :: Nil
+          lastResPos = mc.pos
+          lastResRank = mc.motif.features.tagRank
+          lastRes
+        case _ => Nil
+      }
     }
   }
 }

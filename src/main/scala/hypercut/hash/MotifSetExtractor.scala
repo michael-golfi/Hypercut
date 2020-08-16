@@ -26,7 +26,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
     var matchIndex = 0
     var scannedToPos: Int = space.maxMotifLength - 2
 
-    var windowMotifs = new TopRankCache(space, PosRankWindow(), n)
+    var windowMotifs = TopRankCache(n)
 
     def motifAt(pos: Int): Option[Motif] = {
       while (matchIndex < matches.length && matches(matchIndex).pos < pos) {
