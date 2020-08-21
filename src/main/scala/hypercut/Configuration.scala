@@ -52,7 +52,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val rna = opt[Boolean](descr = "RNA mode (default is DNA)", default = Some(false))
 
-  val long = toggle("long", default = Some(false), descrYes = "Read long sequence instead of short reads")
+  val long = toggle(default = Some(false), descrYes = "Read long sequence instead of short reads")
 
   def preferredSpace = {
     width.toOption match {

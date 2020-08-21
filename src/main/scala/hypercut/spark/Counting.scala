@@ -46,6 +46,15 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     routines.showStats(bkts)
   }
 
+  def segmentStatsOnly(reads: Dataset[NTSeq]): Unit = {
+    val bcSplit = this.bcSplit
+    val k = (bcSplit.value.k - 1)
+    val kmersPerSegment = reads.flatMap(r =>
+      createHashSegments(r, bcSplit).map(_.segment.size - (k - 1))
+    )
+    kmersPerSegment.describe().show()
+  }
+
   def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Long], Long)]
 
   def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket]

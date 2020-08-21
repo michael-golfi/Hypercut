@@ -65,12 +65,19 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
     val count = new RunnableCommand("count") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
       val output = opt[String](descr = "Location where outputs are written")
-      val stats = opt[Boolean]("stats", default = Some(false), descr = "Output k-mer bucket stats (cannot be used with outputs)")
-      val rawStats = opt[Boolean]("rawstats", default = Some(false), descr = "Output raw stats without counting k-mers (for debugging)")
-      val precount = toggle("precount", default = Some(false), descrYes = "Pre-group superkmers during shuffle before creating buckets")
-      val sequence = toggle("sequence", default = Some(true), descrYes = "Output sequence for each k-mer in the counts table")
-      val histogram = opt[Boolean]("histogram", default = Some(false), descr = "Output a histogram instead of a counts table")
-      val buckets = opt[Boolean]("buckets", default = Some(false), descr = "Write buckets")
+      val stats = opt[Boolean](default = Some(false),
+        descr = "Output k-mer bucket stats (cannot be used with outputs)")
+      val rawStats = opt[Boolean](default = Some(false),
+        descr = "Output raw stats without counting k-mers (for debugging)", hidden = true)
+      val segmentStats = opt[Boolean](default = Some(false),
+        descr = "Output segment statistics (for benchmarking)", hidden = true)
+      val precount = toggle(default = Some(false),
+        descrYes = "Pre-group superkmers during shuffle before creating buckets")
+      val sequence = toggle( default = Some(true),
+        descrYes = "Output sequence for each k-mer in the counts table")
+      val histogram = opt[Boolean](default = Some(false),
+        descr = "Output a histogram instead of a counts table")
+      val buckets = opt[Boolean](default = Some(false), descr = "Write buckets")
 
       def run() {
         val inData = inFiles().mkString(",")
@@ -89,6 +96,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
           case _ =>
             if (stats() || rawStats()) {
               counting.statisticsOnly(input, rawStats())
+            } else if (segmentStats()) {
+              counting.segmentStatsOnly(input)
             } else {
               ???
             }
@@ -119,8 +128,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
 
     val classify = new RunnableCommand("classify") {
       val inFiles = trailArg[List[String]](required = true, descr = "Input sequence files")
-      val unclassified = toggle("unclassified", descrYes = "Output unclassified reads", default = Some(true))
-      val detailed = toggle(name = "detailed", descrYes = "Detailed taxon output in position order", default = Some(true))
+      val unclassified = toggle( descrYes = "Output unclassified reads", default = Some(true))
+      val detailed = toggle(descrYes = "Detailed taxon output in position order", default = Some(true))
       val output = opt[String](descr = "Output location", required = true)
       def run(): Unit = {
         val inData = inFiles().mkString(",")
