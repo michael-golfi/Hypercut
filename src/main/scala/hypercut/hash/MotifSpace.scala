@@ -114,6 +114,7 @@ final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String
    * Size of a compact motif set in bytes
    * For each motif, 1 byte for offset, some number of bytes for the motif itself
    */
-  val compactSize = (1 + compactBytesPerMotif) * n
+  def compactSize(distances: Boolean) =
+    if (distances) ((1 + compactBytesPerMotif) * n) else (compactBytesPerMotif * n)
 
 }

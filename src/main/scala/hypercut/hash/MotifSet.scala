@@ -201,7 +201,7 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
     r.toString
   }
 
-  def asBuffer(size: Int) = {
+  def asBuffer(size: Int, positions: Boolean) = {
     val r = ByteBuffer.allocate(size)
     val it = relativeMotifs.iterator
     var hash = 0
@@ -215,22 +215,25 @@ final case class MotifSet(space: MotifSpace, val relativeMotifs: List[Motif]) {
       } else {
         r.put((tag + Byte.MinValue).toByte)
       }
-      //TODO check/warn about max size of positions, if we're not using short for the position
-      val pos = m.pos.toByte
-      r.put(pos)
-      hash = (hash * 41 + tag) * 41 + pos
+      hash = (hash * 41 + tag)
+      if (positions) {
+        //TODO check/warn about max size of positions, if we're not using short for the position
+        val pos = m.pos.toByte
+        r.put(pos)
+        hash = hash * 41 + pos
+      }
     }
     (r, hash)
   }
 
   lazy val compact: CompactNode = {
-    val bufHash = asBuffer(space.compactSize)
+    val bufHash = asBuffer(space.compactSize(true), true)
     new CompactNode(bufHash._1.array(), bufHash._2)
   }
 
-  lazy val compactLong: Long = {
-    assert(space.compactSize <= 8)
-    val buf = asBuffer(8)._1
+  def compactLong(distances: Boolean): Long = {
+    assert(space.compactSize(distances) <= 8)
+    val buf = asBuffer(8, distances)._1
     buf.getLong(0)
   }
 
