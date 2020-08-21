@@ -14,7 +14,7 @@ class FeatureCounterTest extends FunSuite with Matchers {
       scanner.scanRead(counter, r)
     }
     counter.motifsWithCounts(space).toSeq.filter(_._2 > 0) should contain theSameElementsAs(
-      List[(String, Long)](
+      List[(String, Int)](
         ("ACT", 1), ("CTG", 1), ("TGT", 1),
         ("GTT", 2), ("TGG", 1), ("GGT", 1),
         ("TTC", 1), ("TCC", 1), ("CCA", 1)

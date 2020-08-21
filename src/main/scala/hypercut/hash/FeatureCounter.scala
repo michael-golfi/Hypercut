@@ -5,9 +5,9 @@ import scala.collection.mutable.Map
 object FeatureCounter {
   def apply(space: MotifSpace): FeatureCounter = apply(space.byPriority.length)
 
-  def apply(n: Int) = new FeatureCounter(new Array[Long](n))
+  def apply(n: Int) = new FeatureCounter(new Array[Int](n))
 
-  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Long)], id: String) = {
+  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)], id: String) = {
     //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
     new MotifSpace(
       counts.sortBy(x => (x._2, x._1)).map(_._1), oldSpace.n, id
@@ -19,14 +19,19 @@ object FeatureCounter {
  * Counts motif occurrences (independently) in a dataset
  * to establish relative frequencies.
  */
-final case class FeatureCounter(counter: Array[Long]) {
+final case class FeatureCounter(counter: Array[Int]) {
 
   def numMotifs: Int = counter.length
 
   def motifsWithCounts(space: MotifSpace) = space.byPriority zip counter
 
-  def increment(motif: Motif, n: Long = 1) {
-    counter(motif.features.tagRank) += n
+  def increment(motif: Motif, n: Int = 1) {
+    val rank = motif.features.tagRank
+    if (counter(rank) <= Int.MaxValue - n) {
+      counter(motif.features.tagRank) += n
+    } else {
+      counter(rank) = Int.MaxValue
+    }
   }
 
   def += (motif: Motif) = {
@@ -45,27 +50,32 @@ final case class FeatureCounter(counter: Array[Long]) {
    */
   def += (other: FeatureCounter) {
     for (i <- counter.indices) {
-      counter(i) += other.counter(i)
+      val inc = other.counter(i)
+      if (counter(i) <= Int.MaxValue - inc) {
+        counter(i) += inc
+      } else {
+        counter(i) = Int.MaxValue
+      }
     }
   }
 
   /**
    * Operation only well-defined for counters based on the same motif space.
+   * To avoid allocation of potentially big arrays,
+   * mutates this object and returns it.
    * @param other
    * @return
    */
   def + (other: FeatureCounter): FeatureCounter = {
-    val r = FeatureCounter.apply(numMotifs)
-    r += this
-    r += other
-    r
+    this += other
+    this
   }
 
-  def sum: Long = counter.sum
+  def sum: Long = counter.map(_.toLong).sum
 
   def print(space: MotifSpace, heading: String) {
     val s = sum
-    def perc(x: Long) = "%.2f%%".format(x.toDouble/s * 100)
+    def perc(x: Int) = "%.2f%%".format(x.toDouble/s * 100)
 
     println(heading)
     val first = (motifsWithCounts(space)).filter(_._2 > 0).take(20)

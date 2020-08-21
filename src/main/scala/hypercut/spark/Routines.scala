@@ -67,7 +67,7 @@ class Routines(val spark: SparkSession) {
    */
   def restoreSpace(location: String, template: MotifSpace): MotifSpace = {
     val raw = spark.read.csv(s"${location}_hash").map(x =>
-      (x.getString(0), x.getString(1).toLong)).collect
+      (x.getString(0), x.getString(1).toInt)).collect
     println(s"Restored previously saved hash parameters with ${raw.size} motifs")
     FeatureCounter.toSpaceByFrequency(template, raw, "restored")
   }
