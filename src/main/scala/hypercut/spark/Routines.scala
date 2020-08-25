@@ -1,10 +1,7 @@
 package hypercut.spark
 
-import java.io.{File, PrintStream}
-
-import hypercut.hash.{FeatureScanner, _}
 import hypercut.bucket.BucketStats
-import hypercut.graph.Contig
+import hypercut.hash.{FeatureScanner, _}
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 import miniasm.genome.util.DNAHelpers
@@ -14,6 +11,7 @@ import org.apache.spark.sql.SparkSession
 final case class HashSegment(hash: BucketId, segment: ZeroBPBuffer)
 
 final case class CountedHashSegment(hash: BucketId, segment: ZeroBPBuffer, count: Long)
+
 
 /**
  * Core routines for executing Hypercut from Apache Spark.
@@ -39,14 +37,14 @@ class Routines(val spark: SparkSession) {
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
     val brScanner = sc.broadcast(new FeatureScanner(space))
-    //Repartition since for large data, too many partitions causes a lot of counters to be generated
-    //and collected to the driver
-    reads.repartition(100).mapPartitions(rs => {
+
+    val r = reads.mapPartitions(rs => {
       val s = brScanner.value
       val c = FeatureCounter(s.space)
       s.scanGroup(c, rs)
       Iterator(c)
-    }).reduce(_ + _)
+    })
+    r.coalesce(10).reduce(_ + _)
   }
 
   def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
@@ -69,7 +67,7 @@ class Routines(val spark: SparkSession) {
    */
   def restoreSpace(location: String, template: MotifSpace): MotifSpace = {
     val raw = spark.read.csv(s"${location}_hash").map(x =>
-      (x.getString(0), x.getString(1).toLong)).collect
+      (x.getString(0), x.getString(1).toInt)).collect
     println(s"Restored previously saved hash parameters with ${raw.size} motifs")
     FeatureCounter.toSpaceByFrequency(template, raw, "restored")
   }
@@ -122,7 +120,7 @@ class Routines(val spark: SparkSession) {
     stats.cache
     println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences)))
     println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers)))
-    println("k-mer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
+    println("kmer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
     println("Bucket stats:")
     stats.describe().show()
     stats.unpersist
@@ -133,11 +131,6 @@ class Routines(val spark: SparkSession) {
  * Serialization-safe routines.
  */
 object SerialRoutines {
-  def lengthFilter(minLength: Option[Int])(c: Contig) = minLength match {
-    case Some(ml) => if (c.length >= ml) Some(c) else None
-    case _ => Some(c)
-  }
-
   def createHashSegments[H](r: String, spl: Broadcast[ReadSplitter[H]]): Iterator[HashSegment] = {
     val splitter = spl.value
     createHashSegments(r, splitter)
@@ -148,12 +141,5 @@ object SerialRoutines {
       (h, s) <- splitter.split(r)
       r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
     } yield r
-  }
-
-  def createHashSegments[H, T](r: String, tag: T, splitter: ReadSplitter[H]): Iterator[(HashSegment, T)] = {
-    for {
-      (h, s) <- splitter.split(r)
-      r = HashSegment(splitter.compact(h), BPBuffer.wrap(s))
-    } yield (r, tag)
   }
 }

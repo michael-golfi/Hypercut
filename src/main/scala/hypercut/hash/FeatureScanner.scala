@@ -1,7 +1,9 @@
 package hypercut.hash
 
+import hypercut.NTSeq
 import hypercut.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
+
 import scala.collection.mutable
 
 /**
@@ -12,18 +14,18 @@ final class FeatureScanner(val space: MotifSpace) extends Serializable {
   lazy val scanner = new ShiftScanner(space)
 
   @volatile var readCount: Int = 0
-  def scanRead(counter: FeatureCounter, read: String) {
+  def scanRead(counter: FeatureCounter, read: NTSeq) {
     readCount += 1
     for { m <- scanner.allMatches(read) } {
       counter += m
     }
   }
 
-  def scanGroup(counter: FeatureCounter, rs: TraversableOnce[String]) {
+  def scanGroup(counter: FeatureCounter, rs: TraversableOnce[NTSeq]) {
     for (r <- rs) scanRead(counter, r)
   }
 
-  def handle(reads: Iterator[String]): FeatureCounter = {
+  def handle(reads: Iterator[NTSeq]): FeatureCounter = {
     val bufferSize = 100000
     val counter =
       reads.grouped(bufferSize).grouped(4).map(gg =>

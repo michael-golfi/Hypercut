@@ -1,5 +1,6 @@
 package hypercut.hash
 
+import hypercut.NTSeq
 import miniasm.genome.bpbuffer.{BPBuffer, BitRepresentation}
 
 import scala.collection.mutable.ListBuffer
@@ -53,18 +54,15 @@ object MotifSpace {
  * @param width Max width of motifs in bps.
  * @param id To help distinguish this space from other spaces, for quick equality check
  */
-final case class MotifSpace(val byPriority: Array[String], val n: Int, id: String) {
+final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String) {
   val width = byPriority.map(_.length()).max
   def maxMotifLength = width
   val minMotifLength = byPriority.map(_.length()).min
 
-  def minPermittedStartOffset(motif: String) =
-    maxMotifLength - motif.length()
-
   @volatile
-  private var lookup = Map.empty[String, Features]
+  private var lookup = Map.empty[NTSeq, Features]
 
-  def getFeatures(pattern: String): Features = {
+  def getFeatures(pattern: NTSeq): Features = {
     if (!lookup.contains(pattern)) {
       synchronized {
         if (!lookup.contains(pattern)) {
@@ -76,11 +74,11 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int, id: Strin
     lookup(pattern)
   }
 
-  def get(pattern: String, pos: Int): Motif = {
+  def get(pattern: NTSeq, pos: Int): Motif = {
     Motif(pos, getFeatures(pattern))
   }
 
-  def create(pattern: String, pos: Int): Motif = {
+  def create(pattern: NTSeq, pos: Int): Motif = {
     Motif(pos, new Features(pattern, priorityOf(pattern)))
   }
 
@@ -97,9 +95,9 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int, id: Strin
    * @param m
    * @return
    */
-  def motifToInt(m: String) = {
+  def motifToInt(m: NTSeq) = {
     val wrapped = BPBuffer.wrap(m)
-    BPBuffer.computeIntArrayElement(wrapped.data, 0, width.toShort, 0) >>> shift
+    BPBuffer.computeIntArrayElement(wrapped.data, 0, width, 0) >>> shift
   }
 
   val priorityLookup = new Array[Int](maxMotifs)
@@ -107,7 +105,7 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int, id: Strin
     priorityLookup(motifToInt(motif)) = pri
   }
 
-  def priorityOf(mk: String) =
+  def priorityOf(mk: NTSeq) =
     priorityLookup(motifToInt(mk))
 
   val compactBytesPerMotif = if (width > 8) 4 else if (width > 4) 2 else 1
@@ -116,6 +114,7 @@ final case class MotifSpace(val byPriority: Array[String], val n: Int, id: Strin
    * Size of a compact motif set in bytes
    * For each motif, 1 byte for offset, some number of bytes for the motif itself
    */
-  val compactSize = (1 + compactBytesPerMotif) * n
+  def compactSize(distances: Boolean) =
+    if (distances) ((1 + compactBytesPerMotif) * n) else (compactBytesPerMotif * n)
 
 }

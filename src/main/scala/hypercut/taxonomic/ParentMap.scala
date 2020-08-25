@@ -1,5 +1,6 @@
 package hypercut.taxonomic
 
+import hypercut.spark.Counting
 import miniasm.genome.bpbuffer.BPBuffer
 
 import scala.collection.mutable
@@ -13,7 +14,7 @@ object ParentMap {
  * Maps each taxon to its parent.
  * @param parents
  */
-final case class ParentMap(parents: Array[Int]) {
+final case class ParentMap(parents: Array[Taxon]) {
   import ParentMap._
 
   /**
@@ -23,7 +24,7 @@ final case class ParentMap(parents: Array[Int]) {
    * @param tax2
    * @return
    */
-  def lca(tax1: Int, tax2: Int): Int = {
+  def lca(tax1: Taxon, tax2: Taxon): Taxon = {
     if (tax1 == NONE || tax2 == NONE) {
       return (if (tax2 == NONE) tax1 else tax2)
     }
@@ -49,8 +50,8 @@ final case class ParentMap(parents: Array[Int]) {
    * Algorithm from Kraken's krakenutil.cpp.
    * @param hitCounts
    */
-  def resolveTree(hitCounts: Map[Int, Int]): Int = {
-    val maxTaxa = mutable.Set.empty[Int]
+  def resolveTree(hitCounts: collection.Map[Taxon, Int]): Taxon = {
+    val maxTaxa = mutable.Set.empty[Taxon]
     var maxTaxon = 0
     var maxScore = 0
     val it = hitCounts.iterator
@@ -82,9 +83,12 @@ final case class ParentMap(parents: Array[Int]) {
     }
   }
 
-  def classifySequence(taxa: Iterable[Int]): Int = {
+  def classifySequence(taxa: Iterable[Taxon], k: Int): (Taxon, String, Int) = {
     val countedTaxa = taxa.groupBy(x => x).map(x => (x._1, x._2.size))
-    resolveTree(countedTaxa)
+    val mappingSummaries = countedTaxa.toSeq.map(x => s"${x._1}:${x._2}").mkString(" ")
+    //Assuming each counted taxon corresponds to a k-mer from a sequence
+    val seqLength = countedTaxa.values.sum + (k-1)
+    (resolveTree(countedTaxa), mappingSummaries, seqLength)
   }
 
   import hypercut.spark.Counting._
@@ -97,13 +101,14 @@ final case class ParentMap(parents: Array[Int]) {
    * @param k
    * @return
    */
-  def taxonTaggedFromSequences(segmentsTaxa: Iterable[(BPBuffer, Int)], k: Int): Iterator[(Array[Int], Int)] = {
+  def taxonTaggedFromSequences(segmentsTaxa: Iterable[(BPBuffer, Taxon)], k: Int): Iterator[(Array[Long], Taxon)] = {
+    implicit val ord1 = new LongKmerOrdering(k)
     val byKmer = segmentsTaxa.iterator.flatMap(s =>
-      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(Array[Int], Int)] {
+    new Iterator[(Array[Long], Int)] {
       var i = 0
       val len = byKmer.length
 
@@ -112,7 +117,7 @@ final case class ParentMap(parents: Array[Int]) {
       def next = {
         val lastKmer = byKmer(i)._1
         var kmersLca = ParentMap.NONE
-        while (i < len && java.util.Arrays.equals(byKmer(i)._1, lastKmer)) {
+        while (i < len && ord1.compare(byKmer(i)._1, lastKmer) == 0) {
           kmersLca = lca(kmersLca, byKmer(i)._2)
           i += 1
         }
@@ -123,7 +128,7 @@ final case class ParentMap(parents: Array[Int]) {
   }
 
   //taxa must be non-empty
-  def allLca[T](taxa: Iterable[Int]): Int = {
+  def allLca[T](taxa: Iterable[Taxon]): Taxon = {
     if (taxa.size == 1)
       taxa.head
     else

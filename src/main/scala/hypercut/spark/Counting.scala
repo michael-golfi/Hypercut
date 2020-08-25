@@ -30,7 +30,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
 
   def toStatBuckets(segments: Dataset[HashSegment], raw: Boolean): Dataset[BucketStats]
 
-  def countKmers(reads: Dataset[String]) = {
+  def countKmers(reads: Dataset[NTSeq]) = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -38,7 +38,7 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     countedWithStrings(counts)
   }
 
-  def statisticsOnly(reads: Dataset[String], raw: Boolean): Unit = {
+  def statisticsOnly(reads: Dataset[NTSeq], raw: Boolean): Unit = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
 
@@ -46,18 +46,27 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     routines.showStats(bkts)
   }
 
-  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)]
+  def segmentStatsOnly(reads: Dataset[NTSeq]): Unit = {
+    val bcSplit = this.bcSplit
+    val k = (bcSplit.value.k - 1)
+    val kmersPerSegment = reads.flatMap(r =>
+      createHashSegments(r, bcSplit).map(_.segment.size - (k - 1))
+    )
+    kmersPerSegment.describe().show()
+  }
+
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Long], Long)]
 
   def segmentsToBuckets(segments: Dataset[HashSegment]): Dataset[SimpleBucket]
 
-  def writeBuckets(reads: Dataset[String], output: String): Unit = {
+  def writeBuckets(reads: Dataset[NTSeq], output: String): Unit = {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val buckets = segmentsToBuckets(segments)
     buckets.write.mode(SaveMode.Overwrite).parquet(s"${output}_buckets")
   }
 
-  def writeCountedKmers(reads: Dataset[String], withKmers: Boolean, histogram: Boolean, output: String) {
+  def writeCountedKmers(reads: Dataset[NTSeq], withKmers: Boolean, histogram: Boolean, output: String) {
     val bcSplit = this.bcSplit
     val segments = reads.flatMap(r => createHashSegments(r, bcSplit))
     val counts = segmentsToCounts(segments)
@@ -71,18 +80,18 @@ abstract class Counting[H](val spark: SparkSession, spl: ReadSplitter[H]) {
     }
   }
 
-  def countedWithStrings(counted: Dataset[(Array[Int], Long)]): Dataset[(String, Long)] = {
+  def countedWithStrings(counted: Dataset[(Array[Long], Long)]): Dataset[(NTSeq, Long)] = {
     val k = spl.k
     counted.mapPartitions(xs => {
       //Reuse the byte buffer and string builder as much as possible
       //The strings generated here are a big source of memory pressure.
-      val buffer = ByteBuffer.allocate(k / 4 + 4)
-      val builder = new StringBuilder(k + 16)
-      xs.map(x => (BPBuffer.intsToString(buffer, builder, x._1, 0.toShort, k.toShort), x._2))
+      val buffer = ByteBuffer.allocate(k / 4 + 8) //space for up to 1 extra long
+      val builder = new StringBuilder(k)
+      xs.map(x => (BPBuffer.longsToString(buffer, builder, x._1, 0, k), x._2))
     })
   }
 
-  def countedToHistogram(counted: Dataset[(Array[Int], Long)]): Dataset[(Long, Long)] = {
+  def countedToHistogram(counted: Dataset[(Array[Long], Long)]): Dataset[(Long, Long)] = {
     counted.map(_._2).groupBy("value").count().sort("value").as[(Long, Long)]
   }
 
@@ -104,13 +113,13 @@ final class GroupedCounting[H](s: SparkSession, spl: ReadSplitter[H],
   import spark.sqlContext.implicits._
   import Counting._
 
-  def countedToCounts(counted: Dataset[(BucketId, Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Int], Long)] = {
+  def countedToCounts(counted: Dataset[(BucketId, Array[(ZeroBPBuffer, Long)])], k: Int): Dataset[(Array[Long], Long)] = {
     counted.flatMap { case (hash, segmentsCounts) => {
       countsFromCountedSequences(segmentsCounts, k)
     } }
   }
 
-  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Long], Long)] = {
     val bcSplit = this.bcSplit
     countedToCounts(routines.countedSegmentsByHash(segments, bcSplit, addReverseComplements),
       spl.k)
@@ -131,7 +140,7 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
   import spark.sqlContext.implicits._
   import Counting._
 
-  def uncountedToCounts(segments: Dataset[(BucketId, Array[ZeroBPBuffer])]): Dataset[(Array[Int], Long)] = {
+  def uncountedToCounts(segments: Dataset[(BucketId, Array[ZeroBPBuffer])]): Dataset[(Array[Long], Long)] = {
     val k = spl.k
     segments.flatMap { case (hash, segments) => {
       countsFromSequences(segments, k)
@@ -145,7 +154,7 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
     } }
   }
 
-  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Int], Long)] = {
+  def segmentsToCounts(segments: Dataset[HashSegment]): Dataset[(Array[Long], Long)] = {
     uncountedToCounts(
       routines.segmentsByHash(segments, false))
   }
@@ -181,11 +190,12 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
  * Serialization-safe methods for counting
  */
 object Counting {
-  implicit object KmerOrdering extends Ordering[Array[Int]] {
-    override def compare(x: Array[Int], y: Array[Int]): Int = {
-      val l = x.length
+  final class LongKmerOrdering(k: Int) extends Ordering[Array[Long]] {
+    val arrayLength = if (k % 32 == 0) { k / 32 } else { (k / 32) + 1 }
+
+    override def compare(x: Array[Long], y: Array[Long]): Int = {
       var i = 0
-      while (i < l) {
+      while (i < arrayLength) {
         val a = x(i)
         val b = y(i)
         if (a < b) return -1
@@ -193,11 +203,6 @@ object Counting {
         i += 1
       }
       0
-    }
-  }
-  def tagOrdering[T]: Ordering[(Array[Int], T)] = new Ordering[(Array[Int], T)] {
-    override def compare(x: (Array[Int], T), y: (Array[Int], T)): Int = {
-      KmerOrdering.compare(x._1, y._1)
     }
   }
 
@@ -208,13 +213,15 @@ object Counting {
    * @param k
    * @return
    */
-  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Int], Long)] = {
+  def countsFromCountedSequences(segmentsAbundances: Iterable[(BPBuffer, Long)], k: Int): Iterator[(Array[Long], Long)] = {
+    implicit val ordering = new LongKmerOrdering(k)
+
     val byKmer = segmentsAbundances.iterator.flatMap(s =>
-      s._1.kmersAsArrays(k.toShort).map(km => (km, s._2))
+      s._1.kmersAsLongArrays(k).map(km => (km, s._2))
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(Array[Int], Long)] {
+    new Iterator[(Array[Long], Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length
@@ -241,13 +248,15 @@ object Counting {
    * @param k
    * @return
    */
-  def countsFromSequences(segments: Iterable[BPBuffer], k: Int): Iterator[(Array[Int], Long)] = {
+  def countsFromSequences(segments: Iterable[BPBuffer], k: Int): Iterator[(Array[Long], Long)] = {
+    implicit val ordering = new LongKmerOrdering(k)
+
     val byKmer = segments.iterator.flatMap(s =>
-      s.kmersAsArrays(k.toShort)
+      s.kmersAsLongArrays(k)
     ).toArray
     Sorting.quickSort(byKmer)
 
-    new Iterator[(Array[Int], Long)] {
+    new Iterator[(Array[Long], Long)] {
       var i = 0
       var remaining = byKmer
       val len = byKmer.length

@@ -38,20 +38,21 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
     default = Some("motifSet"))
 
   val numMotifs = opt[Int](
-    required = true,
-    descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(4))
+    required = false,
+    descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(1))
+
   val space = opt[String](descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
 
   val width = opt[Int](descr = "MotifSet hash: Width of motifs", default = None)
 
   val sample = opt[Double](descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
-      default = None)
+      default = Some(0.01))
 
   val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
 
   val rna = opt[Boolean](descr = "RNA mode (default is DNA)", default = Some(false))
 
-  val long = toggle("long", default = Some(false), descrYes = "Read long sequence instead of short reads")
+  val long = toggle(default = Some(false), descrYes = "Read long sequence instead of short reads")
 
   def preferredSpace = {
     width.toOption match {
