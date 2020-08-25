@@ -6,17 +6,12 @@ import scala.collection.mutable.ArrayBuffer
 import miniasm.genome.bpbuffer.BitRepresentation._
 import miniasm.genome.bpbuffer.InvalidNucleotideException
 
-
-trait Scanner {
-  def allMatches(data: NTSeq): ArrayBuffer[Motif]
-}
-
 /**
  * Bit-shift scanner for fixed width motifs.
  * @param width
  * @param space
  */
-final class ShiftScanner(val space: MotifSpace) extends Scanner {
+final class ShiftScanner(val space: MotifSpace) {
 
   assert(space.width <= 15)
 
@@ -37,7 +32,6 @@ final class ShiftScanner(val space: MotifSpace) extends Scanner {
       new Features(p._1, p._2)
     }).toArray
   }
-
 
   /*
   Find all matches in the string.
