@@ -55,7 +55,7 @@ object PosRankWindow {
     if (from.pos < pos) {
       from.remove(top)
       from.nextPos match {
-        case m: PositionRankNode => dropUntilPositionRec(m, pos, top)
+        case m: MotifContainer => dropUntilPositionRec(m, pos, top)
         case _ =>
       }
     }
