@@ -25,4 +25,5 @@ final case class SimpleBucket(id: BucketId,
 
 }
 
-final case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long)
+final case class BucketStats(sequences: Long, totalAbundance: Long, kmers: Long,
+                            uniqueKmers: Long)

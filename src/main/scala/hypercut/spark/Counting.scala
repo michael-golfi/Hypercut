@@ -172,15 +172,19 @@ final class SimpleCounting[H](s: SparkSession, spl: ReadSplitter[H]) extends Cou
         //Simply count number of k-mers as a whole (including duplicates)
         //This algorithm should work even when the data is very skewed.
         val totalAbundance = segments.iterator.map(x => x.size.toLong - (k - 1)).sum
-        BucketStats(segments.length, totalAbundance, 0)
+        BucketStats(segments.length, totalAbundance, 0, 0)
       } }
     } else {
       byHash.map { case (hash, segments) => {
         val counted = countsFromSequences(segments, k)
-        val (numDistinct, totalAbundance): (Long, Long) =
-          counted.foldLeft((0L, 0L))((acc, item) => (acc._1 + 1, acc._2 + item._2))
+        val (numDistinct, totalAbundance, numUnique): (Long, Long, Long) =
+          counted.foldLeft((0L, 0L, 0L))((acc, item) =>
+            (acc._1 + 1, acc._2 + item._2,
+            if (item._2 == 1) { acc._3 + 1 } else { acc._3 })
+          )
 
-        BucketStats(segments.length, totalAbundance, numDistinct)
+        BucketStats(segments.length, totalAbundance, numDistinct,
+          numUnique)
       } }
     }
   }

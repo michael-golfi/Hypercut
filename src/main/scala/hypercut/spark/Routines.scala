@@ -115,15 +115,36 @@ class Routines(val spark: SparkSession) {
 
 
   def showStats(stats: Dataset[BucketStats]): Unit = {
-    def sumLongs(ds: Dataset[Long]) = ds.reduce(_ + _)
+    def fmt(x: Any): String = {
+      x match {
+        case l: Long => l.toString
+        case d: Double => "%.3f".format(d)
+      }
+    }
 
-    stats.cache
-    println("Sequence count in buckets: sum " + sumLongs(stats.map(_.sequences)))
-    println("Kmer count in buckets: sum " + sumLongs(stats.map(_.kmers)))
-    println("kmer abundance: sum " + sumLongs(stats.map(_.totalAbundance)))
-    println("Bucket stats:")
-    stats.describe().show()
-    stats.unpersist
+    val cols = Seq("sequences", "totalAbundance", "kmers")
+    val aggCols = Array(sum("kmers"), sum("uniqueKmers"),
+      sum("totalAbundance"), sum("sequences")) ++
+      cols.flatMap(c => Seq(mean(c), min(c), max(c), stddev(c)))
+
+    val statsAgg = stats.agg(count("sequences"), aggCols :_*).take(1)(0)
+    val allValues = (0 until statsAgg.length).map(i => fmt(statsAgg.get(i)))
+
+    val colfmt = "%-20s %s"
+    println(colfmt.format("number of buckets", allValues(0)))
+    println(colfmt.format("distinct k-mers", allValues(1)))
+    println(colfmt.format("unique k-mers", allValues(2)))
+    println(colfmt.format("total abundance", allValues(3)))
+    println(colfmt.format("superkmer count", allValues(4)))
+    println("Per bucket stats:")
+
+    println(colfmt.format("", "Mean\tMin\tMax\tStd.dev"))
+    for {
+      (col: String, values: Seq[String]) <- (Seq("k-mers", "abundance", "superkmers").iterator zip
+        allValues.drop(5).grouped(4))
+    } {
+      println(colfmt.format(col, values.mkString("\t")))
+    }
   }
 }
 
