@@ -1,12 +1,6 @@
 package hypercut.bucket
 
-
 import hypercut.hash.BucketId
-import hypercut.spark.Counting
-import miniasm.genome.bpbuffer.BPBuffer
-
-import scala.collection.mutable
-import scala.util.Sorting
 
 object SimpleBucket {
   def fromCountedSequences(id: BucketId,

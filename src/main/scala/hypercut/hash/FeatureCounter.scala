@@ -1,13 +1,13 @@
 package hypercut.hash
 
-import scala.collection.mutable.Map
+import hypercut.NTSeq
 
 object FeatureCounter {
   def apply(space: MotifSpace): FeatureCounter = apply(space.byPriority.length)
 
   def apply(n: Int) = new FeatureCounter(new Array[Int](n))
 
-  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)], id: String) = {
+  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)], id: String): MotifSpace = {
     //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
     new MotifSpace(
       counts.sortBy(x => (x._2, x._1)).map(_._1), oldSpace.n, id
@@ -23,7 +23,7 @@ final case class FeatureCounter(counter: Array[Int]) {
 
   def numMotifs: Int = counter.length
 
-  def motifsWithCounts(space: MotifSpace) = space.byPriority zip counter
+  def motifsWithCounts(space: MotifSpace): Array[(NTSeq, Int)] = space.byPriority zip counter
 
   def increment(motif: Motif, n: Int = 1) {
     val rank = motif.features.tagRank
@@ -34,7 +34,7 @@ final case class FeatureCounter(counter: Array[Int]) {
     }
   }
 
-  def += (motif: Motif) = {
+  def += (motif: Motif): Unit = {
     increment(motif)
   }
 

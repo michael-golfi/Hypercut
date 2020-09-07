@@ -4,8 +4,6 @@ import hypercut.NTSeq
 import hypercut.shortread.ReadFiles
 import miniasm.genome.util.DNAHelpers
 
-import scala.collection.mutable
-
 /**
  * Looks for raw motifs in reads, counting them in a histogram.
  */
