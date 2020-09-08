@@ -32,19 +32,19 @@ class HCCommand(name: String)(act: => Unit) extends RunnableCommand(name) {
 class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val k = opt[Int](required = true, descr = "Length of each k-mer")
 
-  val addRC = opt[Boolean](descr = "Add reverse complements")
+  val addRC = opt[Boolean](name = "addRC", descr = "Add reverse complements")
 
   val hash = opt[String](descr = "Hash function to use (motifSet/minimizer)",
-    default = Some("motifSet"))
+    default = Some("motifSet"), hidden = true)
 
   val numMotifs = opt[Int](
     descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(1))
 
   val space = opt[String](descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
 
-  val width = opt[Int](descr = "MotifSet hash: Width of motifs", default = None)
+  val width = opt[Int](descr = "Width of motifs", default = Some(10))
 
-  val sample = opt[Double](descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
+  val sample = opt[Double](descr = "Fraction of reads to sample for motif frequency",
     required = true, default = Some(0.01))
 
   val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
