@@ -38,7 +38,6 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
     default = Some("motifSet"))
 
   val numMotifs = opt[Int](
-    required = false,
     descr = "MotifSet hash: Number of motifs to extract from each k-mer", default = Some(1))
 
   val space = opt[String](descr = "MotifSet hash: Motif space to use", default = Some("mixedTest"))
@@ -46,7 +45,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val width = opt[Int](descr = "MotifSet hash: Width of motifs", default = None)
 
   val sample = opt[Double](descr = "MotifSet hash: Fraction of reads to sample for motif frequency",
-      default = Some(0.01))
+    required = true, default = Some(0.01))
 
   val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
 

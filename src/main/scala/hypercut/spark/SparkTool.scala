@@ -22,8 +22,6 @@ abstract class SparkTool(appName: String) {
 }
 
 class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(args) {
-  import spark.sqlContext.implicits._
-
   version("Hypercut 0.1 beta (c) 2019-2020 Johan Nyström-Persson (Spark version)")
   banner("Usage:")
   footer("Also see the documentation (to be written).")
