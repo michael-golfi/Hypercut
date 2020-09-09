@@ -4,7 +4,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.{Dataset, SparkSession}
 import org.rogach.scallop.Subcommand
 import hypercut._
-import hypercut.hash.{MotifSetExtractor, MotifSpace, ReadSplitter}
+import hypercut.hash.{MotifExtractor, MotifSetExtractor, MotifSpace, ReadSplitter}
 import hypercut.taxonomic.TaxonomicIndex
 
 abstract class SparkTool(appName: String) {
@@ -55,7 +55,12 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   def getSplitter(inFiles: String, persistHash: Option[String] = None): ReadSplitter[_] = {
     hash() match {
       case "motifSet" =>
-        new MotifSetExtractor(getSpace(inFiles, persistHash), k(), distances())
+        val space = getSpace(inFiles, persistHash)
+        if (space.n > 1) {
+          MotifSetExtractor(space, k(), distances())
+        } else {
+          MotifExtractor(space, k())
+        }
     }
   }
 

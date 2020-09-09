@@ -18,69 +18,6 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
   val n = space.n
 
   /**
-   * Scans a single read, using mutable state to track the current motif set
-   * in a window.
-   */
-  final class MotifExtractor(read: NTSeq) {
-    val matches = scanner.allMatches(read)
-    var matchIndex = 0
-    var scannedToPos: Int = space.maxMotifLength - 2
-
-    var windowMotifs = TopRankCache(n)
-
-    def motifAt(pos: Int): Option[Motif] = {
-      while (matchIndex < matches.length && matches(matchIndex).pos < pos) {
-        matchIndex += 1
-      }
-
-      if (matchIndex < matches.length) {
-        val m = matches(matchIndex)
-        if (m.pos == pos) {
-          Some(m)
-        } else {
-          None
-        }
-      } else {
-        None
-      }
-    }
-
-    /**
-     * May only be called for monotonically increasing values of pos
-     * pos is the final position of the window we scan to, inclusive.
-     */
-    def scanTo(pos: Int): List[Motif] = {
-      while (pos > scannedToPos + 1) {
-        //Catch up
-        scanTo(scannedToPos + 1)
-      }
-      if (pos < scannedToPos) {
-        throw new Exception("Invalid parameter, please supply increasing values of pos only")
-      } else if (pos > scannedToPos) {
-        //pos == scannedToPos + 1
-        scannedToPos = pos
-        if (pos >= read.length()) {
-          throw new Exception("Already reached end of read")
-        }
-        val start = pos - k + 1
-
-        //Position insert
-        val consider = pos - space.maxMotifLength
-
-        if (consider >= 0) {
-          motifAt(consider) match {
-            case Some(m) => windowMotifs :+= m
-            case None =>
-          }
-        }
-        windowMotifs.dropUntilPosition(start)
-      }
-      //      println(windowMotifs)
-      windowMotifs.takeByRank
-    }
-  }
-
-  /**
    * Look for motif sets in a read.
    * Returns two arrays:
    * 1. The MotifSet of every k-mer (in order),
@@ -99,7 +36,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
     val perPosition = new ArrayBuffer[MotifSet](read.length)
     val perBucket = new ArrayBuffer[(MotifSet, Int)](read.length)
 
-    val ext = new MotifExtractor(read)
+    val ext = new WindowExtractor(space, scanner, TopRankCache(n), k, read)
     ext.scanTo(k - 2)
     var p = k - 1
 
@@ -126,27 +63,7 @@ final case class MotifSetExtractor(space: MotifSpace, k: Int,
 
   def split(read: NTSeq): Iterator[(MotifSet, NTSeq)] = {
     val bkts = motifSetsInRead(read)._2.toList
-    splitRead(read, bkts).iterator
-  }
-
-  /**
-   * Convert extracted buckets into overlapping substrings of a read,
-   * overlapping by (k-1) bases. The ordering is not guaranteed.
-   * Designed to operate on the second list produced by the motifSetsInRead function.
-   */
-
-  def splitRead(read: NTSeq, buckets: List[(MotifSet, Int)]): List[(MotifSet, NTSeq)] =
-    splitRead(read, buckets, Nil).reverse
-
-  @tailrec
-  def splitRead(read: NTSeq, buckets: List[(MotifSet, Int)],
-                acc: List[(MotifSet, NTSeq)]): List[(MotifSet, NTSeq)] = {
-    buckets match {
-      case b1 :: b2 :: bs =>
-        splitRead(read, b2 :: bs, (b1._1, read.substring(b1._2 - (k - 1), b2._2)) :: acc)
-      case b1 :: bs => (b1._1, read.substring(b1._2 - (k - 1))) :: acc
-      case _ => acc
-    }
+    SplitterUtils.splitRead(k, read, bkts).iterator
   }
 
   /**
