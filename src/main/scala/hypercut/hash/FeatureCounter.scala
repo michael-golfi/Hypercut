@@ -61,8 +61,7 @@ final case class FeatureCounter(counter: Array[Int]) {
 
   /**
    * Operation only well-defined for counters based on the same motif space.
-   * To avoid allocation of potentially big arrays,
-   * mutates this object and returns it.
+   * To avoid allocation of potentially big arrays, we mutate this object and return it.
    * @param other
    * @return
    */
@@ -78,11 +77,26 @@ final case class FeatureCounter(counter: Array[Int]) {
     def perc(x: Int) = "%.2f%%".format(x.toDouble/s * 100)
 
     println(heading)
-    val first = (motifsWithCounts(space)).filter(_._2 > 0).take(20)
-    println(s"Showing max 20/${counter.size} motifs")
-    println(first.map(_._1).mkString("\t"))
-    println(first.map(_._2).mkString("\t"))
-    println(first.map(c => perc(c._2)).mkString("\t"))
+    val all = motifsWithCounts(space)
+    val unseen = all.filter(_._2 == 0)
+    println(s"Unseen motifs: ${unseen.size}, examples: " + unseen.take(5).map(_._1).mkString(" "))
+    val sorted = all.filter(_._2 > 0).sortBy(_._2)
+    val rarest = sorted.take(10)
+    val commonest = sorted.takeRight(10)
+
+    val fieldWidth = space.width
+    val fmt = s"%-${fieldWidth}s"
+    def output(strings: Seq[String]) = strings.map(s => fmt.format(s)).mkString(" ")
+
+    println(s"Rarest 10/${counter.size}: ")
+    println(output(rarest.map(_._1)))
+    println(output(rarest.map(_._2.toString)))
+    println(output(rarest.map(c => perc(c._2))))
+
+    println(s"Commonest 10: ")
+    println(output(commonest.map(_._1)))
+    println(output(commonest.map(_._2.toString)))
+    println(output(commonest.map(c => perc(c._2))))
   }
 
   /**
