@@ -122,7 +122,7 @@ class Routines(val spark: SparkSession) {
       }
     }
 
-    val cols = Seq("sequences", "totalAbundance", "kmers")
+    val cols = Seq("kmers", "totalAbundance", "sequences")
     val aggCols = Array(sum("kmers"), sum("uniqueKmers"),
       sum("totalAbundance"), sum("sequences")) ++
       cols.flatMap(c => Seq(mean(c), min(c), max(c), stddev(c)))
