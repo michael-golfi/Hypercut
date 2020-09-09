@@ -30,7 +30,7 @@ final case class Features(val tag: NTSeq, val tagRank: Int) {
   }
 }
 
-final case class Motif(pos: Int, features: Features) {
+final case class Motif(pos: Int, features: Features) extends MotifContainer {
   def tag = features.tag
 
   //Note: implicit assumption that pos < 100 when we use this
@@ -79,6 +79,8 @@ final case class Motif(pos: Int, features: Features) {
     //this.pos should be < other.pos
     (this.pos + this.features.tag.length() > other.pos)
   }
+
+  def motif = this
 }
 
 object MotifSet {

@@ -5,12 +5,15 @@ import scala.annotation.tailrec
 sealed trait PositionNode {
   var prevPos: PositionNode = _  //PosRankList or MotifContainer
   var nextPos: PositionNode = _  // End or MotifContainer
-  def remove(top: PosRankWindow) {}
+
+  def remove(top: PosRankWindow): Unit = {
+    prevPos.nextPos = nextPos
+    nextPos.prevPos = prevPos
+  }
   def isEnd: Boolean = false
 }
 
-sealed trait MotifContainer extends PositionNode {
-  def remove(top: PosRankWindow)
+trait MotifContainer extends PositionNode {
   def pos: Int
   def motif: Motif
 }
@@ -409,13 +412,6 @@ final case class PositionRankNode(pos: Int, motif: Motif) extends MotifContainer
   override def toString = s"$motif [ $rankSort ]"
 }
 
-final case class SimpleNode(pos: Int, motif: Motif) extends MotifContainer {
-  override def remove(top: PosRankWindow): Unit = {
-    prevPos.nextPos = nextPos
-    nextPos.prevPos = prevPos
-  }
-}
-
 /**
  * Smart cache to support repeated computation of takeByRank(n).
  */
@@ -532,7 +528,7 @@ final class FastTopRankCache extends TopRankCache {
    * @param search
    */
   @tailrec
-  def appendMonotonic(insert: SimpleNode, search: PositionNode): Unit = {
+  def appendMonotonic(insert: Motif, search: PositionNode): Unit = {
     search.prevPos match {
       case mc: MotifContainer =>
         val mcr = mc.motif.features.tagRank
@@ -549,14 +545,13 @@ final class FastTopRankCache extends TopRankCache {
   }
 
   def :+= (m: Motif): Unit = {
-    val insert = SimpleNode(m.pos, m)
     if (m.features.tagRank < lastResRank) {
       //new item is the highest priority one
       lastRes = Nil
       //wipe pre-existing elements from the cache
-      PosRankWindow.linkPos(cache, insert, cache.end)
+      PosRankWindow.linkPos(cache, m, cache.end)
     } else {
-      appendMonotonic(insert, cache.end)
+      appendMonotonic(m, cache.end)
     }
   }
 
