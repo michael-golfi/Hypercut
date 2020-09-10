@@ -44,7 +44,9 @@ class Routines(val spark: SparkSession) {
       s.scanGroup(c, rs)
       Iterator(c)
     })
-    r.coalesce(10).reduce(_ + _)
+    //If this number is too small, some CPUs might be idle
+    //TODO: adjust/tune automatically
+    r.coalesce(64).reduce(_ + _)
   }
 
   def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
