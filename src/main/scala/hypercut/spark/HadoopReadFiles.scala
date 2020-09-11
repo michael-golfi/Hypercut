@@ -28,7 +28,10 @@ class HadoopReadFiles(spark: SparkSession, k: Int) {
    * For longer sequences in "short read files", such as the NCBI bacterial sequences refseq library,
    * large splits will cause a lot of memory pressure. This helps control the effect.
    */
-  conf.set("mapred.max.split.size", (4 * 1024 * 1024).toString)
+//  conf.set("mapred.max.split.size", (4 * 1024 * 1024).toString)
+
+  //Experiment for 4x16 highcpu gcloud
+    conf.set("mapred.max.split.size", (8 * 1024 * 1024).toString)
 
   /**
    * Read short read sequence data only from the input file.

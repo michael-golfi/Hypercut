@@ -26,7 +26,7 @@ class Routines(val spark: SparkSession) {
   import org.apache.spark.sql.functions._
   import spark.sqlContext.implicits._
 
-  def getReadsFromFiles(fileSpec: String, withRC: Boolean, k:Int,
+  def getReadsFromFiles(fileSpec: String, withRC: Boolean, k: Int,
                         sample: Option[Double] = None,
                         longSequence: Boolean = false): Dataset[String] =
     new HadoopReadFiles(spark, k).getReadsFromFiles(fileSpec, withRC,
@@ -34,8 +34,11 @@ class Routines(val spark: SparkSession) {
 
   /**
    * Count motifs such as AC, AT, TTT in a set of reads.
+   * For minPartitions, ideally the total number of CPUs expected to be available
+   * should be passed.
    */
-  def countFeatures(reads: Dataset[String], space: MotifSpace): FeatureCounter = {
+  def countFeatures(reads: Dataset[String], space: MotifSpace,
+                    reducePartitions: Int): FeatureCounter = {
     val brScanner = sc.broadcast(new FeatureScanner(space))
 
     val r = reads.mapPartitions(rs => {
@@ -44,15 +47,14 @@ class Routines(val spark: SparkSession) {
       s.scanGroup(c, rs)
       Iterator(c)
     })
-    //If this number is too small, some CPUs might be idle
-    //TODO: adjust/tune automatically
-    r.coalesce(sc.defaultParallelism).reduce(_ + _)
+    r.coalesce(reducePartitions).reduce(_ + _)
   }
 
   def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
+                         samplePartitions: Int,
                          persistLocation: Option[String] = None,
                          motifFile: Option[String] = None): MotifSpace = {
-    val counter = countFeatures(input, template)
+    val counter = countFeatures(input, template, samplePartitions)
     counter.print(template, s"Discovered frequencies in fraction $fraction")
 
     //Optionally persist the counter for later reuse in a different run
@@ -64,7 +66,7 @@ class Routines(val spark: SparkSession) {
     val validMotifs = motifFile match {
       case Some(mf) =>
         val use = spark.read.csv(mf).collect().map(_.getString(0))
-        println(s"${use.size} motifs will be used")
+        println(s"${use.size}/${template.byPriority.size} motifs will be used (loaded from $mf)")
         use
       case _ =>
         template.byPriority

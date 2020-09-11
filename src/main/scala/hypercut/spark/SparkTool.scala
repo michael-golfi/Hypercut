@@ -4,7 +4,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.{Dataset, SparkSession}
 import org.rogach.scallop.Subcommand
 import hypercut._
-import hypercut.hash.{MotifExtractor, MotifSetExtractor, MotifSpace, ReadSplitter}
+import hypercut.hash.{Benchmarking, MotifExtractor, MotifSetExtractor, MotifSpace, ReadSplitter}
 import hypercut.taxonomic.TaxonomicIndex
 
 abstract class SparkTool(appName: String) {
@@ -34,8 +34,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   def getSpace(inFiles: String, persistHashLocation: Option[String] = None): MotifSpace = {
     val input = getInputSequences(inFiles, long(), sample.toOption)
     sample.toOption match {
-      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace, persistHashLocation,
-        motifList.toOption)
+      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace, numCPUs(),
+        persistHashLocation, motifList.toOption)
       case None => preferredSpace
     }
   }
@@ -62,6 +62,11 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
         } else {
           MotifExtractor(space, k())
         }
+      case "signature" =>
+        val space = Benchmarking.minimizerSignatureSpace(k(), width())
+        assert(space.n == 1)
+        MotifExtractor(space, k())
+
     }
   }
 

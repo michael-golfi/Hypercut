@@ -34,7 +34,7 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val addRC = opt[Boolean](name = "addRC", descr = "Add reverse complements")
 
-  val hash = opt[String](descr = "Hash function to use (motifSet/minimizer)",
+  val hash = opt[String](descr = "Hash function to use (motifSet/minimizer/signature)",
     default = Some("motifSet"), hidden = true)
 
   val numMotifs = opt[Int](
@@ -46,6 +46,10 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
 
   val sample = opt[Double](descr = "Fraction of reads to sample for motif frequency",
     required = true, default = Some(0.01))
+
+  val numCPUs = opt[Int](name = "numCPUs",
+    descr = "Number of CPUs expected to be available to executors",
+    required = false, default = Some(16))
 
   val motifList = opt[String](descr = "List of motifs to use")
 
