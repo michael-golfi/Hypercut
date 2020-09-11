@@ -29,14 +29,15 @@ final class ShiftScanner(val space: MotifSpace) {
 
   val featuresByPriority = {
     space.byPriority.iterator.zipWithIndex.map(p => {
-      new Features(p._1, p._2)
+      Features(p._1, p._2, !space.unusedMotifs.contains(p._1))
     }).toArray
   }
 
-  /*
-  Find all matches in the string.
-  Returns an array with the matches in order.
- */
+  /**
+   * Find all matches in the string.
+   * Returns an array with the matches in order, or null for positions
+   * where no valid matches were found.
+   */
   def allMatches(data: NTSeq): ArrayBuffer[Motif] = {
     try {
       val r = new ArrayBuffer[Motif](data.length)
@@ -50,8 +51,13 @@ final class ShiftScanner(val space: MotifSpace) {
       while (pos < data.length) {
         window = ((window << 2) | charToTwobit(data.charAt(pos))) & mask
         val priority = space.priorityLookup(window)
-        val motif = Motif(pos - (width - 1), featuresByPriority(priority))
-        r += motif
+        val features = featuresByPriority(priority)
+        if (features.valid) {
+          val motif = Motif(pos - (width - 1), featuresByPriority(priority))
+          r += motif
+        } else {
+          r += null
+        }
         pos += 1
       }
       r

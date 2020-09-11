@@ -4,13 +4,16 @@ import hypercut.NTSeq
 
 object FeatureCounter {
   def apply(space: MotifSpace): FeatureCounter = apply(space.byPriority.length)
-
   def apply(n: Int) = new FeatureCounter(new Array[Int](n))
 
-  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)], id: String): MotifSpace = {
-    //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
+  def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)],
+                         usedMotifs: Iterable[String], id: String): MotifSpace = {
+
+    val unused = counts.map(_._1).toSet -- usedMotifs
     new MotifSpace(
-      counts.sortBy(x => (x._2, x._1)).map(_._1), oldSpace.n, id
+    //This must define a total ordering, otherwise a given hash can't be reliably reproduced later
+      counts.sortBy(x => (x._2, x._1)).map(_._1),
+      oldSpace.n, id, unused.toSet
     )
   }
 }
@@ -104,9 +107,9 @@ final case class FeatureCounter(counter: Array[Int]) {
    * have the highest priority.
    * Other parameters (e.g. n) will be shared with the old space that this is based on.
    */
-  def toSpaceByFrequency(oldSpace: MotifSpace, id: String): MotifSpace = {
+  def toSpaceByFrequency(oldSpace: MotifSpace, id: String, usedMotifs: Iterable[String]): MotifSpace = {
     val pairs = motifsWithCounts(oldSpace)
-    FeatureCounter.toSpaceByFrequency(oldSpace, pairs, id)
+    FeatureCounter.toSpaceByFrequency(oldSpace, pairs, usedMotifs, id)
   }
 
 }

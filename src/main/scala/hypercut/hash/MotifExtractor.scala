@@ -38,7 +38,10 @@ final class WindowExtractor(space: MotifSpace, scanner: ShiftScanner,
       val consider = pos - space.maxMotifLength
 
       if (consider >= 0) {
-        windowMotifs :+= motifAt(consider)
+        val motif = motifAt(consider)
+        if (motif != null) {
+          windowMotifs :+= motif
+        }
       }
       windowMotifs.dropUntilPosition(start)
     }

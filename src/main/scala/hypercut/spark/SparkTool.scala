@@ -34,7 +34,8 @@ class HCSparkConf(args: Array[String], spark: SparkSession) extends CoreConf(arg
   def getSpace(inFiles: String, persistHashLocation: Option[String] = None): MotifSpace = {
     val input = getInputSequences(inFiles, long(), sample.toOption)
     sample.toOption match {
-      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace, persistHashLocation)
+      case Some(amount) => routines.createSampledSpace(input, amount, preferredSpace, persistHashLocation,
+        motifList.toOption)
       case None => preferredSpace
     }
   }

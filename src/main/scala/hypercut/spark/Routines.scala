@@ -46,11 +46,12 @@ class Routines(val spark: SparkSession) {
     })
     //If this number is too small, some CPUs might be idle
     //TODO: adjust/tune automatically
-    r.coalesce(64).reduce(_ + _)
+    r.coalesce(sc.defaultParallelism).reduce(_ + _)
   }
 
   def createSampledSpace(input: Dataset[String], fraction: Double, template: MotifSpace,
-                         persistLocation: Option[String] = None): MotifSpace = {
+                         persistLocation: Option[String] = None,
+                         motifFile: Option[String] = None): MotifSpace = {
     val counter = countFeatures(input, template)
     counter.print(template, s"Discovered frequencies in fraction $fraction")
 
@@ -59,19 +60,29 @@ class Routines(val spark: SparkSession) {
       val data = sc.parallelize(counter.motifsWithCounts(template), 100).toDS()
       data.write.mode(SaveMode.Overwrite).csv(s"${loc}_hash")
     }
-    counter.toSpaceByFrequency(template, s"sampled$fraction")
+
+    val validMotifs = motifFile match {
+      case Some(mf) =>
+        val use = spark.read.csv(mf).collect().map(_.getString(0))
+        println(s"${use.size} motifs will be used")
+        use
+      case _ =>
+        template.byPriority
+    }
+
+    counter.toSpaceByFrequency(template, s"sampled$fraction", validMotifs)
   }
 
 
   /**
-   * Restore persisted motif priorities. The template space must contain the same motifs,
-   * but potentially in a different order.
+   * Restore persisted motif priorities. The template space must contain
+   * (a subset of) the same motifs, but need not be in the same order.
    */
   def restoreSpace(location: String, template: MotifSpace): MotifSpace = {
     val raw = spark.read.csv(s"${location}_hash").map(x =>
       (x.getString(0), x.getString(1).toInt)).collect
     println(s"Restored previously saved hash parameters with ${raw.size} motifs")
-    FeatureCounter.toSpaceByFrequency(template, raw, "restored")
+    FeatureCounter.toSpaceByFrequency(template, raw, raw.map(_._1), "restored")
   }
 
   /**

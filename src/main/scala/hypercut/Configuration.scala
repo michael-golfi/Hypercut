@@ -47,6 +47,8 @@ class CoreConf(args: Seq[String]) extends ScallopConf(args) {
   val sample = opt[Double](descr = "Fraction of reads to sample for motif frequency",
     required = true, default = Some(0.01))
 
+  val motifList = opt[String](descr = "List of motifs to use")
+
   val distances = toggle(descrYes = "MotifSet hash: Include distances", default = Some(true))
 
   val rna = opt[Boolean](descr = "RNA mode (default is DNA)", default = Some(false))

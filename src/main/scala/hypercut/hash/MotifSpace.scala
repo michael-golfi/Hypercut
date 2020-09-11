@@ -54,7 +54,8 @@ object MotifSpace {
  * @param width Max width of motifs in bps.
  * @param id To help distinguish this space from other spaces, for quick equality check
  */
-final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String) {
+final case class MotifSpace(byPriority: Array[NTSeq], n: Int, id: String,
+                            unusedMotifs: Set[NTSeq] = Set.empty) {
   val width = byPriority.map(_.length()).max
   def maxMotifLength = width
   val minMotifLength = byPriority.map(_.length()).min
@@ -66,7 +67,7 @@ final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String
     if (!lookup.contains(pattern)) {
       synchronized {
         if (!lookup.contains(pattern)) {
-          val f = new Features(pattern, priorityOf(pattern))
+          val f = new Features(pattern, priorityOf(pattern), true)
           lookup += pattern -> f
         }
       }
@@ -79,7 +80,7 @@ final case class MotifSpace(val byPriority: Array[NTSeq], val n: Int, id: String
   }
 
   def create(pattern: NTSeq, pos: Int): Motif = {
-    Motif(pos, new Features(pattern, priorityOf(pattern)))
+    Motif(pos, new Features(pattern, priorityOf(pattern), true))
   }
 
   //4 ^ width

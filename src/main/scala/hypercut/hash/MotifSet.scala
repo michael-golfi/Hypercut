@@ -22,7 +22,7 @@ object Motif {
 /**
  * The attributes of a motif, except its position.
  */
-final case class Features(val tag: NTSeq, val tagRank: Int) {
+final case class Features(val tag: NTSeq, val tagRank: Int, valid: Boolean) {
 
   def equivalent(other: Features) = {
     //tagRank is sufficient to identify tag
