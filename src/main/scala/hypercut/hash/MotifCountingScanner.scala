@@ -7,33 +7,33 @@ import miniasm.genome.util.DNAHelpers
 /**
  * Looks for raw motifs in reads, counting them in a histogram.
  */
-final class FeatureScanner(val space: MotifSpace) extends Serializable {
+final class MotifCountingScanner(val space: MotifSpace) extends Serializable {
   @transient
   lazy val scanner = new ShiftScanner(space)
 
   @volatile var readCount: Int = 0
-  def scanRead(counter: FeatureCounter, read: NTSeq) {
+  def scanRead(counter: MotifCounter, read: NTSeq) {
     readCount += 1
     for { m <- scanner.allMatches(read) } {
       counter += m
     }
   }
 
-  def scanGroup(counter: FeatureCounter, rs: TraversableOnce[NTSeq]) {
+  def scanGroup(counter: MotifCounter, rs: TraversableOnce[NTSeq]) {
     for (r <- rs) scanRead(counter, r)
   }
 
-  def handle(reads: Iterator[NTSeq]): FeatureCounter = {
+  def handle(reads: Iterator[NTSeq]): MotifCounter = {
     val bufferSize = 100000
     val counter =
       reads.grouped(bufferSize).grouped(4).map(gg =>
         {
           println(s"$readCount reads seen")
           gg.par.map(rs => {
-            val counter = FeatureCounter(space)
+            val counter = MotifCounter(space)
             val forward = scanGroup(counter, rs)
             val rev = scanGroup(counter, rs.map(DNAHelpers.reverseComplement))
-            FeatureScanner.this.synchronized {
+            MotifCountingScanner.this.synchronized {
               counter.print(space, "Scanned features")
             }
             counter

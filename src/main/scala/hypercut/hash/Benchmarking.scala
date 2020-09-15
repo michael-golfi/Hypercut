@@ -10,6 +10,8 @@ object Benchmarking {
    * 1. Starts with AAA or ACA, or
    * 2. Contains AA anywhere except the beginning
    *
+   * This is not the most efficient approach in practice, but useful as a baseline to benchmark against.
+   *
    * @param routines
    * @param k
    * @return
@@ -18,7 +20,7 @@ object Benchmarking {
     val template = MotifSpace.ofLength(w, 1, false, "signatureTemplate")
     val all = template.byPriority
     val withCounts = all.map(mot => (mot, priority(mot)))
-    FeatureCounter.toSpaceByFrequency(template, withCounts, template.byPriority, "signature ordered")
+    MotifCounter.toSpaceByFrequency(template, withCounts, template.byPriority, "signature ordered")
   }
 
   /**

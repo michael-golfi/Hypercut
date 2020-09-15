@@ -49,6 +49,11 @@ final class WindowExtractor(space: MotifSpace, scanner: ShiftScanner,
   }
 }
 
+/**
+ * Split a read into superkmers by ranked motifs (minimizers).
+ * @param space
+ * @param k
+ */
 final case class MotifExtractor(space: MotifSpace, val k: Int) extends ReadSplitter[Motif] {
   @transient
   lazy val scanner = new ShiftScanner(space)

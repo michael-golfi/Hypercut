@@ -2,13 +2,13 @@ package hypercut.hash
 
 import org.scalatest.{FunSuite, Matchers}
 
-class FeatureCounterTest extends FunSuite with Matchers {
+class MotifCounterTest extends FunSuite with Matchers {
 
   test("basic") {
     val space = MotifSpace.using(MotifSpace.all3mers, 2, "default")
     val reads = Seq("ACTGTT", "TGGTTCCA")
-    val counter = FeatureCounter(space)
-    val scanner = new FeatureScanner(space)
+    val counter = MotifCounter(space)
+    val scanner = new MotifCountingScanner(space)
 
     for (r <- reads) {
       scanner.scanRead(counter, r)

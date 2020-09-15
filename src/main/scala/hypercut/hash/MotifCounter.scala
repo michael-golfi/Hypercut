@@ -2,9 +2,9 @@ package hypercut.hash
 
 import hypercut.NTSeq
 
-object FeatureCounter {
-  def apply(space: MotifSpace): FeatureCounter = apply(space.byPriority.length)
-  def apply(n: Int) = new FeatureCounter(new Array[Int](n))
+object MotifCounter {
+  def apply(space: MotifSpace): MotifCounter = apply(space.byPriority.length)
+  def apply(n: Int) = new MotifCounter(new Array[Int](n))
 
   def toSpaceByFrequency(oldSpace: MotifSpace, counts: Array[(String, Int)],
                          usedMotifs: Iterable[String], id: String): MotifSpace = {
@@ -19,10 +19,9 @@ object FeatureCounter {
 }
 
 /**
- * Counts motif occurrences (independently) in a dataset
- * to establish relative frequencies.
+ * Counts all motif occurrences in a dataset to establish relative frequencies.
  */
-final case class FeatureCounter(counter: Array[Int]) {
+final case class MotifCounter(counter: Array[Int]) {
 
   def numMotifs: Int = counter.length
 
@@ -51,7 +50,7 @@ final case class FeatureCounter(counter: Array[Int]) {
    * Operation only well-defined for counters based on the same motif space.
    * @param other
    */
-  def += (other: FeatureCounter) {
+  def += (other: MotifCounter) {
     for (i <- counter.indices) {
       val inc = other.counter(i)
       if (counter(i) <= Int.MaxValue - inc) {
@@ -68,7 +67,7 @@ final case class FeatureCounter(counter: Array[Int]) {
    * @param other
    * @return
    */
-  def + (other: FeatureCounter): FeatureCounter = {
+  def + (other: MotifCounter): MotifCounter = {
     this += other
     this
   }
@@ -109,7 +108,7 @@ final case class FeatureCounter(counter: Array[Int]) {
    */
   def toSpaceByFrequency(oldSpace: MotifSpace, id: String, usedMotifs: Iterable[String]): MotifSpace = {
     val pairs = motifsWithCounts(oldSpace)
-    FeatureCounter.toSpaceByFrequency(oldSpace, pairs, usedMotifs, id)
+    MotifCounter.toSpaceByFrequency(oldSpace, pairs, usedMotifs, id)
   }
 
 }

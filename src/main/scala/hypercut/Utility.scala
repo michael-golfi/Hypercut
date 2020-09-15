@@ -1,6 +1,6 @@
 package hypercut
 
-import hypercut.hash.{FeatureScanner, MotifSetExtractor}
+import hypercut.hash.{MotifCountingScanner, MotifSetExtractor}
 import org.rogach.scallop.Subcommand
 
 /**
@@ -23,7 +23,7 @@ class Conf(args: Seq[String]) extends CoreConf(args) {
 
     def run() {
       if (motifs()) {
-       new FeatureScanner(preferredSpace).scan(input())
+       new MotifCountingScanner(preferredSpace).scan(input())
       } else {
         defaultExtractor.prettyPrintMotifs(input())
       }

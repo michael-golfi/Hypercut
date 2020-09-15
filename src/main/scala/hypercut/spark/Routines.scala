@@ -1,7 +1,7 @@
 package hypercut.spark
 
 import hypercut.bucket.BucketStats
-import hypercut.hash.{FeatureScanner, _}
+import hypercut.hash.{MotifCountingScanner, _}
 import miniasm.genome.bpbuffer.BPBuffer
 import miniasm.genome.bpbuffer.BPBuffer._
 import miniasm.genome.util.DNAHelpers
@@ -38,12 +38,12 @@ class Routines(val spark: SparkSession) {
    * should be passed.
    */
   def countFeatures(reads: Dataset[String], space: MotifSpace,
-                    reducePartitions: Int): FeatureCounter = {
-    val brScanner = sc.broadcast(new FeatureScanner(space))
+                    reducePartitions: Int): MotifCounter = {
+    val brScanner = sc.broadcast(new MotifCountingScanner(space))
 
     val r = reads.mapPartitions(rs => {
       val s = brScanner.value
-      val c = FeatureCounter(s.space)
+      val c = MotifCounter(s.space)
       s.scanGroup(c, rs)
       Iterator(c)
     })
@@ -84,7 +84,7 @@ class Routines(val spark: SparkSession) {
     val raw = spark.read.csv(s"${location}_hash").map(x =>
       (x.getString(0), x.getString(1).toInt)).collect
     println(s"Restored previously saved hash parameters with ${raw.size} motifs")
-    FeatureCounter.toSpaceByFrequency(template, raw, raw.map(_._1), "restored")
+    MotifCounter.toSpaceByFrequency(template, raw, raw.map(_._1), "restored")
   }
 
   /**

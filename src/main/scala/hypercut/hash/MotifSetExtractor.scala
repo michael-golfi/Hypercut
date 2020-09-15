@@ -7,6 +7,10 @@ import hypercut.shortread.Read
 
 import scala.collection.mutable.ArrayBuffer
 
+
+/**
+ * Split a read by motif sets, optionally also using distances between motifs.
+ */
 final case class MotifSetExtractor(space: MotifSpace, k: Int,
                                    distances: Boolean = true) extends ReadSplitter[MotifSet] {
   @transient
