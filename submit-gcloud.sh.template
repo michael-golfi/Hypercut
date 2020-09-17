@@ -18,6 +18,6 @@ MAXRES=##spark.driver.maxResultSize=2g
 #spark.executor.memory=8g is suitable for highmem nodes on GCloud.
 PROPERTIES="^##^spark.jars.packages=org.rogach:scallop_2.11:latest.integration$PARTITIONS$MAXRES"
 
-exec gcloud --verbosity=info  dataproc jobs submit spark --region asia-northeast1 --cluster $CLUSTER --class hypercut.spark.Hypercut --jars ~/ws/l5/DBPart/target/scala-2.11/hypercut_2.11-0.1.0-SNAPSHOT.jar   --properties $PROPERTIES -- --checkpoint $CHECKPOINT "$@"
+exec gcloud --verbosity=info  dataproc jobs submit spark --region asia-northeast1 --cluster $CLUSTER --class hypercut.spark.Hypercut --jars target/scala-2.11/hypercut_2.11-0.1.0-SNAPSHOT.jar   --properties $PROPERTIES -- --checkpoint $CHECKPOINT "$@"
 
 
